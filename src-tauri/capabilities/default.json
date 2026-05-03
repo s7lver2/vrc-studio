@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for VRC Studio",
+  "platforms": ["linux", "macOS", "windows"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-appdata-read",
+    "fs:allow-appdata-write",
+    "fs:allow-document-read",
+    "fs:allow-document-write",
+    "fs:allow-home-read",
+    "fs:allow-home-write",
+    "fs:allow-read-file",
+    "fs:allow-read-dir",
+    "fs:allow-stat",
+    "fs:scope-applocaldata-recursive",
+    "fs:scope-home-recursive"
+  ]
+}

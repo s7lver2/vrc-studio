@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ripper-auth",
+  "description": "Permissions for the Ripper.store auth WebView window",
+  "platforms": ["linux", "macOS", "windows"],
+  "windows": ["ripper-auth"],
+  "remote": {
+    "urls": ["https://forum.ripper.store/*"]
+  },
+  "permissions": [
+    "core:default",
+    "core:event:allow-emit",
+    "core:event:allow-emit-to"
+  ]
+}

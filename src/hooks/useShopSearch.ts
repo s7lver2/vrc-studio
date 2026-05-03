@@ -1,0 +1,43 @@
+import { useEffect, useRef } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useShopStore } from "../store/shopStore";
+
+export function useShopSearch() {
+  const { query, search, setQuery } = useShopStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-buscar cuando Riperstore se conecta y ya había una query activa
+  useEffect(() => {
+    const unsub = listen("ripper:auth_success", () => {
+      const currentQuery = useShopStore.getState().query;
+      if (currentQuery.trim()) {
+        useShopStore.getState().search();
+      }
+    });
+    return () => {
+      unsub.then((fn) => fn()).catch(() => {});
+    };
+  }, []);
+
+  const handleQueryChange = (q: string) => {
+    // Si el usuario pega una URL de Booth, normalizarla al ID numérico
+    // para que fetchCombined pueda detectarla y hacer búsqueda directa.
+    const boothUrlMatch = q.trim().match(/booth\.pm\/(?:[a-z]{2}\/)?items\/(\d+)/);
+    const normalized = boothUrlMatch ? boothUrlMatch[1] : q;
+    setQuery(normalized);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    // ID numérico → buscar inmediatamente (sin debounce extra)
+    const delay = boothUrlMatch ? 0 : 400;
+    debounceRef.current = setTimeout(() => {
+      if (normalized.trim()) search();
+    }, delay);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  return { query, handleQueryChange };
+}

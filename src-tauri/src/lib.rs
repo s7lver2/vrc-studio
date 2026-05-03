@@ -1,0 +1,151 @@
+pub mod error;
+pub mod db;
+pub mod commands;
+pub mod models;
+pub mod services;
+
+use std::sync::Mutex;
+use tauri::Manager;
+
+/// Estado de autenticación de Ripper.store.
+/// Guardamos el label de la WebviewWindow activa; None = no autenticado.
+/// `session_listener` almacena el EventId del listener persistente
+/// de `ripper:current-url` para poder deregistrarlo en logout.
+pub struct RipperState {
+    pub webview_label: Mutex<Option<String>>,
+    pub session_listener: Mutex<Option<tauri::EventId>>,
+}
+impl Default for RipperState {
+    fn default() -> Self {
+        Self {
+            webview_label: Mutex::new(None),
+            session_listener: Mutex::new(None),
+        }
+    }
+}
+
+/// Estado de autenticación de Booth.pm.
+/// `purchased_ids`: IDs de items comprados, cargados tras el login.
+pub struct BoothState {
+    pub webview_label: Mutex<Option<String>>,
+    pub purchased_ids: Mutex<std::collections::HashSet<String>>,
+}
+impl Default for BoothState {
+    fn default() -> Self {
+        Self {
+            webview_label: Mutex::new(None),
+            purchased_ids: Mutex::new(std::collections::HashSet::new()),
+        }
+    }
+}
+
+#[tauri::command]
+fn read_file_as_string(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+pub fn app() -> tauri::Builder<tauri::Wry> {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .manage(RipperState::default())
+        .manage(BoothState::default())
+        .setup(|app| {
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("app data dir unavailable")
+                .to_string_lossy()
+                .to_string();
+
+            std::fs::create_dir_all(&app_data_dir)
+                .expect("failed to create app data directory");
+
+            // Inicializar el pool sincronamente: garantiza que el state esté
+            // disponible antes de que el primer command Tauri sea procesado.
+            let pool = tauri::async_runtime::block_on(db::init_pool(&app_data_dir))
+                .expect("DB initialization failed");
+            app.manage(pool);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            // helpers
+            read_file_as_string,
+
+            commands::ping,
+            // ── Projects ──
+            commands::projects::list_projects,
+            commands::projects::get_project,
+            commands::projects::delete_project,
+            commands::projects::list_unity_installations,
+            commands::projects::fetch_vpm_index,
+            commands::projects::create_project,
+            commands::projects::open_project_in_unity,
+            commands::projects::scan_for_projects,
+            commands::projects::import_existing_project,
+            commands::projects::save_project_screenshot,
+            commands::projects::get_installed_vpm_packages,
+            commands::projects::install_vpm_package_to_project,
+            commands::projects::remove_vpm_package_from_project,
+            // ── Packages ──
+            commands::packages::list_packages,
+            commands::packages::create_package,
+            commands::packages::update_package,
+            commands::packages::delete_package,
+            commands::packages::build_package,
+            // ── Shop ──
+            commands::shop::search_shop,
+            commands::shop::get_booth_product_detail,
+            commands::shop::start_download,
+            commands::shop::link_account,
+            commands::shop::unlink_account,
+            commands::shop::get_linked_providers,
+            // ── Shop — Booth.pm WebView auth ──
+            commands::shop::booth_open_auth,
+            commands::shop::booth_logout,
+            commands::shop::booth_is_authenticated,
+            commands::shop::booth_fetch_purchases,
+            commands::shop::booth_get_owned_ids,
+            // ── Shop — Ripper.store WebView auth ──
+            commands::shop::open_ripper_auth,
+            commands::shop::ripper_logout,
+            commands::shop::ripper_is_authenticated,
+            commands::shop::ripper_search_via_webview,
+            commands::shop::ripper_get_topic_detail,
+            commands::shop::ripper_scrape_deep,
+            commands::shop::ripper_browse_category,
+            commands::shop::ripper_resolve_hidelink,
+            commands::shop::download_direct_url,
+            // ── Inventory ──
+            commands::inventory::list_inventory,
+            commands::inventory::delete_inventory_item,
+            commands::inventory::create_inventory_folder,
+            commands::inventory::list_inventory_folders,
+            commands::inventory::move_item_to_folder,
+            commands::inventory::tag_inventory_item,
+            commands::inventory::get_file_tree,
+            commands::inventory::open_item_location,
+            commands::inventory::read_unitypackage,
+            commands::inventory::set_item_product_images,
+            commands::inventory::get_item_product_images,
+            commands::inventory::import_local_package,
+            commands::inventory::compress_item,
+            commands::inventory::decompress_item,
+            // ── VCS ──
+            commands::vcs::get_vcs_status,
+            commands::vcs::vcs_commit,
+            commands::vcs::get_vcs_log,
+            commands::vcs::list_vcs_branches,
+            commands::vcs::create_vcs_branch,
+            commands::vcs::switch_vcs_branch,
+            commands::vcs::vcs_add_remote,
+            commands::vcs::vcs_push,
+            commands::vcs::vcs_pull,
+            commands::vcs::github_start_device_auth,
+            commands::vcs::github_poll_token,
+            commands::vcs::github_get_user,
+            commands::vcs::github_get_token,
+            commands::vcs::github_logout,
+        ])
+}

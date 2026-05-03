@@ -1,0 +1,43 @@
+[package]
+name = "vrc-studio"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "vrc_studio_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros", "migrate"] }
+thiserror = "1"
+log = "0.4"
+env_logger = "0.11"
+reqwest = { version = "0.12", features = ["json", "cookies", "stream"] }
+semver  = { version = "1", features = ["serde"] }
+uuid    = { version = "1", features = ["v4"] }
+zip     = "2"
+git2 = { version = "0.19", features = ["vendored-libgit2"] }
+tar     = "0.4"
+walkdir = "2"
+keyring = "2"
+scraper = "0.19"
+urlencoding = "2"
+futures-util = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+flate2 = "1.1.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.52"
+
+[dev-dependencies]
+tempfile = "3"

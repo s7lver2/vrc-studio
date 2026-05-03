@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "booth-auth",
+  "description": "Permissions for the Booth.pm auth WebView window",
+  "platforms": ["linux", "macOS", "windows"],
+  "windows": ["booth-auth"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-emit",
+    "core:event:allow-emit-to"
+  ]
+}
