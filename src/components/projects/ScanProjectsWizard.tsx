@@ -1,9 +1,6 @@
 /**
  * ScanProjectsWizard — 2-step wizard to scan the drive for existing Unity
  * projects and import them into the panel without recreating any files.
- *
- * Step 1: Pick root directory + options
- * Step 2: Scan results + per-project name edit + bulk import
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -19,13 +16,12 @@ import {
   ScannedProject,
   Project,
 } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ScanEntry extends ScannedProject {
-  /** User-editable display name (defaults to the directory name) */
   displayName: string;
-  /** Tri-state for the import phase */
   importState: "pending" | "importing" | "done" | "skipped" | "error";
   importError?: string;
 }
@@ -48,6 +44,7 @@ function InlineNameEditor({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
@@ -77,7 +74,7 @@ function InlineNameEditor({
     <button
       className="flex items-center gap-1 group min-w-0"
       onClick={() => { setDraft(value); setEditing(true); }}
-      title="Click to rename"
+      title={t("scan_projects_rename_hint")}
     >
       <span className="text-xs font-medium text-zinc-100 truncate">{value}</span>
       <Pencil className="h-3 w-3 text-zinc-600 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
@@ -98,6 +95,7 @@ function ProjectRow({
   onToggle: () => void;
   onRename: (name: string) => void;
 }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const isImporting = entry.importState === "importing";
   const isDone = entry.importState === "done";
@@ -127,7 +125,7 @@ function ProjectRow({
           ) : isError ? (
             <AlertTriangle className="h-4 w-4 text-red-400" />
           ) : entry.already_imported ? (
-            <CheckCircle2 className="h-4 w-4 text-zinc-600" title="Already imported" />
+            <CheckCircle2 className="h-4 w-4 text-zinc-600" aria-label={t("scan_projects_import", { count: 0, s: "" })} /> 
           ) : (
             <button
               onClick={onToggle}
@@ -160,7 +158,7 @@ function ProjectRow({
             )}
             {entry.already_imported && (
               <span className="shrink-0 text-[9px] px-1.5 py-px rounded-full bg-zinc-700 text-zinc-400 border border-zinc-600">
-                Already imported
+                {t("scan_projects_imported")}
               </span>
             )}
           </div>
@@ -204,6 +202,7 @@ interface Props {
 }
 
 export function ScanProjectsWizard({ onClose, onImported }: Props) {
+  const t = useT();
   const [step, setStep] = useState<WizardStep>(1);
 
   // Step 1
@@ -362,13 +361,13 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
               <HardDrive className="h-4 w-4 text-red-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Scan for Existing Projects</h2>
+              <h2 className="text-sm font-semibold text-zinc-100">{t("scan_projects_title")}</h2>
               <p className="text-[11px] text-zinc-500">
                 {step === 1
-                  ? "Select a folder to search for Unity projects"
+                  ? t("scan_projects_root_label")
                   : scanStatus === "scanning"
-                  ? "Searching for Unity projects…"
-                  : `${entries.length} project(s) found`}
+                  ? t("scan_projects_scanning")
+                  : t("scan_projects_done", { count: entries.length, s: entries.length !== 1 ? "s" : "" })}
               </p>
             </div>
           </div>
@@ -392,7 +391,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                 ) : (
                   <span className="w-3 h-3 flex items-center justify-center text-[10px] font-mono">{s}</span>
                 )}
-                <span>{s === 1 ? "Configure" : "Import"}</span>
+                <span>{s === 1 ? t("scan_projects_step1") : t("scan_projects_step2")}</span>
               </div>
             ))}
             <button
@@ -409,7 +408,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
           <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
             {/* Root directory */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold text-zinc-300">Root directory to scan</label>
+              <label className="text-xs font-semibold text-zinc-300">{t("scan_projects_root_label")}</label>
               <p className="text-[11px] text-zinc-500">
                 Select a folder. The wizard will search all subdirectories (up to 6 levels deep)
                 for Unity projects, identified by the presence of{" "}
@@ -427,7 +426,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                   {rootDir ? (
                     <span className="truncate font-mono text-xs">{rootDir}</span>
                   ) : (
-                    <span className="text-xs italic">No folder selected — click Browse</span>
+                    <span className="text-xs italic">{t("scan_projects_root_placeholder")}</span>
                   )}
                 </div>
                 <button
@@ -435,7 +434,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 text-zinc-200 text-xs font-medium transition-colors whitespace-nowrap"
                 >
                   <FolderOpen className="h-3.5 w-3.5" />
-                  Browse…
+                  {t("scan_projects_browse")}
                 </button>
               </div>
               {rootDir && (
@@ -443,7 +442,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                   onClick={() => setRootDir(null)}
                   className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
                 >
-                  × Clear selection
+                  × {t("scan_projects_clear")}
                 </button>
               )}
             </div>
@@ -472,7 +471,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
               <div className="flex items-center gap-3 px-6 py-3 bg-blue-950/30 border-b border-blue-800/40 shrink-0">
                 <Loader2 className="h-4 w-4 text-blue-400 animate-spin shrink-0" />
                 <p className="text-xs text-blue-300">
-                  Scanning <span className="font-mono text-blue-400">{rootDir}</span>…
+                  {t("scan_projects_scanning")} <span className="font-mono text-blue-400">{rootDir}</span>…
                 </p>
               </div>
             )}
@@ -493,15 +492,10 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                   )}
                 </button>
                 <p className="text-xs text-zinc-400 flex-1">
-                  {selectedCount} of {importableCount} selected
-                  {entries.some((e) => e.already_imported) && (
-                    <span className="ml-2 text-zinc-600">
-                      · {entries.filter((e) => e.already_imported).length} already imported
-                    </span>
-                  )}
+                  {t("scan_projects_selected_count", { selected: selectedCount, importable: importableCount })}
                 </p>
                 <span className="text-[10px] text-zinc-600">
-                  Click project name to rename
+                  {t("scan_projects_rename_hint")}
                 </span>
               </div>
             )}
@@ -509,7 +503,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
             {scanStatus === "done" && entries.length === 0 && (
               <div className="flex items-center gap-3 px-6 py-3 bg-zinc-900 border-b border-zinc-800 shrink-0">
                 <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
-                <p className="text-xs text-amber-300">No Unity projects found in the selected directory.</p>
+                <p className="text-xs text-amber-300">{t("scan_projects_no_results")}</p>
               </div>
             )}
 
@@ -517,7 +511,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
               <div className="flex items-center gap-3 px-6 py-3 bg-green-950/30 border-b border-green-800/40 shrink-0">
                 <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
                 <p className="text-xs text-green-300">
-                  {doneCount} project(s) imported successfully.
+                  {t("scan_projects_done", { count: doneCount, s: doneCount !== 1 ? "s" : "" })}
                 </p>
               </div>
             )}
@@ -525,7 +519,6 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
             {/* Project list */}
             <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-2">
               {scanStatus === "scanning" && (
-                /* Skeleton rows while scanning */
                 Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 flex items-center gap-3 px-3 py-2.5">
                     <div className="w-5 h-5 bg-zinc-800 rounded animate-pulse shrink-0" />
@@ -595,7 +588,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                 onClick={onClose}
                 className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
               >
-                Cancel
+                {t("scan_projects_cancel")}
               </button>
               <button
                 onClick={startScan}
@@ -603,7 +596,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                 className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
               >
                 <Search className="h-4 w-4" />
-                Scan
+                {t("scan_projects_start")}
                 <ChevronRight className="h-4 w-4" />
               </button>
             </>
@@ -613,7 +606,7 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                 onClick={onClose}
                 className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
               >
-                {importPhase === "done" ? "Close" : "Cancel"}
+                {importPhase === "done" ? t("scan_projects_close") : t("scan_projects_cancel")}
               </button>
 
               {/* Right side: import button or progress */}
@@ -623,26 +616,26 @@ export function ScanProjectsWizard({ onClose, onImported }: Props) {
                   className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors"
                 >
                   <GitBranch className="h-4 w-4" />
-                  Import {selectedCount} project{selectedCount !== 1 ? "s" : ""}
+                  {t("scan_projects_import", { count: selectedCount, s: selectedCount !== 1 ? "s" : "" })}
                 </button>
               )}
 
               {importPhase === "importing" && (
                 <div className="flex items-center gap-2 text-zinc-400 text-xs">
                   <Loader2 className="h-4 w-4 animate-spin text-red-400" />
-                  Importing…
+                  {t("scan_projects_importing", { done: doneCount, total: selectedCount })}
                 </div>
               )}
 
               {importPhase === "done" && (
                 <div className="flex items-center gap-2 text-green-400 text-sm font-medium">
                   <CheckCircle2 className="h-4 w-4" />
-                  {doneCount} imported!
+                  {t("scan_projects_done", { count: doneCount, s: doneCount !== 1 ? "s" : "" })}
                 </div>
               )}
 
               {importPhase === "idle" && scanStatus === "done" && selectedCount === 0 && (
-                <span className="text-xs text-zinc-600">No projects selected</span>
+                <span className="text-xs text-zinc-600">{t("scan_projects_no_selection")}</span>
               )}
             </>
           )}

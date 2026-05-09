@@ -1,7 +1,9 @@
 import { useDownloadProgress } from "../../hooks/useDownloadProgress";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { useT } from "@/i18n";
 
 export function DownloadProgress() {
+  const t = useT();
   const { downloads } = useDownloadProgress();
   const active = Object.values(downloads);
 
@@ -27,12 +29,15 @@ export function DownloadProgress() {
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />
               )}
               <span className="text-xs capitalize text-zinc-300">
-                {d.status}
+                {d.status === "done"
+                  ? t("shop_download_done")
+                  : d.status === "error"
+                  ? t("shop_download_error")
+                  : d.status}
               </span>
             </div>
           </div>
 
-          {/* Progress bar */}
           <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-300 ${

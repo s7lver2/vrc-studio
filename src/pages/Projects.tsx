@@ -21,6 +21,7 @@ export default function Projects() {
   const {
     projects, isLoading, wizardOpen,
     setProjects, setLoading, removeProject, addProject, openWizard, closeWizard, updateProject,
+    markProjectOpen, openProjectIds,
   } = useProjectsStore();
 
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -45,8 +46,10 @@ export default function Projects() {
       return;
     }
     await tauriOpenProjectInUnity(project.id, project.path, match.path).catch((e) =>
-      alert(t("projects_open_unity_error", { error: e }))
+      alert(t("projects_open_unity_error", { error: String(e) }))
     );
+    // Mark as open so ProjectCard can show the screenshot in colour.
+    markProjectOpen(project.id);
   };
 
   const handleDeleteConfirm = async (alsoDeleteFiles: boolean) => {
@@ -58,7 +61,7 @@ export default function Projects() {
       if (selectedProject?.id === deletingProject.id) setSelectedProject(null);
       if (detailProject?.id === deletingProject.id) setDetailProject(null);
     } catch (e) {
-      alert(t("projects_delete_error", { error: e }));
+      alert(t("projects_delete_error", { error: String(e) }));
     } finally {
       setIsDeleting(false);
       setDeletingProject(null);
@@ -119,6 +122,8 @@ export default function Projects() {
               onOpen={handleOpen}
               onDelete={setDeletingProject}
               onDetail={setDetailProject}
+              openProjectIds={openProjectIds}
+              onUpdated={updateProject}
             />
           )}
         </div>

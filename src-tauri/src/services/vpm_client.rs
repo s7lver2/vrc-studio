@@ -67,7 +67,19 @@ fn parse_packages_map(
 
             versions.insert(
                 ver_str.clone(),
-                VpmPackageVersion { name, display_name, version, unity, description, url, dependencies },
+                VpmPackageVersion {
+                    name,
+                    display_name,
+                    version,
+                    unity,
+                    description,
+                    url,
+                    dependencies,
+                    changelog_url: None,
+                    documentation_url: None,
+                    license_url: None,
+                    samples: vec![],
+                },
             );
         }
 
@@ -106,7 +118,7 @@ pub fn parse_vpm_index(json: &str) -> Result<Vec<VpmPackage>, AppError> {
     if let Some(arr) = root.as_array() {
         let mut result = Vec::new();
         for entry in arr {
-            if let (Some(id), Some(versions_obj)) = (
+            if let (Some(id), Some(_versions_obj)) = (
                 entry.get("id").and_then(|v| v.as_str()),
                 entry.get("versions").and_then(|v| v.as_object()),
             ) {

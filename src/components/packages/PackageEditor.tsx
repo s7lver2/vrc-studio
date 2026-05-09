@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { PackageAssetSelector } from "./PackageAssetSelector";
 import { usePackages } from "@/hooks/usePackages";
 import type { CustomPackage } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 interface PackageEditorProps {
   open: boolean;
@@ -21,12 +22,12 @@ const EMPTY_FORM = {
 type FormState = typeof EMPTY_FORM;
 
 export function PackageEditor({ open, onOpenChange, editingPackage }: PackageEditorProps) {
+  const t = useT();
   const { createPackage, updatePackage } = usePackages();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Inicializar formulario cuando se abre el editor
   useEffect(() => {
     if (open) {
       if (editingPackage) {
@@ -49,16 +50,16 @@ export function PackageEditor({ open, onOpenChange, editingPackage }: PackageEdi
 
   const validate = (): Record<string, string> => {
     const e: Record<string, string> = {};
-    if (!form.display_name.trim()) e.display_name = "Nombre requerido";
+    if (!form.display_name.trim()) e.display_name = t("pkg_editor_name_required");
     if (!form.name.trim()) {
-      e.name = "ID requerido";
+      e.name = t("pkg_editor_id_required");
     } else if (!/^[a-z0-9]+(\.[a-z0-9]+)+$/.test(form.name)) {
-      e.name = "Formato inválido (ej: com.user.mipaquete)";
+      e.name = t("pkg_editor_id_invalid");
     }
     if (!form.version.trim()) {
-      e.version = "Versión requerida";
+      e.version = t("pkg_editor_version_required");
     } else if (!/^\d+\.\d+\.\d+$/.test(form.version)) {
-      e.version = "Semver inválido (ej: 1.0.0)";
+      e.version = t("pkg_editor_version_invalid");
     }
     return e;
   };
@@ -86,10 +87,9 @@ export function PackageEditor({ open, onOpenChange, editingPackage }: PackageEdi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-2xl rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
           <h2 className="text-base font-semibold text-zinc-100">
-            {editingPackage ? "Editar paquete" : "Nuevo paquete"}
+            {editingPackage ? t("pkg_editor_title_edit") : t("pkg_editor_title_new")}
           </h2>
           <button
             onClick={() => onOpenChange(false)}
@@ -99,29 +99,20 @@ export function PackageEditor({ open, onOpenChange, editingPackage }: PackageEdi
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto px-6 py-5">
-          {/* Display name */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-400">
-              Nombre del paquete
-            </label>
+            <label className="text-xs font-medium text-zinc-400">{t("pkg_editor_name_label")}</label>
             <input
               value={form.display_name}
               onChange={(e) => patch("display_name", e.target.value)}
-              placeholder="Mi Paquete"
+              placeholder={t("create_project_name_placeholder")}
               className="rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
             />
-            {errors.display_name && (
-              <p className="text-xs text-red-400">{errors.display_name}</p>
-            )}
+            {errors.display_name && <p className="text-xs text-red-400">{errors.display_name}</p>}
           </div>
 
-          {/* Package ID */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-400">
-              ID del paquete
-            </label>
+            <label className="text-xs font-medium text-zinc-400">{t("pkg_editor_id_label")}</label>
             <input
               value={form.name}
               onChange={(e) => patch("name", e.target.value.toLowerCase())}
@@ -129,67 +120,51 @@ export function PackageEditor({ open, onOpenChange, editingPackage }: PackageEdi
               disabled={Boolean(editingPackage)}
               className="rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
-            {errors.name && (
-              <p className="text-xs text-red-400">{errors.name}</p>
-            )}
+            {errors.name && <p className="text-xs text-red-400">{errors.name}</p>}
             {editingPackage && (
-              <p className="text-xs text-zinc-600">
-                El ID no puede cambiarse una vez creado el paquete.
-              </p>
+              <p className="text-xs text-zinc-600">{t("pkg_editor_id_readonly")}</p>
             )}
           </div>
 
-          {/* Version */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-400">Versión</label>
+            <label className="text-xs font-medium text-zinc-400">{t("pkg_editor_version_label")}</label>
             <input
               value={form.version}
               onChange={(e) => patch("version", e.target.value)}
               placeholder="1.0.0"
               className="w-36 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
             />
-            {errors.version && (
-              <p className="text-xs text-red-400">{errors.version}</p>
-            )}
+            {errors.version && <p className="text-xs text-red-400">{errors.version}</p>}
           </div>
 
-          {/* Description */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-400">
-              Descripción
-            </label>
+            <label className="text-xs font-medium text-zinc-400">{t("pkg_editor_description_label")}</label>
             <textarea
               value={form.description}
               onChange={(e) => patch("description", e.target.value)}
-              placeholder="Describe qué incluye este paquete…"
+              placeholder={t("project_detail_section_details")}
               rows={3}
               className="resize-none rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
             />
           </div>
 
-          {/* Assets */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-zinc-400">
-              Assets incluidos
-            </label>
+            <label className="text-xs font-medium text-zinc-400">{t("pkg_editor_assets_label")}</label>
             <PackageAssetSelector
               selectedIds={form.asset_ids}
               onChange={(ids) => patch("asset_ids", ids)}
             />
           </div>
 
-          {errors._global && (
-            <p className="text-sm text-red-400">{errors._global}</p>
-          )}
+          {errors._global && <p className="text-sm text-red-400">{errors._global}</p>}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-2 border-t border-zinc-800 px-6 py-4">
           <button
             onClick={() => onOpenChange(false)}
             className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
           >
-            Cancelar
+            {t("pkg_editor_cancel")}
           </button>
           <button
             onClick={handleSave}
@@ -197,10 +172,10 @@ export function PackageEditor({ open, onOpenChange, editingPackage }: PackageEdi
             className="rounded-md bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50"
           >
             {saving
-              ? "Guardando…"
+              ? t("pkg_editor_saving")
               : editingPackage
-              ? "Guardar cambios"
-              : "Crear paquete"}
+              ? t("pkg_editor_save_changes")
+              : t("pkg_editor_create_package")}
           </button>
         </div>
       </div>

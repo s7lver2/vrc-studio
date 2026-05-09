@@ -192,6 +192,7 @@ export function FileTreeViewer({
           children: child.children && child.children.length > 50
             ? [...child.children.slice(0, 50), {
                 name: `… ${child.children.length - 50} more files (enable smart filter to show fewer)`,
+                path: child.path + "/__truncated__",
                 is_dir: false, extension: null, size: null, children: null,
               }]
             : child.children,

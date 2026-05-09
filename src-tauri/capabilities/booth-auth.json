@@ -4,6 +4,13 @@
   "description": "Permissions for the Booth.pm auth WebView window",
   "platforms": ["linux", "macOS", "windows"],
   "windows": ["booth-auth"],
+  "remote": {
+    "urls": [
+      "https://booth.pm/*",
+      "https://accounts.booth.pm/*",
+      "https://accounts.pixiv.net/*"
+    ]
+  },
   "permissions": [
     "core:default",
     "core:event:allow-emit",

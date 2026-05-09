@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Project } from "@/lib/tauri";
 import { ProjectCard } from "./ProjectCard";
 import { Boxes, LayoutGrid, List, AlignJustify, GitBranch, Info, Trash2, ExternalLink, Cpu } from "lucide-react";
+import { useT } from "@/i18n";
 
 type ViewMode = "grid" | "list" | "compact";
 
@@ -12,6 +13,8 @@ interface ProjectListProps {
   onDetail?: (project: Project) => void;
   onSelect?: (project: Project) => void;
   selectedId?: string;
+  openProjectIds?: Set<string>;
+  onUpdated?: (project: Project) => void;
 }
 
 function cn(...classes: (string | boolean | undefined)[]) {
@@ -22,6 +25,7 @@ function ProjectListRow({ project, onOpen, onDelete, onDetail, isSelected }: {
   project: Project; onOpen: (p: Project) => void; onDelete: (p: Project) => void;
   onDetail?: (p: Project) => void; isSelected?: boolean;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -55,9 +59,9 @@ function ProjectListRow({ project, onOpen, onDelete, onDetail, isSelected }: {
         <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", project.unity_type === "custom" ? "bg-red-950 text-red-400" : "bg-zinc-800 text-zinc-400")}>{project.unity_type}</span>
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button aria-label="Details" onClick={(e) => { e.stopPropagation(); onDetail?.(project); }} className="rounded p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"><Info size={14} /></button>
-        <button aria-label="Open in Unity" onClick={(e) => { e.stopPropagation(); onOpen(project); }} className="rounded p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"><ExternalLink size={14} /></button>
-        <button aria-label="Delete" onClick={(e) => { e.stopPropagation(); onDelete(project); }} className="rounded p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"><Trash2 size={14} /></button>
+        <button aria-label={t("project_detail_badge_unity")} onClick={(e) => { e.stopPropagation(); onDetail?.(project); }} className="rounded p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"><Info size={14} /></button>
+        <button aria-label={t("project_detail_open_unity")} onClick={(e) => { e.stopPropagation(); onOpen(project); }} className="rounded p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"><ExternalLink size={14} /></button>
+        <button aria-label={t("project_delete_title")} onClick={(e) => { e.stopPropagation(); onDelete(project); }} className="rounded p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors"><Trash2 size={14} /></button>
       </div>
     </div>
   );
@@ -67,6 +71,7 @@ function ProjectCompactRow({ project, onOpen, onDelete, onDetail, isSelected }: 
   project: Project; onOpen: (p: Project) => void; onDelete: (p: Project) => void;
   onDetail?: (p: Project) => void; isSelected?: boolean;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -83,19 +88,20 @@ function ProjectCompactRow({ project, onOpen, onDelete, onDetail, isSelected }: 
         {project.vcs_enabled && <GitBranch className="h-3 w-3 text-zinc-700" />}
       </div>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button aria-label="Details" onClick={(e) => { e.stopPropagation(); onDetail?.(project); }} className="rounded p-1 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"><Info size={12} /></button>
-        <button aria-label="Open" onClick={(e) => { e.stopPropagation(); onOpen(project); }} className="rounded p-1 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"><ExternalLink size={12} /></button>
-        <button aria-label="Delete" onClick={(e) => { e.stopPropagation(); onDelete(project); }} className="rounded p-1 text-zinc-600 hover:text-red-400 hover:bg-zinc-700 transition-colors"><Trash2 size={12} /></button>
+        <button aria-label={t("project_detail_badge_unity")} onClick={(e) => { e.stopPropagation(); onDetail?.(project); }} className="rounded p-1 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"><Info size={12} /></button>
+        <button aria-label={t("project_detail_open_unity")} onClick={(e) => { e.stopPropagation(); onOpen(project); }} className="rounded p-1 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"><ExternalLink size={12} /></button>
+        <button aria-label={t("project_delete_title")} onClick={(e) => { e.stopPropagation(); onDelete(project); }} className="rounded p-1 text-zinc-600 hover:text-red-400 hover:bg-zinc-700 transition-colors"><Trash2 size={12} /></button>
       </div>
     </div>
   );
 }
 
 function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+  const t = useT();
   const opts: { id: ViewMode; icon: React.ElementType; label: string }[] = [
-    { id: "grid",    icon: LayoutGrid,   label: "Grid" },
-    { id: "list",    icon: List,         label: "List" },
-    { id: "compact", icon: AlignJustify, label: "Compact" },
+    { id: "grid",    icon: LayoutGrid,   label: t("project_list_view_grid") },
+    { id: "list",    icon: List,         label: t("project_list_view_list") },
+    { id: "compact", icon: AlignJustify, label: t("project_list_view_compact") },
   ];
   return (
     <div className="flex items-center gap-0.5">
@@ -112,15 +118,16 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode
   );
 }
 
-export function ProjectList({ projects, onOpen, onDelete, onDetail, onSelect, selectedId }: ProjectListProps) {
+export function ProjectList({ projects, onOpen, onDelete, onDetail, onSelect, selectedId, openProjectIds, onUpdated }: ProjectListProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const t = useT();
 
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
         <Boxes size={40} className="text-zinc-700" />
-        <p className="text-sm font-medium text-zinc-500">No projects yet</p>
-        <p className="text-xs text-zinc-600">Create your first avatar project to get started.</p>
+        <p className="text-sm font-medium text-zinc-500">{t("project_list_no_projects")}</p>
+        <p className="text-xs text-zinc-600">{t("project_list_no_projects_desc")}</p>
       </div>
     );
   }
@@ -128,14 +135,14 @@ export function ProjectList({ projects, onOpen, onDelete, onDetail, onSelect, se
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-zinc-600">{projects.length} project{projects.length !== 1 ? "s" : ""}</span>
+        <span className="text-xs text-zinc-600">{t("project_list_count", { count: projects.length, s: projects.length !== 1 ? "s" : "" })}</span>
         <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
       {viewMode === "grid" && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} onOpen={onOpen} onDelete={onDelete} onDetail={onDetail} onSelect={onSelect} isSelected={selectedId === project.id} />
+            <ProjectCard key={project.id} project={project} onOpen={onOpen} onDelete={onDelete} onDetail={onDetail} onSelect={onSelect} isSelected={selectedId === project.id} isOpen={openProjectIds?.has(project.id) ?? false} onUpdated={onUpdated} />
           ))}
         </div>
       )}
@@ -152,9 +159,9 @@ export function ProjectList({ projects, onOpen, onDelete, onDetail, onSelect, se
         <div className="flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/40 overflow-hidden">
           <div className="flex items-center gap-3 px-3 py-1.5 border-b border-zinc-800 bg-zinc-900">
             <span className="w-1.5 shrink-0" />
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 flex-1">Name</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hidden sm:block w-28 shrink-0">Version</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hidden md:block w-24 shrink-0">Tags</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 flex-1">{t("project_list_col_name")}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hidden sm:block w-28 shrink-0">{t("project_list_col_version")}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 hidden md:block w-24 shrink-0">{t("project_list_col_tags")}</span>
             <span className="w-20 shrink-0" />
           </div>
           <div className="divide-y divide-zinc-800/40">

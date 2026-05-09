@@ -17,6 +17,7 @@ export interface Project {
   shader: "liltoon" | "poiyomi" | null;
   vcs_enabled: boolean;
   last_screenshot: string | null;
+  is_compressed: boolean;
 }
 
 export interface UnityInstallation {
@@ -30,6 +31,12 @@ export interface VpmPackage {
   versions: Record<string, VpmPackageVersion>;
 }
 
+export interface VpmPackageSample {
+  display_name: string;
+  description: string;
+  path: string;
+}
+
 export interface VpmPackageVersion {
   name: string;
   display_name: string;
@@ -38,6 +45,11 @@ export interface VpmPackageVersion {
   description: string | null;
   url: string;
   dependencies: Record<string, string>;
+  // Extra optional VPM fields
+  changelogUrl?: string | null;
+  documentationUrl?: string | null;
+  licensesUrl?: string | null;
+  samples?: VpmPackageSample[];
 }
 
 export interface CreateProjectRequest {
@@ -477,9 +489,15 @@ export const tauriCompressItem = (item_id: string): Promise<void> =>
 export const tauriDecompressItem = (item_id: string): Promise<void> =>
   invoke("decompress_item", { itemId: item_id });
 
+export const tauriCompressProject = (project_id: string): Promise<void> =>
+  invoke("compress_project", { projectId: project_id });
+
+export const tauriDecompressProject = (project_id: string): Promise<void> =>
+  invoke("decompress_project", { projectId: project_id });
+
 // ── VCS ───────────────────────────────────────────────────────────────────────
 
-import type { GitStatus, CommitEntry, BranchInfo } from "@/types/vcs";
+import type { GitStatus, CommitEntry, BranchInfo, CommitDiffFile, FileDiff } from "@/types/vcs";
 
 export const vcs = {
   getStatus: (projectPath: string) =>
@@ -508,6 +526,22 @@ export const vcs = {
 
   pull: (projectPath: string, token: string) =>
     invoke<void>("vcs_pull", { projectPath, token }),
+
+  /** Devuelve los archivos cambiados en un commit */
+  getCommitDiff: (projectPath: string, commitSha: string) =>
+    invoke<CommitDiffFile[]>("vcs_get_commit_diff", { projectPath, commitSha }),
+
+  /** Devuelve el diff línea a línea de un archivo en un commit */
+  getFileDiff: (projectPath: string, commitSha: string, filePath: string) =>
+    invoke<FileDiff>("vcs_get_file_diff", { projectPath, commitSha, filePath }),
+
+  /** Devuelve los archivos con conflictos de merge */
+  getConflicts: (projectPath: string) =>
+    invoke<ConflictFile[]>("vcs_get_conflicts", { projectPath }),
+
+  /** Resuelve un conflicto: "ours" | "theirs" | "manual" */
+  resolveConflict: (projectPath: string, filePath: string, strategy: ConflictStrategy) =>
+    invoke<void>("vcs_resolve_conflict", { projectPath, filePath, strategy }),
 };
 
 // ── GitHub OAuth ──────────────────────────────────────────────────────────────
@@ -562,11 +596,57 @@ export const tauriInstallVpmPackageToProject = (
   projectPath: string,
   packageId: string,
   version: string | null,
+  repoUrls: string[],
 ): Promise<void> =>
-  invoke("install_vpm_package_to_project", { projectPath, packageId, version });
+  invoke("install_vpm_package_to_project", { projectPath, packageId, version, repoUrls });
 
 export const tauriRemoveVpmPackageFromProject = (
   projectPath: string,
   packageId: string,
 ): Promise<void> =>
   invoke("remove_vpm_package_from_project", { projectPath, packageId });
+// ── Journal ───────────────────────────────────────────────────────────────────
+
+export interface JournalEntry {
+  id: string;
+  project_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const journal = {
+  list: (projectId: string) =>
+    invoke<JournalEntry[]>("journal_list", { projectId }),
+  create: (projectId: string, content: string) =>
+    invoke<JournalEntry>("journal_create", { projectId, content }),
+  update: (id: string, content: string) =>
+    invoke<void>("journal_update", { id, content }),
+  delete: (id: string) =>
+    invoke<void>("journal_delete", { id }),
+};
+
+// ── Terminal ──────────────────────────────────────────────────────────────────
+
+export interface CommandOutput {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+}
+
+export const terminal = {
+  run: (projectPath: string, command: string) =>
+    invoke<CommandOutput>("run_in_project", { projectPath, command }),
+};
+// ── VCS Conflicts ─────────────────────────────────────────────────────────────
+
+export interface ConflictFile {
+  path: string;
+  ours_snippet: string;
+  theirs_snippet: string;
+}
+
+export type ConflictStrategy = "ours" | "theirs" | "manual";
+
+export const tauriGetVpmPackageFiles = (url: string): Promise<string[]> =>
+    invoke("get_vpm_package_files", { url });

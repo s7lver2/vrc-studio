@@ -296,3 +296,196 @@ pub fn pull_from_remote(project_path: &Path, remote_name: &str, token: &str) -> 
 
     Ok(())
 }
+// ── Commit diff ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CommitDiffFile {
+    pub path: String,
+    pub status: String, // "added" | "deleted" | "modified" | "renamed"
+    pub old_path: Option<String>,
+    pub insertions: usize,
+    pub deletions: usize,
+}
+
+/// Devuelve la lista de archivos cambiados en un commit (por SHA corto o largo).
+pub fn get_commit_diff_files(project_path: &Path, commit_sha: &str) -> Result<Vec<CommitDiffFile>, String> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| format!("failed to open repo: {e}"))?;
+
+    let obj = repo.revparse_single(commit_sha)
+        .map_err(|_| format!("commit '{commit_sha}' not found"))?;
+    let commit = obj.peel_to_commit()
+        .map_err(|e| format!("not a commit: {e}"))?;
+
+    let commit_tree = commit.tree().map_err(|e| e.to_string())?;
+
+    let parent_tree = if commit.parent_count() > 0 {
+        let parent = commit.parent(0).map_err(|e| e.to_string())?;
+        Some(parent.tree().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+
+    let diff = repo.diff_tree_to_tree(
+        parent_tree.as_ref(),
+        Some(&commit_tree),
+        None,
+    ).map_err(|e| e.to_string())?;
+
+    let mut files = Vec::new();
+    for delta in diff.deltas() {
+        let status = match delta.status() {
+            git2::Delta::Added => "added",
+            git2::Delta::Deleted => "deleted",
+            git2::Delta::Renamed => "renamed",
+            _ => "modified",
+        };
+        let path = delta.new_file().path()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let old_path = if delta.status() == git2::Delta::Renamed {
+            delta.old_file().path().map(|p| p.to_string_lossy().to_string())
+        } else {
+            None
+        };
+        files.push(CommitDiffFile {
+            path,
+            status: status.to_string(),
+            old_path,
+            insertions: 0,
+            deletions: 0,
+        });
+    }
+
+    // Segunda pasada para stats de líneas
+    let mut stats_map: std::collections::HashMap<String, (usize, usize)> = std::collections::HashMap::new();
+    diff.foreach(
+        &mut |_delta, _| true,
+        None,
+        None,
+        Some(&mut |delta, _hunk, line| {
+            let path = delta.new_file().path()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let e = stats_map.entry(path).or_default();
+            match line.origin() {
+                '+' => e.0 += 1,
+                '-' => e.1 += 1,
+                _ => {}
+            }
+            true
+        }),
+    ).map_err(|e| e.to_string())?;
+
+    for f in &mut files {
+        if let Some((ins, del)) = stats_map.get(&f.path) {
+            f.insertions = *ins;
+            f.deletions = *del;
+        }
+    }
+
+    Ok(files)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiffLine {
+    pub origin: String, // "+", "-", " ", "\\"
+    pub content: String,
+    pub old_lineno: Option<u32>,
+    pub new_lineno: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiffHunk {
+    pub header: String,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileDiff {
+    pub path: String,
+    pub status: String,
+    pub hunks: Vec<DiffHunk>,
+}
+
+/// Devuelve el diff línea a línea de un archivo en un commit.
+pub fn get_file_diff(project_path: &Path, commit_sha: &str, file_path: &str) -> Result<FileDiff, String> {
+    use std::cell::RefCell;
+
+    let repo = Repository::open(project_path)
+        .map_err(|e| format!("failed to open repo: {e}"))?;
+
+    let obj = repo.revparse_single(commit_sha)
+        .map_err(|_| format!("commit '{commit_sha}' not found"))?;
+    let commit = obj.peel_to_commit()
+        .map_err(|e| format!("not a commit: {e}"))?;
+    let commit_tree = commit.tree().map_err(|e| e.to_string())?;
+
+    let parent_tree = if commit.parent_count() > 0 {
+        let parent = commit.parent(0).map_err(|e| e.to_string())?;
+        Some(parent.tree().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path);
+
+    let diff = repo.diff_tree_to_tree(
+        parent_tree.as_ref(),
+        Some(&commit_tree),
+        Some(&mut opts),
+    ).map_err(|e| e.to_string())?;
+
+    // Use RefCell so both hunk and line closures can borrow `hunks` without
+    // Rust complaining about simultaneous mutable borrows at compile time.
+    let hunks: RefCell<Vec<DiffHunk>> = RefCell::new(Vec::new());
+    let file_status: RefCell<String> = RefCell::new("modified".to_string());
+
+    diff.foreach(
+        &mut |delta, _| {
+            *file_status.borrow_mut() = match delta.status() {
+                git2::Delta::Added   => "added".to_string(),
+                git2::Delta::Deleted => "deleted".to_string(),
+                git2::Delta::Renamed => "renamed".to_string(),
+                _                    => "modified".to_string(),
+            };
+            true
+        },
+        None,
+        Some(&mut |_delta, hunk| {
+            let header = std::str::from_utf8(hunk.header())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            hunks.borrow_mut().push(DiffHunk { header, lines: Vec::new() });
+            true
+        }),
+        Some(&mut |_delta, _hunk, line| {
+            let origin = match line.origin() {
+                '+' => "+",
+                '-' => "-",
+                ' ' => " ",
+                _   => "\\",
+            };
+            let content = std::str::from_utf8(line.content())
+                .unwrap_or("")
+                .to_string();
+            if let Some(h) = hunks.borrow_mut().last_mut() {
+                h.lines.push(DiffLine {
+                    origin: origin.to_string(),
+                    content,
+                    old_lineno: line.old_lineno(),
+                    new_lineno: line.new_lineno(),
+                });
+            }
+            true
+        }),
+    ).map_err(|e| e.to_string())?;
+
+    Ok(FileDiff {
+        path: file_path.to_string(),
+        status: file_status.into_inner(),
+        hunks: hunks.into_inner(),
+    })
+}

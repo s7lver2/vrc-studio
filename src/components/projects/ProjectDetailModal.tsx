@@ -1,9 +1,5 @@
 /**
  * ProjectDetailModal — rich project detail overlay.
- *
- * Layout:
- *   Left (fixed, ~360px): screenshot hero + project identity + metadata badges
- *   Right (flex): tab bar [Overview | Files | Git]
  */
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -11,18 +7,25 @@ import {
   X, ExternalLink, FolderOpen, GitBranch,
   Monitor, Layers, Cpu, Calendar, HardDrive,
   Loader2, AlertTriangle, RefreshCw, Camera,
-  Info, FileSearch, Package, Sparkles,
+  Info, FileSearch, Package, Sparkles, LayoutDashboard,
+  Archive, PackageOpen,
 } from "lucide-react";
 import {
   Project, FileNode,
   tauriGetFileTree, tauriOpenItemLocation,
   tauriListUnityInstallations,
   tauriOpenProjectInUnity,
+  tauriCompressProject, tauriDecompressProject,
 } from "@/lib/tauri";
+import { ProjectCompressionPopup } from "./ProjectCompressionPopup";
 import { FileTreeViewer } from "@/components/inventory/FileTreeViewver";
 import { VcsPanel } from "@/components/vcs/VcsPanel";
-import { PackagesTab } from "@/components/projects/PackagesTab";
+import { PackagesTab } from "@/pages/Packages";
 import { listen } from "@tauri-apps/api/event";
+import { toAssetUrl } from "@/lib/utils";
+import { useAppStore } from "@/store/app";
+import { invoke } from "@tauri-apps/api/core";
+import { useT } from "@/i18n";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,15 +52,11 @@ function ScreenshotHero({
   onUpdated: (p: Project) => void;
 }) {
   const [errored, setErrored] = useState(false);
-  const src = project.last_screenshot
-    ? `asset://${project.last_screenshot}`
-    : null;
+  const src = toAssetUrl(project.last_screenshot);
 
-  // Listen for auto-screenshot events from Rust
   useEffect(() => {
     const unlisten = listen<string>("project:screenshot_ready", (ev) => {
       if (ev.payload === project.id) {
-        // Force re-render by flipping errored state; parent will refresh project
         setErrored(false);
         onUpdated({ ...project, last_screenshot: project.last_screenshot });
       }
@@ -127,11 +126,12 @@ function TabBar({ active, onSelect, vcsEnabled }: {
   onSelect: (t: Tab) => void;
   vcsEnabled: boolean;
 }) {
+  const t = useT();
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "overview",  label: "Overview",  icon: Info },
-    { id: "files",     label: "Files",     icon: FileSearch },
-    { id: "packages",  label: "Packages",  icon: Package },
-    ...(vcsEnabled ? [{ id: "git" as Tab, label: "Git", icon: GitBranch }] : []),
+    { id: "overview",  label: t("project_detail_tab_overview"),  icon: Info },
+    { id: "files",     label: t("project_detail_tab_files"),     icon: FileSearch },
+    { id: "packages",  label: t("project_detail_tab_packages"),  icon: Package },
+    ...(vcsEnabled ? [{ id: "git" as Tab, label: t("project_detail_tab_git"), icon: GitBranch }] : []),
   ];
 
   return (
@@ -158,18 +158,16 @@ function TabBar({ active, onSelect, vcsEnabled }: {
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ project }: { project: Project }) {
-  // Try to read extra metadata from the filesystem
+  const t = useT();
   const [diskSize, setDiskSize] = useState<string | null>(null);
   const [packageCount, setPackageCount] = useState<number | null>(null);
 
   useEffect(() => {
-    // Estimate installed packages from Packages/manifest.json
     tauriGetFileTree(project.path).then((tree) => {
       const pkgsDir = tree.children?.find((c) => c.name === "Packages");
       if (pkgsDir) {
         const manifest = pkgsDir.children?.find((c) => c.name === "manifest.json");
         if (manifest?.size) {
-          // We can't easily parse it but we know the directory exists
           setPackageCount(pkgsDir.children?.filter(c => c.is_dir).length ?? null);
         }
       }
@@ -180,7 +178,6 @@ function OverviewTab({ project }: { project: Project }) {
 
   return (
     <div className="p-5 space-y-4 overflow-y-auto flex-1">
-      {/* Path */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">Project Path</p>
         <div className="flex items-center gap-2 rounded-lg bg-zinc-800/60 border border-zinc-700/30 px-3 py-2">
@@ -196,34 +193,29 @@ function OverviewTab({ project }: { project: Project }) {
         </div>
       </div>
 
-      {/* Metadata grid */}
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">Details</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">{t("project_detail_section_details")}</p>
         <div className="grid grid-cols-2 gap-2">
-          <Badge label="Unity Version" value={project.unity_version} icon={Cpu} />
-          <Badge label="Project Type"  value={project.unity_type}    icon={Layers} />
-          {shaderLabel && <Badge label="Shader" value={shaderLabel} icon={Monitor} accent />}
-          {project.vcs_enabled && <Badge label="Version Control" value="Git enabled" icon={GitBranch} />}
+          <Badge label={t("project_detail_badge_unity")} value={project.unity_version} icon={Cpu} />
+          <Badge label={t("project_detail_badge_type")}  value={project.unity_type}    icon={Layers} />
+          {shaderLabel && <Badge label={t("project_detail_badge_shader")} value={shaderLabel} icon={Monitor} accent />}
+          {project.vcs_enabled && <Badge label={t("project_detail_badge_vcs")} value="Git enabled" icon={GitBranch} />}
           {packageCount !== null && (
-            <Badge label="Local Packages" value={`${packageCount} folder${packageCount !== 1 ? "s" : ""}`} icon={Layers} />
+            <Badge label={t("project_detail_badge_local_packages")} value={t("project_detail_badge_folders", { count: packageCount, s: packageCount !== 1 ? "s" : "" })} icon={Layers} />
           )}
         </div>
       </div>
 
-      {/* Avatar base */}
       {project.avatar_base_id && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">Avatar Base</p>
-          <Badge label="Base ID" value={project.avatar_base_id} icon={Monitor} />
+          <Badge label={t("project_detail_badge_base_id")} value={project.avatar_base_id} icon={Monitor} />
         </div>
       )}
 
-      {/* Packages/manifest.json preview hint */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
         <p className="text-[10px] text-zinc-600 leading-relaxed">
-          Open the <span className="text-zinc-400 font-medium">Files</span> tab to browse the project directory,
-          the <span className="text-zinc-400 font-medium">Packages</span> tab to manage VPM packages,
-          or the <span className="text-zinc-400 font-medium">Git</span> tab to manage commits and branches.
+          {t("project_detail_hint_tabs")}
         </p>
       </div>
     </div>
@@ -284,7 +276,6 @@ function FilesTab({ project }: { project: Project }) {
   if (loading) {
     return (
       <div className="flex-1 flex flex-col gap-4 p-5">
-        {/* Indeterminate progress bar */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5 mb-0.5">
             <Loader2 className="h-3 w-3 animate-spin text-zinc-600" />
@@ -297,25 +288,12 @@ function FilesTab({ project }: { project: Project }) {
             />
           </div>
         </div>
-
-        {/* Skeleton file rows */}
         {Array.from({ length: 11 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-2.5 animate-pulse"
-            style={{ opacity: 1 - i * 0.06 }}
-          >
-            <div
-              className="h-3 w-3 rounded bg-zinc-800 shrink-0"
-              style={{ marginLeft: `${(i % 4) * 14}px` }}
-            />
-            <div
-              className="h-2 rounded bg-zinc-800"
-              style={{ width: `${38 + ((i * 41) % 45)}%` }}
-            />
+          <div key={i} className="flex items-center gap-2.5 animate-pulse" style={{ opacity: 1 - i * 0.06 }}>
+            <div className="h-3 w-3 rounded bg-zinc-800 shrink-0" style={{ marginLeft: `${(i % 4) * 14}px` }} />
+            <div className="h-2 rounded bg-zinc-800" style={{ width: `${38 + ((i * 41) % 45)}%` }} />
           </div>
         ))}
-
         <style>{`@keyframes files-slide { 0% { left:-40% } 100% { left:100% } }`}</style>
       </div>
     );
@@ -342,12 +320,7 @@ function FilesTab({ project }: { project: Project }) {
   return (
     <FilesErrorBoundary key={key} onReset={() => { setKey((k) => k + 1); load(); }}>
       <div className="flex-1 overflow-y-auto p-4">
-        <FileTreeViewer
-          root={tree}
-          maxH="max-h-full"
-          showFilterToggle
-          defaultFiltered
-        />
+        <FileTreeViewer root={tree} maxH="max-h-full" showFilterToggle defaultFiltered />
       </div>
     </FilesErrorBoundary>
   );
@@ -363,16 +336,25 @@ interface Props {
 }
 
 export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Props) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
   const [opening, setOpening] = useState(false);
+  const openWorkspace = useAppStore((s) => s.openWorkspace);
+  const [manualUnityPath, setManualUnityPath] = useState<string | null>(null);
+  const [showManualInput, setShowManualInput] = useState(false);
 
   const handleOpen = async () => {
     setOpening(true);
     try {
       const installations = await tauriListUnityInstallations().catch(() => []);
-      const match = installations.find((i) => i.version === project.unity_version);
+      let match = installations.find((i) => i.version === project.unity_version);
+
+      if (!match && manualUnityPath) {
+        match = { version: project.unity_version, path: manualUnityPath, is_custom: true };
+      }
+
       if (!match) {
-        alert(`Unity ${project.unity_version} is not installed.`);
+        setShowManualInput(true);
         return;
       }
       await tauriOpenProjectInUnity(project.id, project.path, match.path);
@@ -381,7 +363,6 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
     }
   };
 
-  // Close on backdrop click
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };
@@ -392,19 +373,13 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
       onClick={handleBackdrop}
     >
       <div className="relative flex w-full max-w-5xl h-[80vh] rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
-
-        {/* ── Left panel ──────────────────────────────────────────── */}
+        {/* Left panel */}
         <div className="w-80 shrink-0 flex flex-col gap-4 border-r border-zinc-800 p-5 overflow-y-auto">
-          {/* Screenshot */}
           <ScreenshotHero project={project} onUpdated={onUpdated} />
-
-          {/* Identity */}
           <div>
             <h2 className="text-base font-bold text-zinc-100 leading-tight">{project.name}</h2>
             <p className="text-xs text-zinc-500 mt-0.5 font-mono truncate">{project.unity_version}</p>
           </div>
-
-          {/* Quick badges */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-xs text-zinc-400">
               <Cpu className="h-3.5 w-3.5 text-zinc-600" />
@@ -424,25 +399,62 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
             )}
           </div>
 
-          {/* Open in Unity */}
           <button
             onClick={handleOpen}
             disabled={opening}
             className="flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
           >
-            {opening
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <ExternalLink className="h-4 w-4" />}
-            Open in Unity
+            {opening ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+            {t("project_detail_open_unity")}
           </button>
 
-          {/* Open folder */}
+          {showManualInput && (
+            <div className="mt-3 p-3 bg-zinc-900 rounded-lg border border-yellow-800">
+              <p className="text-xs text-yellow-400 mb-2">
+                {t("project_detail_unity_missing", { version: project.unity_version })}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="C:\Program Files\Unity\Hub\Editor\2022.3.22f1\Editor\Unity.exe"
+                  value={manualUnityPath ?? ""}
+                  onChange={(e) => setManualUnityPath(e.target.value)}
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono"
+                />
+                <button
+                  onClick={async () => {
+                    if (!manualUnityPath) return;
+                    setShowManualInput(false);
+                    setOpening(true);
+                    try {
+                      await tauriOpenProjectInUnity(project.id, project.path, manualUnityPath);
+                    } finally {
+                      setOpening(false);
+                    }
+                  }}
+                  className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs text-zinc-200"
+                >
+                  {t("project_detail_open_unity")}
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-600 mt-1">{t("project_detail_logs_hint")}</p>
+            </div>
+          )}
+
           <button
             onClick={() => tauriOpenItemLocation(project.path)}
             className="flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
           >
             <FolderOpen className="h-3.5 w-3.5" />
-            Open Folder
+            {t("project_detail_open_folder")}
+          </button>
+
+          <button
+            onClick={() => { onClose(); openWorkspace(project); }}
+            className="flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:border-red-600/50 hover:text-red-400 transition-colors"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            {t("project_detail_open_workspace")}
           </button>
 
           <div className="mt-auto pt-2 border-t border-zinc-800">
@@ -450,20 +462,14 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
               onClick={() => onDelete(project)}
               className="w-full text-left text-xs text-zinc-700 hover:text-red-400 transition-colors py-1"
             >
-              Delete project…
+              {t("project_detail_delete")}
             </button>
           </div>
         </div>
 
-        {/* ── Right panel ─────────────────────────────────────────── */}
+        {/* Right panel */}
         <div className="flex flex-col flex-1 min-w-0">
           <TabBar active={tab} onSelect={setTab} vcsEnabled={project.vcs_enabled} />
-
-          {/*
-            All tabs stay mounted so FilesTab doesn't re-fetch the tree on
-            every tab switch (unity projects can have thousands of files).
-            CSS display:none hides inactive tabs without unmounting them.
-          */}
           <div className={tab === "overview" ? "contents" : "hidden"}>
             <OverviewTab project={project} />
           </div>
@@ -480,7 +486,6 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
           )}
         </div>
 
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 h-7 w-7 flex items-center justify-center rounded-full bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"

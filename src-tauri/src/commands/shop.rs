@@ -1,5 +1,4 @@
 use crate::error::AppError;
-use crate::models::InventoryItem;
 use crate::services::{auth_store, booth, downloader, riperstore};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -49,7 +48,7 @@ pub fn merge_results(
 }
 
 fn build_client(session_token: Option<String>) -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .cookie_store(true)
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
@@ -77,6 +76,91 @@ pub async fn search_shop(query: String, page: u32) -> Result<Vec<ShopProduct>, S
     Ok(merge_results(booth_results, vec![]))
 }
 
+/// Obtiene la URL real de descarga de un item de Booth inyectando JS en el WebView
+/// autenticado.
+///
+/// v3: en lugar de navegar el WebView al item (lo que provoca `DOM load timeout`
+/// porque booth.pm nunca alcanza `readyState === 'complete'` en contexto headless),
+/// inyectamos JS que hace `fetch()` al item page desde dentro del WebView.
+/// Al estar el WebView ya en booth.pm, las cookies de sesión se envían automáticamente
+/// con `credentials: 'include'`. Parseamos el HTML de respuesta para extraer
+/// el link `/downloadables/ID`. No se produce ninguna navegación visible.
+async fn booth_get_download_url_via_webview(
+    app: &AppHandle,
+    booth_state: &BoothState,
+    source_id: &str,
+) -> Result<String, String> {
+    let log = |msg: &str| {
+        eprintln!("[booth_dl] {}", msg);
+        let _ = app.emit("booth:download-debug", serde_json::json!({ "msg": msg }));
+    };
+
+    log(&format!("Iniciando descarga para item {}", source_id));
+
+    let label = {
+        let guard = booth_state.webview_label.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+    let label = label.ok_or_else(|| {
+        let e = "Not authenticated with Booth.pm".to_string();
+        log(&format!("ERROR: {}", e));
+        e
+    })?;
+
+    log(&format!("Usando webview label: {}", label));
+
+    let win = app
+        .get_webview_window(&label)
+        .ok_or_else(|| {
+            let e = "Booth WebView window not found — please reconnect your account".to_string();
+            log(&format!("ERROR: {}", e));
+            e
+        })?;
+
+    let source_id_owned = source_id.to_string();
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_event = tx.clone();
+    let listener_id = app.listen("booth:download-url", move |event: tauri::Event| {
+        if let Some(sender) = tx_event.lock().unwrap().take() {
+            let _ = sender.send(Ok(event.payload().to_string()));
+        }
+    });
+
+    // Inyectar JS que hace fetch() al item page usando las cookies del WebView.
+    // El WebView puede estar en cualquier página de booth.pm — no importa.
+    let js = booth_webview::build_get_download_url_js(&source_id_owned);
+    win.eval(&js).map_err(|e| {
+        app.unlisten(listener_id);
+        format!("WebView eval error: {}", e)
+    })?;
+    log("JS de fetch inyectado, esperando evento booth:download-url...");
+
+    // Timeout generoso para el fetch HTTP + resolución CDN
+    let raw = match tokio::time::timeout(Duration::from_secs(30), rx).await {
+        Ok(Ok(Ok(payload))) => payload,
+        Ok(Ok(Err(e))) => { app.unlisten(listener_id); return Err(format!("Channel error: {}", e)); }
+        Ok(Err(_)) => { app.unlisten(listener_id); return Err("Channel closed unexpectedly".to_string()); }
+        Err(_) => { app.unlisten(listener_id); return Err("Booth download URL fetch timed out (30s)".to_string()); }
+    };
+    app.unlisten(listener_id);
+    log(&format!("Respuesta del JS: {}", &raw[..raw.len().min(200)]));
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
+
+    if parsed["ok"].as_bool() != Some(true) {
+        let err = parsed["error"].as_str().unwrap_or("unknown error");
+        return Err(err.to_string());
+    }
+
+    parsed["url"]
+        .as_str()
+        .map(String::from)
+        .ok_or_else(|| "Empty download URL in response".to_string())
+}
+
 /// Inicia la descarga de un producto y lo registra en el Inventory.
 /// Emite eventos `download://progress` durante el proceso.
 /// Retorna el ID del nuevo InventoryItem creado.
@@ -84,6 +168,7 @@ pub async fn search_shop(query: String, page: u32) -> Result<Vec<ShopProduct>, S
 pub async fn start_download(
     app: AppHandle,
     pool: State<'_, SqlitePool>,
+    booth_state: State<'_, BoothState>,
     source: String,
     source_id: String,
     name: String,
@@ -93,9 +178,12 @@ pub async fn start_download(
     let client = build_client(auth_store::get_token(&source).unwrap_or(None))
         .map_err(AppError::External)?;
 
-    // Obtener URL real de descarga
+    // Obtener URL real de descarga.
+    // Para Booth usamos el WebView autenticado (que tiene las cookies de sesión)
+    // en lugar de reqwest. Sin cookies, Booth no devuelve los enlaces /downloadables/
+    // aunque el item esté comprado → error "Download URL not found".
     let download_url = match source.as_str() {
-        "booth" => booth::get_download_url(&client, &source_id)
+        "booth" => booth_get_download_url_via_webview(&app, &booth_state, &source_id)
             .await
             .map_err(AppError::External)?,
         "riperstore" => riperstore::get_download_url(&client, &source_id)
@@ -244,8 +332,7 @@ mod tests {
 
 use crate::services::ripper_webview;
 use crate::services::booth_webview;
-use crate::RipperState;
-use crate::BoothState;
+use crate::{BoothState, RipperState};
 use std::time::Duration;
 use tauri::{Listener, WebviewUrl, WebviewWindowBuilder};
 
@@ -317,7 +404,7 @@ pub async fn open_ripper_auth(
                 let app_check = app.clone();
                 let label_check = label.clone();
                 tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                     if let Some(w) = app_check.get_webview_window(&label_check) {
                         let _ = w.eval(&ripper_webview::build_session_check_js());
                     }
@@ -861,13 +948,59 @@ pub async fn booth_open_auth(
     app: AppHandle,
     state: State<'_, BoothState>,
 ) -> Result<(), String> {
-    // Si ya existe la ventana, simplemente mostrarla
+    // 1. Deregistrar listener previo (evita duplicados entre reconnects)
+    {
+        let mut guard = state.session_listener.lock().map_err(|e| e.to_string())?;
+        if let Some(id) = guard.take() {
+            app.unlisten(id);
+        }
+    }
+
+    // Clonar el Arc<AtomicBool> de autenticación para usarlo en los closures
+    let auth_flag = state.authenticated.clone();
+
+    // Si ya existe la ventana: mostrarla, re-registrar el listener y lanzar session check.
+    // IMPORTANTE: no hacer return aquí sin reponer el listener — fue limpiado justo arriba,
+    // y sin él booth:session-check no tiene quien lo escuche → auth_success nunca se emite.
     {
         let guard = state.webview_label.lock().map_err(|e| e.to_string())?;
         if let Some(ref label) = *guard {
             if let Some(win) = app.get_webview_window(label) {
                 win.show().map_err(|e| e.to_string())?;
                 win.set_focus().map_err(|e| e.to_string())?;
+
+                // Re-registrar listener de booth:session-check
+                let app_listener = app.clone();
+                let label_listener = label.clone();
+                let auth_flag_rc = auth_flag.clone();
+                let listener_id = app.listen("booth:session-check", move |event| {
+                    let payload: serde_json::Value =
+                        serde_json::from_str(event.payload()).unwrap_or_default();
+                    let logged_in = payload["loggedIn"].as_bool().unwrap_or(false);
+                    if logged_in {
+                        auth_flag_rc.store(true, std::sync::atomic::Ordering::SeqCst);
+                        if let Some(w) = app_listener.get_webview_window(&label_listener) {
+                            let _ = w.hide();
+                        }
+                        let _ = app_listener.emit("booth:auth_success", ());
+                    }
+                });
+                if let Ok(mut sl) = state.session_listener.lock() {
+                    *sl = Some(listener_id);
+                }
+
+                // Lanzar session check con un pequeño delay para asegurar que la página
+                // está lista antes de hacer el fetch. Sin delay, el check puede llegar
+                // mientras booth.pm todavía está cargando y devolver un falso positivo.
+                let app_check = app.clone();
+                let label_check = label.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    if let Some(w) = app_check.get_webview_window(&label_check) {
+                        let _ = w.eval(booth_webview::build_session_check_js());
+                    }
+                });
+
                 return Ok(());
             }
         }
@@ -877,8 +1010,15 @@ pub async fn booth_open_auth(
     let app_clone = app.clone();
     let state_label = label.clone();
 
-    let is_first_nav = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let is_first_nav_clone = is_first_nav.clone();
+    // Rastreamos si el usuario pasó por la página de login de Booth.
+    // Solo se considera "autenticado" si llegamos a un URL de booth.pm
+    // DESPUÉS de haber visto accounts.booth.pm — evita falsos positivos
+    // por las redirecciones de servidor que hace booth.pm al cargar
+    // (p.ej. booth.pm → booth.pm/en), que antes ocultaban la ventana
+    // inmediatamente sin que el usuario hubiera hecho login.
+    let has_seen_auth_page = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let has_seen_auth_page_clone = has_seen_auth_page.clone();
+    let auth_flag_nav = auth_flag.clone();
 
     let win = WebviewWindowBuilder::new(
         &app,
@@ -889,10 +1029,21 @@ pub async fn booth_open_auth(
     .inner_size(1024.0, 768.0)
     .resizable(true)
     .on_navigation(move |url: &tauri::Url| {
-        if is_first_nav_clone.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            return true;
-        }
-        if booth_webview::is_logged_in_url(url.as_str()) {
+        let url_str = url.as_str();
+        let on_auth_page = url_str.contains("accounts.booth.pm/sign_in")
+            || url_str.contains("accounts.booth.pm/sign_up")
+            || url_str.contains("accounts.booth.pm/users/sign_in")
+            || url_str.contains("accounts.booth.pm/users/sign_up");
+
+        if on_auth_page {
+            // El usuario llegó a la página de login — marcamos que pasó por aquí.
+            has_seen_auth_page_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+        } else if has_seen_auth_page_clone.load(std::sync::atomic::Ordering::Relaxed)
+            && booth_webview::is_logged_in_url(url_str)
+        {
+            // Venimos del flujo de login y ya no estamos en una página de auth
+            // → el usuario completó el login correctamente.
+            auth_flag_nav.store(true, std::sync::atomic::Ordering::SeqCst);
             if let Some(w) = app_clone.get_webview_window(&state_label) {
                 let _ = w.hide();
             }
@@ -912,32 +1063,58 @@ pub async fn booth_open_auth(
         }
     });
 
-    // Fix sesión ya activa: si el usuario ya estaba logueado, on_navigation saltó
-    // la primera URL. Evaluar build_url_check_js después de que cargue la página.
+    // ── Listener persistente para booth:session-check ─────────────────────────
+    // El JS de build_session_check_js() hace fetch de /account/purchases y emite
+    // este evento con { loggedIn: bool }. El listener lo recibe y, si loggedIn=true,
+    // oculta la ventana y emite booth:auth_success.
+    // Guardamos el ID para poder deregistrarlo en booth_logout.
     {
-        let app_check = app.clone();
-        let label_check = label.clone();
+        let app_listener = app.clone();
+        let label_listener = label.clone();
+        let auth_flag_sc = auth_flag.clone();
+        let listener_id = app.listen("booth:session-check", move |event| {
+            let payload: serde_json::Value =
+                serde_json::from_str(event.payload()).unwrap_or_default();
+            let logged_in = payload["loggedIn"].as_bool().unwrap_or(false);
+            if logged_in {
+                auth_flag_sc.store(true, std::sync::atomic::Ordering::SeqCst);
+                if let Some(w) = app_listener.get_webview_window(&label_listener) {
+                    let _ = w.hide();
+                }
+                let _ = app_listener.emit("booth:auth_success", ());
+            }
+        });
+        if let Ok(mut guard) = state.session_listener.lock() {
+            *guard = Some(listener_id);
+        }
+    }
+
+    // ── Polling de sesión ─────────────────────────────────────────────────────
+    // Booth usa Pixiv OAuth, que puede completar el login en un popup o via AJAX
+    // sin disparar on_navigation en el WebView principal. Por eso no podemos
+    // confiar solo en on_navigation: necesitamos sondear periódicamente.
+    //
+    // Comprobamos cada 3s (hasta ~5 min = 100 ciclos). La primera iteración
+    // espera 2s para que la página inicial cargue antes del primer check.
+    {
+        let app_poll = app.clone();
+        let label_poll = label.clone();
+        let auth_flag_poll = auth_flag.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            let win = match app_check.get_webview_window(&label_check) {
-                Some(w) => w,
-                None => return,
-            };
-            let app_on_url = app_check.clone();
-            let label_on_url = label_check.clone();
-            let _id = app_check.once("booth:current-url", move |event| {
-                let payload: serde_json::Value =
-                    serde_json::from_str(event.payload()).unwrap_or_default();
-                if let Some(url) = payload["url"].as_str() {
-                    if booth_webview::is_logged_in_url(url) {
-                        if let Some(w) = app_on_url.get_webview_window(&label_on_url) {
-                            let _ = w.hide();
-                        }
-                        let _ = app_on_url.emit("booth:auth_success", ());
+            for _ in 0..100 {
+                // Parar si el usuario ya se autenticó
+                if auth_flag_poll.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                match app_poll.get_webview_window(&label_poll) {
+                    None => break, // ventana destruida (logout) → parar
+                    Some(w) => {
+                        let _ = w.eval(booth_webview::build_session_check_js());
                     }
                 }
-            });
-            let _ = win.eval(booth_webview::build_url_check_js());
+                tokio::time::sleep(Duration::from_secs(3)).await;
+            }
         });
     }
 
@@ -946,12 +1123,19 @@ pub async fn booth_open_auth(
     Ok(())
 }
 
-/// Cierra sesión de Booth: destruye la WebviewWindow y limpia el estado.
+/// Cierra sesión de Booth: destruye la WebviewWindow, limpia el estado y deregistra el listener.
 #[tauri::command]
 pub fn booth_logout(
     app: AppHandle,
     state: State<'_, BoothState>,
 ) -> Result<(), String> {
+    // Deregistrar listener de sesión
+    {
+        let mut guard = state.session_listener.lock().map_err(|e| e.to_string())?;
+        if let Some(id) = guard.take() {
+            app.unlisten(id);
+        }
+    }
     let mut guard = state.webview_label.lock().map_err(|e| e.to_string())?;
     if let Some(ref label) = *guard {
         if let Some(win) = app.get_webview_window(label) {
@@ -959,6 +1143,8 @@ pub fn booth_logout(
         }
     }
     *guard = None;
+    // Resetear flag de autenticación
+    state.authenticated.store(false, std::sync::atomic::Ordering::SeqCst);
     // Limpiar IDs comprados
     if let Ok(mut ids) = state.purchased_ids.lock() {
         ids.clear();
@@ -971,18 +1157,21 @@ pub fn booth_logout(
 /// Si la ventana fue cerrada externamente (no por logout), limpia el estado.
 #[tauri::command]
 pub fn booth_is_authenticated(app: AppHandle, state: State<'_, BoothState>) -> bool {
-    let mut guard = state.webview_label.lock().unwrap_or_else(|e| e.into_inner());
-    match guard.as_ref() {
-        None => false,
-        Some(label) => {
-            if app.get_webview_window(label).is_some() {
-                true
-            } else {
+    // Usamos el flag explícito en lugar de comprobar si el WebviewWindow existe.
+    // El webview puede existir sin que la sesión haya sido verificada (falso positivo).
+    let authenticated = state.authenticated.load(std::sync::atomic::Ordering::SeqCst);
+    if authenticated {
+        // Verificación de coherencia: si el webview fue destruido externamente, resetear.
+        let mut guard = state.webview_label.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(ref label) = *guard {
+            if app.get_webview_window(label).is_none() {
                 *guard = None;
-                false
+                state.authenticated.store(false, std::sync::atomic::Ordering::SeqCst);
+                return false;
             }
         }
     }
+    authenticated
 }
 
 /// Devuelve los IDs de items ya cargados como comprados (sin hacer fetch).
@@ -997,9 +1186,14 @@ pub fn booth_get_owned_ids(state: State<'_, BoothState>) -> Vec<String> {
         .collect()
 }
 
-/// Fetch paginado de /account/purchases via JS en el WebView de Booth.
-/// Recorre todas las páginas (hasta 30) y devuelve la lista completa de IDs comprados.
-/// Guarda los IDs en BoothState para consultas rápidas posteriores.
+/// Fetch paginado de accounts.booth.pm/orders + accounts.booth.pm/library navegando el WebView.
+///
+/// Scrapea AMBAS secciones porque:
+/// - /orders  → items de pago (compras)
+/// - /library → TODOS los items: gratuitos + de pago + regalados
+///
+/// Usa el mismo JS (build_fetch_purchases_js) en ambas, que espera a que el DOM
+/// esté listo antes de leer. Los IDs se deduplan con un HashSet.
 #[tauri::command]
 pub async fn booth_fetch_purchases(
     app: AppHandle,
@@ -1013,68 +1207,123 @@ pub async fn booth_fetch_purchases(
         Some(l) => l,
         None => return Err("Not authenticated with Booth.pm".to_string()),
     };
-    let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| "Booth WebView window not found".to_string())?;
 
-    let mut all_ids: Vec<String> = vec![];
+    let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for page in 1u32..=30 {
-        let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
-        let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-        let tx_clone = tx.clone();
+    // Scrapear /orders y /library
+    let sections = [("orders", "https://accounts.booth.pm/orders"), ("library", "https://accounts.booth.pm/library")];
 
-        let listener_id = app.listen("booth:purchases-page", move |event: tauri::Event| {
-            if let Some(sender) = tx_clone.lock().unwrap().take() {
-                let _ = sender.send(Ok(event.payload().to_string()));
-            }
-        });
+    for (section_name, base_url) in &sections {
+        eprintln!("[booth_fetch] Iniciando scrape de /{}", section_name);
 
-        let js = booth_webview::build_fetch_purchases_js(page);
-        win.eval(&js).map_err(|e| {
-            app.unlisten(listener_id);
-            e.to_string()
-        })?;
+        for page in 1u32..=30 {
+            // Verificar que la ventana sigue viva antes de cada navegación
+            let win = match app.get_webview_window(&label) {
+                Some(w) => w,
+                None => {
+                    eprintln!("[booth_fetch] WebView cerrado — abortando");
+                    break;
+                }
+            };
 
-        let raw = match tokio::time::timeout(Duration::from_secs(15), rx).await {
-            Ok(Ok(Ok(p))) => p,
-            _ => {
+            let page_url: tauri::Url = format!("{}?page={}", base_url, page)
+                .parse()
+                .map_err(|e: <tauri::Url as std::str::FromStr>::Err| e.to_string())?;
+
+            eprintln!("[booth_fetch] Navegando a: {}", page_url);
+            win.navigate(page_url).map_err(|e| e.to_string())?;
+
+            // Esperar a que la página cargue (el JS interno espera readyState=complete,
+            // pero damos un margen inicial para que empiece la navegación)
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            // Re-obtener ventana (puede haber cambiado de estado)
+            let win = match app.get_webview_window(&label) {
+                Some(w) => w,
+                None => break,
+            };
+
+            let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+            let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+            let tx_clone = tx.clone();
+
+            let listener_id = app.listen("booth:purchases-page", move |event: tauri::Event| {
+                if let Some(sender) = tx_clone.lock().unwrap().take() {
+                    let _ = sender.send(Ok(event.payload().to_string()));
+                }
+            });
+
+            let js = booth_webview::build_fetch_purchases_js(page);
+            win.eval(&js).map_err(|e| {
                 app.unlisten(listener_id);
-                break; // timeout o error — parar paginación
+                e.to_string()
+            })?;
+
+            // Timeout generoso (el JS espera hasta 8s por readyState)
+            let raw = match tokio::time::timeout(Duration::from_secs(12), rx).await {
+                Ok(Ok(Ok(p))) => p,
+                Ok(Ok(Err(e))) => {
+                    eprintln!("[booth_fetch] /{} p{} — error de canal: {}", section_name, page, e);
+                    app.unlisten(listener_id);
+                    break;
+                }
+                _ => {
+                    eprintln!("[booth_fetch] /{} p{} — timeout esperando evento", section_name, page);
+                    app.unlisten(listener_id);
+                    break;
+                }
+            };
+            app.unlisten(listener_id);
+
+            let parsed: serde_json::Value =
+                serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
+
+            if parsed["ok"].as_bool() != Some(true) {
+                let err = parsed["error"].as_str().unwrap_or("unknown");
+                eprintln!("[booth_fetch] /{} p{} — error JS: {}", section_name, page, err);
+                // Si fue redirect a login, no tiene sentido continuar con esta sección
+                if err == "redirected_to_login" {
+                    eprintln!("[booth_fetch] /{} — sesión no disponible en esta sección, saltando", section_name);
+                }
+                break;
             }
-        };
-        app.unlisten(listener_id);
 
-        let parsed: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
+            let ids: Vec<String> = parsed["ids"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
 
-        if parsed["ok"].as_bool() != Some(true) {
-            break;
-        }
+            let new_count = ids.len();
+            let has_more = parsed["has_more"].as_bool().unwrap_or(false);
 
-        let ids: Vec<String> = parsed["ids"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+            eprintln!("[booth_fetch] /{} p{} — {} IDs nuevos, has_more={}", section_name, page, new_count, has_more);
+            all_ids.extend(ids);
 
-        let has_more = parsed["has_more"].as_bool().unwrap_or(false);
-        all_ids.extend(ids);
-
-        if !has_more {
-            break;
+            if !has_more {
+                break;
+            }
         }
     }
+
+    // Volver a booth.pm/en para dejar el WebView en su estado original
+    if let Some(w) = app.get_webview_window(&label) {
+        let home: tauri::Url = "https://booth.pm/en".parse().unwrap();
+        let _ = w.navigate(home);
+    }
+
+    let all_ids_vec: Vec<String> = all_ids.into_iter().collect();
+    eprintln!("[booth_fetch] Total IDs únicos: {}", all_ids_vec.len());
 
     // Guardar en estado
     if let Ok(mut ids_set) = state.purchased_ids.lock() {
         ids_set.clear();
-        ids_set.extend(all_ids.iter().cloned());
+        ids_set.extend(all_ids_vec.iter().cloned());
     }
 
-    let _ = app.emit("booth:purchases_loaded", serde_json::json!({ "count": all_ids.len() }));
-    Ok(all_ids)
+    let _ = app.emit("booth:purchases_loaded", serde_json::json!({ "count": all_ids_vec.len() }));
+    Ok(all_ids_vec)
 }

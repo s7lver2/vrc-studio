@@ -60,16 +60,23 @@ function ShopWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
 
 // ── Shop page ─────────────────────────────────────────────────────────────────
 
+const SHOP_WARNING_KEY = "shop:warningAccepted";
+
 export default function Shop() {
   const { query, handleQueryChange } = useShopSearch();
   const { status: ripperStatus } = useRipperStatus();
   const setActiveSection = useAppStore((s) => s.setActiveSection);
-  const [warningAccepted, setWarningAccepted] = useState(false);
+  const [warningAccepted, setWarningAccepted] = useState<boolean>(() => {
+    try { return localStorage.getItem(SHOP_WARNING_KEY) === "true"; } catch { return false; }
+  });
 
   if (!warningAccepted) {
     return (
       <ShopWarning
-        onConfirm={() => setWarningAccepted(true)}
+        onConfirm={() => {
+          try { localStorage.setItem(SHOP_WARNING_KEY, "true"); } catch {}
+          setWarningAccepted(true);
+        }}
         onCancel={() => setActiveSection("projects")}
       />
     );

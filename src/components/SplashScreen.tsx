@@ -1,36 +1,23 @@
 /**
  * SplashScreen — Initial loading screen for VRC Studio.
- * Shows a morphing geometric animation with the app name.
- * Auto-dismisses after ~2s once the app is ready.
  */
 
 import { useEffect, useState, useRef } from "react";
+import { useT } from "@/i18n";
 
 interface Props {
   onDone: () => void;
 }
 
-// ── SVG morphing shape paths ──────────────────────────────────────────────────
-// Each frame is an SVG path for a shape centered in a ~100x100 box
-
 const SHAPE_FRAMES = [
-  // Cube face (square)
   "M 20 20 L 80 20 L 80 80 L 20 80 Z",
-  // Pentagon
   "M 50 10 L 88 37 L 73 80 L 27 80 L 12 37 Z",
-  // Triangle
   "M 50 12 L 90 82 L 10 82 Z",
-  // Diamond
   "M 50 10 L 90 50 L 50 90 L 10 50 Z",
-  // Hexagon
   "M 50 10 L 83 30 L 83 70 L 50 90 L 17 70 L 17 30 Z",
-  // Star (5 points simplified)
   "M 50 10 L 61 35 L 88 35 L 67 54 L 74 80 L 50 65 L 26 80 L 33 54 L 12 35 L 39 35 Z",
-  // Back to square
   "M 20 20 L 80 20 L 80 80 L 20 80 Z",
 ];
-
-// ── Particle ──────────────────────────────────────────────────────────────────
 
 interface Particle {
   x: number; y: number;
@@ -47,20 +34,18 @@ const PARTICLE_COLORS = [
 ];
 
 export function SplashScreen({ onDone }: Props) {
+  const t = useT();
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
   const [shapeIdx, setShapeIdx] = useState(0);
   const [morphProgress, setMorphProgress] = useState(0);
   const [dotCount, setDotCount] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>();
-  const startRef = useRef<number>(0);
 
   // Particle animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
-
     const W = canvas.width = window.innerWidth;
     const H = canvas.height = window.innerHeight;
 
@@ -89,10 +74,10 @@ export function SplashScreen({ onDone }: Props) {
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-      animRef.current = requestAnimationFrame(loop);
+      requestAnimationFrame(loop);
     };
     loop();
-    return () => { running = false; if (animRef.current) cancelAnimationFrame(animRef.current); };
+    return () => { running = false; };
   }, []);
 
   // Phase timer
@@ -140,14 +125,6 @@ export function SplashScreen({ onDone }: Props) {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  // Interpolate SVG paths (simple linear blend for matching-length paths)
-  const currentPath = SHAPE_FRAMES[shapeIdx];
-  const nextPath = SHAPE_FRAMES[shapeIdx + 1] ?? SHAPE_FRAMES[0];
-
-  const eased = morphProgress < 0.5
-    ? 4 * morphProgress ** 3
-    : 1 - (-2 * morphProgress + 2) ** 3 / 2;
-
   const isVisible = phase !== "enter";
   const isExiting = phase === "exit";
 
@@ -155,52 +132,20 @@ export function SplashScreen({ onDone }: Props) {
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden"
       style={{
-        background: "hsl(222 14% 8%)", // mismo que --sidebar-bg
+        background: "hsl(222 14% 8%)",
         opacity: isExiting ? 0 : 1,
         transition: isExiting ? "opacity 0.5s ease-in" : "opacity 0.3s ease-out",
         pointerEvents: isExiting ? "none" : "all",
       }}
     >
-      {/* Particle canvas — igual */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full"
-        style={{ opacity: 0.6 }}
-      />
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ opacity: 0.6 }} />
 
-      {/* Radial glow */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: "radial-gradient(circle at 50% 50%, rgba(239,68,68,0.08) 0%, transparent 60%)",
-          transform: `scale(${isVisible ? 1 : 0.6})`,
-          transition: "transform 0.8s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      />
+      <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 50%, rgba(239,68,68,0.08) 0%, transparent 60%)", transform: `scale(${isVisible ? 1 : 0.6})`, transition: "transform 0.8s cubic-bezier(0.34,1.56,0.64,1)" }} />
 
-      {/* Content */}
-      <div
-        className="relative flex flex-col items-center gap-8"
-        style={{
-          opacity: isVisible ? 1 : 0,
-          transform: isVisible ? "translateY(0)" : "translateY(24px)",
-          transition: "opacity 0.5s ease-out, transform 0.6s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      >
-        {/* Morphing shape — sin cambios */}
+      <div className="relative flex flex-col items-center gap-8" style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? "translateY(0)" : "translateY(24px)", transition: "opacity 0.5s ease-out, transform 0.6s cubic-bezier(0.34,1.56,0.64,1)" }}>
         <div className="relative">
-          <div
-            className="absolute inset-[-12px] rounded-full"
-            style={{
-              background: "radial-gradient(circle, rgba(239,68,68,0.15) 0%, transparent 70%)",
-              animation: "pulse 2s ease-in-out infinite",
-            }}
-          />
-          <svg
-            width="96" height="96"
-            viewBox="0 0 100 100"
-            style={{ filter: "drop-shadow(0 0 16px rgba(239,68,68,0.5))" }}
-          >
+          <div className="absolute inset-[-12px] rounded-full" style={{ background: "radial-gradient(circle, rgba(239,68,68,0.15) 0%, transparent 70%)", animation: "pulse 2s ease-in-out infinite" }} />
+          <svg width="96" height="96" viewBox="0 0 100 100" style={{ filter: "drop-shadow(0 0 16px rgba(239,68,68,0.5))" }}>
             <defs>
               <linearGradient id="shapeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#ef4444" />
@@ -208,75 +153,30 @@ export function SplashScreen({ onDone }: Props) {
                 <stop offset="100%" stopColor="#eab308" />
               </linearGradient>
             </defs>
-            <path
-              d={currentPath}
-              fill="none"
-              stroke="url(#shapeGrad)"
-              strokeWidth="6"
-              opacity="0.3"
-              style={{ filter: "blur(4px)" }}
-            />
-            <path
-              d={currentPath}
-              fill="url(#shapeGrad)"
-              opacity="0.15"
-            />
-            <path
-              d={currentPath}
-              fill="none"
-              stroke="url(#shapeGrad)"
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-              opacity="0.9"
-            />
+            <path d={SHAPE_FRAMES[shapeIdx]} fill="none" stroke="url(#shapeGrad)" strokeWidth="6" opacity="0.3" style={{ filter: "blur(4px)" }} />
+            <path d={SHAPE_FRAMES[shapeIdx]} fill="url(#shapeGrad)" opacity="0.15" />
+            <path d={SHAPE_FRAMES[shapeIdx]} fill="none" stroke="url(#shapeGrad)" strokeWidth="2.5" strokeLinejoin="round" opacity="0.9" />
           </svg>
         </div>
 
-        {/* App name */}
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-baseline gap-1">
-            <span
-              className="text-3xl font-bold tracking-tight"
-              style={{
-                background: "linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em",
-              }}
-            >
+            <span className="text-3xl font-bold tracking-tight" style={{ background: "linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em" }}>
               VRC
             </span>
-            <span
-              className="text-3xl font-bold tracking-tight"
-              style={{
-                background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em",
-              }}
-            >
+            <span className="text-3xl font-bold tracking-tight" style={{ background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em" }}>
               {" "}Studio
             </span>
           </div>
-          <p className="text-xs text-zinc-500 tracking-[0.3em] uppercase">
-            Avatar Asset Manager
-          </p>
+          <p className="text-xs text-zinc-500 tracking-[0.3em] uppercase">Avatar Asset Manager</p>
         </div>
 
-        {/* Loading indicator */}
         <div className="flex flex-col items-center gap-2">
           <div className="w-48 h-px bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: "40%",
-                background: "linear-gradient(90deg, transparent, #ef4444, transparent)",
-                animation: "shimmerLoad 1.2s ease-in-out infinite",
-              }}
-            />
+            <div className="h-full rounded-full" style={{ width: "40%", background: "linear-gradient(90deg, transparent, #ef4444, transparent)", animation: "shimmerLoad 1.2s ease-in-out infinite" }} />
           </div>
           <p className="text-[10px] text-zinc-500 tracking-wider">
-            Loading{".".repeat(dotCount)}
+            {t("splash_loading")}{".".repeat(dotCount)}
           </p>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { useT } from "@/i18n";
+
 interface CreationProgressProps {
   progress: number;
   message: string;
@@ -7,13 +9,14 @@ interface CreationProgressProps {
 }
 
 export function CreationProgress({ progress, message, done, error, onClose }: CreationProgressProps) {
+  const t = useT();
   const percent = Math.round(progress * 100);
 
   return (
     <div className="flex flex-col items-center gap-6 py-4">
       <div className="text-center">
         <h2 className="text-lg font-semibold text-zinc-100">
-          {error ? "Creation Failed" : done ? "Project Created!" : "Creating Project..."}
+          {error ? t("creation_progress_error") : done ? t("creation_progress_done") : t("creation_progress_title")}
         </h2>
         <p className="mt-1 text-sm text-zinc-500">{error ?? message}</p>
       </div>
@@ -39,7 +42,7 @@ export function CreationProgress({ progress, message, done, error, onClose }: Cr
 
       {(done || error) && (
         <button onClick={onClose} className="rounded-md bg-zinc-700 px-6 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-600 transition-colors">
-          Close
+          {t("creation_progress_close")}
         </button>
       )}
     </div>

@@ -16,6 +16,7 @@ import {
   tauriGetFileTree, tauriOpenItemLocation, tauriReadUnitypackage,
   tauriGetItemProductImages, tauriGetBoothProductDetail,
 } from "../../lib/tauri";
+import { useT } from "@/i18n";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string; dot: string 
 // ── Image gallery ─────────────────────────────────────────────────────────────
 
 function ImageGallery({ images, fallback }: { images: string[]; fallback: string | null }) {
+  const t = useT();
   const all = images.length > 0 ? images : (fallback ? [fallback] : []);
   const [idx, setIdx] = useState(0);
   const [errored, setErrored] = useState<Set<number>>(new Set());
@@ -62,7 +64,7 @@ function ImageGallery({ images, fallback }: { images: string[]; fallback: string
     return (
       <div className="w-full aspect-video bg-zinc-900 rounded-xl flex flex-col items-center justify-center gap-2 text-zinc-700 border border-zinc-800">
         <FileArchive className="h-10 w-10" />
-        <span className="text-xs">No images available</span>
+        <span className="text-xs">{t("inventory_detail_no_images")}</span>
       </div>
     );
   }
@@ -76,7 +78,7 @@ function ImageGallery({ images, fallback }: { images: string[]; fallback: string
         {current && !errored.has(safeIdx) ? (
           <img src={current} alt="" className="w-full h-full object-contain" onError={() => setErrored((s) => new Set([...s, safeIdx]))} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">Image unavailable</div>
+          <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">t("inventory_detail_image_unavailable")</div>
         )}
         {all.length > 1 && (
           <>
@@ -181,6 +183,7 @@ function UnityTreeRow({ node, depth }: { node: UnityTreeNode; depth: number }) {
 }
 
 function UnityPackageViewer({ path }: { path: string }) {
+  const t = useT();
   const [assets, setAssets] = useState<UnityAsset[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,9 +197,9 @@ function UnityPackageViewer({ path }: { path: string }) {
       .finally(() => setLoading(false));
   }, [path]);
 
-  if (loading) return <div className="flex items-center gap-2 text-zinc-500 text-xs py-3 pl-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading UnityPackage…</div>;
+  if (loading) return <div className="flex items-center gap-2 text-zinc-500 text-xs py-3 pl-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("file_viewer_reading")}</div>;
   if (error) return <p className="text-red-400 text-xs py-2 pl-2">{error}</p>;
-  if (!assets || assets.length === 0) return <p className="text-zinc-600 text-xs py-2 pl-2">Empty package</p>;
+  if (!assets || assets.length === 0) return <p className="text-zinc-600 text-xs py-2 pl-2">{t("file_viewer_empty_package")}</p>;
 
   const tree = buildUnityTree(assets);
   const fileName = path.split(/[\\/]/).pop() ?? path;
@@ -218,8 +221,8 @@ function UnityPackageViewer({ path }: { path: string }) {
           <span className="text-[10px] text-zinc-600">({assets.length} assets)</span>
         </div>
         <div className="flex items-center gap-0.5">
-          <button onClick={() => setView("tree")} className={`text-[10px] px-2 py-0.5 rounded transition-colors ${view === "tree" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}>Tree</button>
-          <button onClick={() => setView("flat")} className={`text-[10px] px-2 py-0.5 rounded transition-colors ${view === "flat" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}>Flat</button>
+          <button onClick={() => setView("tree")} className={`text-[10px] px-2 py-0.5 rounded transition-colors ${view === "tree" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}>{t("file_viewer_tree")}</button>
+          <button onClick={() => setView("flat")} className={`text-[10px] px-2 py-0.5 rounded transition-colors ${view === "flat" ? "bg-zinc-700 text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}>{t("file_viewer_flat")}</button>
         </div>
       </div>
 
@@ -268,14 +271,14 @@ function DeleteMenu({ item, onDeleted }: { item: InventoryItem; onDeleted: () =>
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-900/20 hover:bg-red-900/40 border border-red-800/50 text-red-400 text-xs transition-colors">
-        <Trash2 className="h-3.5 w-3.5" /> Delete ▾
+        <Trash2 className="h-3.5 w-3.5" /> {t("inventory_detail_actions_delete")}
       </button>
       {open && (
         <div className="absolute bottom-full mb-1 right-0 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-1.5 w-58 text-xs overflow-hidden">
-          <p className="text-[10px] text-zinc-600 uppercase tracking-wider px-3 pb-1">Choose scope</p>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-zinc-300 hover:bg-zinc-800" onClick={() => del("InventoryOnly")}><Trash2 className="h-3.5 w-3.5 text-zinc-500" /> Remove from Inventory only</button>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-orange-300 hover:bg-zinc-800" onClick={() => del("InventoryAndDisk")}><HardDrive className="h-3.5 w-3.5" /> Delete from Disk too</button>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-red-400 hover:bg-zinc-800" onClick={() => del("InventoryDiskAndProjects")}><Trash2 className="h-3.5 w-3.5" /> Delete Everywhere</button>
+          <p className="text-[10px] text-zinc-600 uppercase tracking-wider px-3 pb-1">{t("inventory_detail_delete_scope_title")}</p>
+          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-zinc-300 hover:bg-zinc-800" onClick={() => del("InventoryOnly")}><Trash2 className="h-3.5 w-3.5 text-zinc-500" /> {t("inventory_detail_delete_inventory_only")}</button>
+          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-orange-300 hover:bg-zinc-800" onClick={() => del("InventoryAndDisk")}><HardDrive className="h-3.5 w-3.5" /> {t("inventory_detail_delete_disk_too")}</button>
+          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-red-400 hover:bg-zinc-800" onClick={() => del("InventoryDiskAndProjects")}><Trash2 className="h-3.5 w-3.5" /> {t("inventory_detail_delete_everywhere")}</button>
         </div>
       )}
     </div>
@@ -288,7 +291,7 @@ function MoveMenu({ item, folders }: { item: InventoryItem; folders: InventoryFo
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 text-zinc-300 text-xs transition-colors">
-        <FolderInput className="h-3.5 w-3.5" /> Move ▾
+        <FolderInput className="h-3.5 w-3.5" /> {t("inventory_detail_move_menu")}
       </button>
       {open && folders.length > 0 && (
         <div className="absolute bottom-full mb-1 left-0 z-10 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl py-1 w-48 text-xs max-h-48 overflow-y-auto">
@@ -344,6 +347,7 @@ function StatPill({ icon: Icon, label, value }: { icon: React.ElementType; label
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
+  const t = useT();
   const { folders, items } = useInventoryStore();
   const [tab, setTab] = useState<Tab>("overview");
 
@@ -439,9 +443,9 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
         {/* ── Tabs ── */}
         <div className="flex items-center gap-1 px-6 border-b border-zinc-800/80 shrink-0 bg-zinc-950">
           {([
-            { id: "overview", label: "Overview", icon: Info },
-            { id: "files",    label: "Files",    icon: FileArchive },
-            { id: "3d",       label: "3D Preview", icon: Box, beta: true },
+            { id: "overview", label: t("inventory_detail_tab_overview"), icon: Info },
+            { id: "files",    label: t("inventory_detail_tab_files"),    icon: FileArchive },
+            { id: "3d",       label: t("inventory_detail_tab_3d"), icon: Box, beta: true },
           ] as { id: Tab; label: string; icon: React.ElementType; beta?: boolean }[]).map(({ id, label, icon: Icon, beta }) => (
             <button
               key={id}
@@ -452,7 +456,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
-              {beta && <span className="text-[9px] bg-amber-900/50 text-amber-400 border border-amber-800/60 rounded-full px-1 py-px">BETA</span>}
+              {beta && <span className="text-[9px] bg-amber-900/50 text-amber-400 border border-amber-800/60 rounded-full px-1 py-px">{t("inventory_detail_beta")}</span>}
             </button>
           ))}
         </div>
@@ -470,15 +474,15 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
 
                 {/* Quick stats row */}
                 <div className="flex gap-2">
-                  <StatPill icon={HardDrive} label="Size" value={formatBytes(item.size_bytes)} />
-                  <StatPill icon={Calendar}  label="Added" value={timeAgo(item.download_date)} />
-                  {fileCount != null && <StatPill icon={Layers} label="Files" value={String(fileCount)} />}
+                  <StatPill icon={HardDrive} label={t("inventory_detail_stat_size")} value={formatBytes(item.size_bytes)} />
+                  <StatPill icon={Calendar}  label={t("inventory_detail_stat_added")} value={timeAgo(item.download_date)} />
+                  {fileCount != null && <StatPill icon={Layers} label={t("inventory_detail_stat_files")} value={String(fileCount)} />}
                 </div>
 
                 {/* Tags */}
                 {item.tags.length > 0 && (
                   <div>
-                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag className="h-3 w-3" /> Tags</p>
+                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag className="h-3 w-3" />{t("inventory_detail_tags")}</p>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {item.tags.map((t) => (
                         <span key={t} className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">{t}</span>
@@ -490,11 +494,11 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                 {/* Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 text-zinc-300 text-xs transition-colors" onClick={() => tauriOpenItemLocation(item.local_path)}>
-                    <FolderOpen className="h-3.5 w-3.5" /> Open Location
+                    <FolderOpen className="h-3.5 w-3.5" /> {t("inventory_detail_actions_open")}
                   </button>
                   {boothUrl && (
                     <a href={boothUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 text-zinc-300 text-xs transition-colors">
-                      <ExternalLink className="h-3.5 w-3.5" /> View on Booth
+                      <ExternalLink className="h-3.5 w-3.5" /> {t("inventory_detail_actions_booth")}
                     </a>
                   )}
                   <MoveMenu item={item} folders={folders} />
@@ -506,14 +510,14 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
               <div className="p-6 flex flex-col gap-5 overflow-y-auto">
                 {/* Meta fields */}
                 <div className="flex flex-col gap-3">
-                  <MetaField icon={User}     label="Author"     value={item.author ?? "Unknown"} />
-                  <MetaField icon={Tag}      label="Source"     value={src.label} />
-                  <MetaField icon={Calendar} label="Downloaded" value={formatDate(item.download_date)} />
-                  <MetaField icon={HardDrive} label="File size" value={formatBytes(item.size_bytes)} />
+                  <MetaField icon={User}     label={t("inventory_detail_author")}    value={item.author ?? t("inventory_detail_unknown")} />
+                  <MetaField icon={Tag}      label={t("inventory_detail_source")}     value={src.label} />
+                  <MetaField icon={Calendar} label={t("inventory_detail_downloaded")} value={formatDate(item.download_date)} />
+                  <MetaField icon={HardDrive} label={t("inventory_detail_file_size")} value={formatBytes(item.size_bytes)} />
                   {boothUrl && (
                     <MetaField
                       icon={Link}
-                      label="Booth link"
+                      label={t("inventory_detail_booth_link")}
                       value={
                         <a href={boothUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 flex items-center gap-1 truncate text-xs">
                           booth.pm/items/{item.source_id} <ExternalLink className="h-3 w-3 shrink-0" />
@@ -524,7 +528,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                   {item.local_path && (
                     <div>
                       <span className="text-[10px] text-zinc-600 uppercase tracking-wider flex items-center gap-1 mb-1">
-                        <FolderOpen className="h-3 w-3" /> Location
+                        <FolderOpen className="h-3 w-3" /> {t("inventory_detail_location")}
                       </span>
                       <p className="text-[10px] font-mono text-zinc-500 break-all leading-relaxed bg-zinc-900/60 border border-zinc-800 rounded-lg px-2 py-1.5">{item.local_path}</p>
                     </div>
@@ -534,12 +538,12 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                 {/* Booth description */}
                 {boothLoading && (
                   <div className="flex items-center gap-2 text-zinc-500 text-xs">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Fetching Booth info…
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("inventory_detail_booth_fetching")}
                   </div>
                 )}
                 {boothDetail?.description && (
                   <div>
-                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2 flex items-center gap-1"><FileText className="h-3 w-3" /> Description</p>
+                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2 flex items-center gap-1"><FileText className="h-3 w-3" />{t("inventory_detail_description")}</p>
                     <div className="rounded-xl bg-zinc-900/60 border border-zinc-800 p-3">
                       <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap line-clamp-10">{boothDetail.description}</p>
                     </div>

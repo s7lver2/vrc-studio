@@ -21,8 +21,16 @@ import {
   Package, CheckCircle2, ChevronDown, Sparkles,
   AlertTriangle, RefreshCw, X,
 } from "lucide-react";
+import { useT } from "@/i18n";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Versiones de Unity permitidas para crear proyectos VRC Studio. */
+const ALLOWED_UNITY_VERSIONS = new Set([
+  "2022.3.22f1",
+  "2022.3.6f1",
+  "2019.4.31f1",
+]);
 
 function cn(...c: (string | boolean | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -334,6 +342,7 @@ interface Props {
 }
 
 export function CreateProjectForm({ onCreated, onClose }: Props) {
+  const t = useT();
   const [step, setStep] = useState<1 | 2>(1);
 
   // ── Step 1 state
@@ -356,8 +365,9 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
   useEffect(() => {
     tauriListUnityInstallations()
       .then((list) => {
-        setInstallations(list);
-        if (list.length === 1) setUnity(list[0]);
+        const allowed = list.filter((i) => ALLOWED_UNITY_VERSIONS.has(i.version));
+        setInstallations(allowed);
+        if (allowed.length === 1) setUnity(allowed[0]);
       })
       .finally(() => setScanning(false));
   }, []);
@@ -429,11 +439,9 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-xl rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl flex flex-col max-h-[90vh]">
-
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4 shrink-0">
           <div className="flex flex-col gap-2">
-            <h2 className="text-base font-semibold text-zinc-100">Nuevo proyecto</h2>
+            <h2 className="text-base font-semibold text-zinc-100">{t("create_project_title")}</h2>
             <StepIndicator step={step} />
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
@@ -441,28 +449,25 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
           </button>
         </div>
 
-        {/* ── Step 1: Setup ── */}
         {step === 1 && (
           <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
-            {/* Project name */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                Nombre del proyecto <span className="text-red-500">*</span>
+                {t("create_project_name_label")} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Mi Avatar"
+                placeholder={t("create_project_name_placeholder")}
                 autoFocus
                 className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-red-600 focus:outline-none"
               />
             </div>
 
-            {/* Destination */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                Carpeta destino <span className="text-red-500">*</span>
+                {t("create_project_location_label")} <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
                 <input
@@ -475,7 +480,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
                 <button
                   onClick={pickFolder}
                   className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
-                  title="Seleccionar carpeta"
+                  title={t("create_project_location_browse")}
                 >
                   📁
                 </button>
@@ -487,16 +492,15 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
               )}
             </div>
 
-            {/* Unity version */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                Versión de Unity <span className="text-red-500">*</span>
+                {t("create_project_unity_label")} <span className="text-red-500">*</span>
               </label>
               {scanning ? (
-                <p className="text-xs text-zinc-500">Buscando instalaciones…</p>
+                <p className="text-xs text-zinc-500">{t("create_project_scanning_unity")}</p>
               ) : installations.length === 0 ? (
                 <p className="text-xs text-zinc-500 rounded-md border border-zinc-700 bg-zinc-800/50 px-3 py-2">
-                  No se encontró Unity. Instala Unity Hub y Unity 2022.3.x LTS.
+                  {t("create_project_no_unity")}
                 </p>
               ) : (
                 <div className="flex flex-col gap-1.5">
@@ -527,13 +531,10 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
               )}
             </div>
 
-            {/* VCS toggle */}
             <div className="flex items-center justify-between rounded-md border border-zinc-700 bg-zinc-800/20 px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-zinc-200">Control de versiones (Git)</p>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Inicializa un repositorio Git con .gitignore para Unity
-                </p>
+                <p className="text-sm font-medium text-zinc-200">{t("create_project_vcs_label")}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{t("create_project_vcs_desc")}</p>
               </div>
               <button
                 onClick={() => setVcsEnabled((v) => !v)}
@@ -551,13 +552,11 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
           </div>
         )}
 
-        {/* ── Step 2: Packages ── */}
         {step === 2 && (
           <div className="flex-1 flex flex-col min-h-0 px-6 py-4 gap-3">
             <div className="shrink-0">
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Selecciona los paquetes VPM que quieres instalar al crear el proyecto.
-                Puedes añadir o quitar más tarde desde la pestaña <span className="text-zinc-300 font-medium">Packages</span>.
+                {t("create_project_packages_desc")}
               </p>
             </div>
             <PackagePicker
@@ -568,31 +567,24 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
           </div>
         )}
 
-        {/* Footer */}
         <div className="border-t border-zinc-800 px-6 py-4 flex items-center justify-between shrink-0">
           {step === 1 ? (
             <>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                Cancelar
+              <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+                {t("create_project_cancel")}
               </button>
               <button
                 onClick={() => setStep(2)}
                 disabled={!step1Valid}
                 className="flex items-center gap-1.5 rounded-md bg-zinc-700 px-5 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Siguiente <ChevronRight className="h-3.5 w-3.5" />
+                {t("create_project_next")} <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </>
           ) : (
             <>
-              <button
-                onClick={() => setStep(1)}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" /> Atrás
+              <button onClick={() => setStep(1)} className="flex items-center gap-1.5 px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+                <ChevronLeft className="h-3.5 w-3.5" /> {t("create_project_back")}
               </button>
               <div className="flex items-center gap-3">
                 <button
@@ -600,7 +592,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
                   disabled={submitting}
                   className="flex items-center gap-1.5 rounded-md bg-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors disabled:opacity-40"
                 >
-                  Omitir e instalar sin paquetes
+                  {t("create_project_skip")}
                 </button>
                 <button
                   onClick={handleSubmit}
@@ -608,7 +600,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
                   className="flex items-center gap-1.5 rounded-md bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Crear proyecto
+                  {t("create_project_submit")}
                   {Object.keys(selectedPkgs).length > 0 && (
                     <span className="rounded-full bg-red-800/60 px-1.5 py-0.5 text-[10px] font-bold">
                       +{Object.keys(selectedPkgs).length}

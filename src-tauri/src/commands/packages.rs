@@ -180,3 +180,81 @@ pub async fn build_package(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Package {id} after build")))
 }
+
+/// Lists the files inside a VPM package ZIP without downloading the full archive.
+/// Uses HTTP range requests to read only the ZIP end-of-central-directory.
+#[tauri::command]
+pub async fn get_vpm_package_files(url: String) -> Result<Vec<String>, AppError> {
+
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| AppError::External(e.to_string()))?;
+
+    // 1. HEAD request to get content-length
+    let head = client.head(&url).send().await
+        .map_err(|e| AppError::External(format!("HEAD failed: {e}")))?;
+
+    let content_length = head
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| AppError::External("No content-length in response".into()))?;
+
+    // 2. Fetch the last 65KB (enough for the EOCD + central directory of most packages)
+    let fetch_size: u64 = 65_536.min(content_length);
+    let range_start = content_length.saturating_sub(fetch_size);
+    let range_header = format!("bytes={range_start}-{}", content_length - 1);
+
+    let tail = client
+        .get(&url)
+        .header("Range", &range_header)
+        .send()
+        .await
+        .map_err(|e| AppError::External(format!("Range GET failed: {e}")))?;
+
+    if !tail.status().is_success() && tail.status().as_u16() != 206 {
+        return Err(AppError::External(format!(
+            "Server returned {} for range request",
+            tail.status()
+        )));
+    }
+
+    let bytes = tail.bytes().await
+        .map_err(|e| AppError::External(format!("Read body failed: {e}")))?;
+
+    // 3. Parse central directory entries from the fetched tail
+    let files = parse_zip_central_directory(&bytes, range_start);
+    Ok(files)
+}
+
+/// Parses file names from a ZIP central directory found anywhere in `data`.
+/// `offset` is the byte offset of `data` within the full ZIP file.
+fn parse_zip_central_directory(data: &[u8], _offset: u64) -> Vec<String> {
+    const CENTRAL_DIR_SIG: &[u8] = &[0x50, 0x4b, 0x01, 0x02];
+    let mut files = Vec::new();
+
+    let mut i = 0usize;
+    while i + 46 <= data.len() {
+        if &data[i..i + 4] == CENTRAL_DIR_SIG {
+            // file name length at bytes 28-29 (little-endian)
+            let name_len = u16::from_le_bytes([data[i + 28], data[i + 29]]) as usize;
+            let extra_len = u16::from_le_bytes([data[i + 30], data[i + 31]]) as usize;
+            let comment_len = u16::from_le_bytes([data[i + 32], data[i + 33]]) as usize;
+
+            let name_start = i + 46;
+            let name_end = name_start + name_len;
+            if name_end <= data.len() {
+                if let Ok(name) = std::str::from_utf8(&data[name_start..name_end]) {
+                    files.push(name.to_string());
+                }
+            }
+            i += 46 + name_len + extra_len + comment_len;
+        } else {
+            i += 1;
+        }
+    }
+    files
+}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Trash2, FolderX, HardDrive, AlertTriangle } from "lucide-react";
 import { Project } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 interface DeleteProjectDialogProps {
   project: Project;
@@ -15,6 +16,7 @@ export function DeleteProjectDialog({
   onCancel,
   isDeleting,
 }: DeleteProjectDialogProps) {
+  const t = useT();
   const [alsoDeleteFiles, setAlsoDeleteFiles] = useState(false);
 
   return (
@@ -26,7 +28,7 @@ export function DeleteProjectDialog({
             <Trash2 className="h-4 w-4 text-red-400" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-zinc-100">Delete project?</h2>
+            <h2 className="text-sm font-semibold text-zinc-100">{t("project_delete_title")}</h2>
             <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[220px]">{project.name}</p>
           </div>
         </div>
@@ -34,7 +36,7 @@ export function DeleteProjectDialog({
         {/* Body */}
         <div className="px-5 pb-4 flex flex-col gap-3">
           <p className="text-xs text-zinc-400 leading-relaxed">
-            <span className="font-medium text-zinc-200">{project.name}</span> will be removed from VRC Studio.
+            {t("project_delete_body", { name: project.name })}
           </p>
 
           {/* Delete files toggle */}
@@ -59,7 +61,7 @@ export function DeleteProjectDialog({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <FolderX className="h-3.5 w-3.5 text-red-400 shrink-0" />
-                <p className="text-xs font-medium text-zinc-200">Also delete files from disk</p>
+                <p className="text-xs font-medium text-zinc-200">{t("project_delete_files_label")}</p>
               </div>
               <p className="text-[10px] text-zinc-500 mt-1 font-mono truncate leading-relaxed">
                 {project.path}
@@ -72,8 +74,8 @@ export function DeleteProjectDialog({
             <div className="flex items-start gap-2 rounded-lg bg-amber-950/30 border border-amber-900/40 px-3 py-2.5">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-px" />
               <p className="text-[10px] text-amber-300 leading-relaxed">
-                <span className="font-semibold">This cannot be undone.</span> All Unity project files,
-                assets, and packages inside <span className="font-mono">{project.path}</span> will be permanently deleted.
+                <span className="font-semibold">{t("project_delete_warning")}</span>{" "}
+                <span className="font-mono">{project.path}</span>
               </p>
             </div>
           )}
@@ -81,7 +83,7 @@ export function DeleteProjectDialog({
           {!alsoDeleteFiles && (
             <div className="flex items-center gap-2 text-[10px] text-zinc-600">
               <HardDrive className="h-3 w-3 shrink-0" />
-              <span>Files on disk are kept. You can re-import the project later.</span>
+              <span>{t("project_delete_keep_note")}</span>
             </div>
           )}
         </div>
@@ -93,7 +95,7 @@ export function DeleteProjectDialog({
             disabled={isDeleting}
             className="rounded-md px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors disabled:opacity-50"
           >
-            Cancel
+            {t("project_delete_cancel")}
           </button>
           <button
             onClick={() => onConfirm(alsoDeleteFiles)}
@@ -104,7 +106,7 @@ export function DeleteProjectDialog({
                 : "bg-red-600 hover:bg-red-700"
             }`}
           >
-            {isDeleting ? "Deleting…" : alsoDeleteFiles ? "Delete project & files" : "Delete project"}
+            {isDeleting ? t("project_deleting") : alsoDeleteFiles ? t("project_delete_confirm_files") : t("project_delete_confirm")}
           </button>
         </div>
       </div>

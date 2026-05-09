@@ -5,10 +5,11 @@ interface NavItemProps {
   icon: LucideIcon;
   label: string;
   active: boolean;
+  badge?: number;
   onClick: () => void;
 }
  
-export function NavItem({ icon: Icon, label, active, onClick }: NavItemProps) {
+export function NavItem({ icon: Icon, label, active, badge, onClick }: NavItemProps) {
   return (
     <button
       onClick={onClick}
@@ -20,8 +21,15 @@ export function NavItem({ icon: Icon, label, active, onClick }: NavItemProps) {
       )}
     >
       <Icon size={18} strokeWidth={1.75} />
-      <span>{label}</span>
+      
+      <span className="flex items-center gap-2 flex-1">
+        {label}
+        {badge !== undefined && badge > 0 && (
+          <span className="ml-auto bg-red-600 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
+      </span>
     </button>
   );
 }
- 

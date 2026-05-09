@@ -265,7 +265,7 @@ fn build_file_tree(path: &std::path::Path, depth: u32) -> FileNode {
 
     // Cap at depth 6 — deep nesting past this is rarely useful and caused multi-second freezes.
     if path.is_dir() && depth < 6 {
-        let mut children: Vec<FileNode> = std::fs::read_dir(path)
+        let children: Vec<FileNode> = std::fs::read_dir(path)
             .map(|entries| {
                 let mut nodes: Vec<FileNode> = entries
                     .filter_map(|e| e.ok())

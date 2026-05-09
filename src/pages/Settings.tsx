@@ -10,8 +10,10 @@ import {
   Loader2, AlertTriangle, CheckCircle2,
   Trash2, ExternalLink, ChevronRight,
   Settings as SettingsIcon, Plug, Bug, Layers,
+  Archive,
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { CompressionSection } from "@/components/settings/CompressionSection";
 import { tauriPing, tauriFetchVpmIndex, VpmPackage } from "@/lib/tauri";
 import { useRipperStatus, RipperStatus } from "@/hooks/useRipperStatus";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
@@ -60,11 +62,12 @@ function useVpmSources() {
   };
 
   const addSource = (src: VpmSource) => save([...sources, src]);
+  const addSources = (newSources: VpmSource[]) => save([...sources, ...newSources]);
   const removeSource = (id: string) => save(sources.filter((s) => s.id !== id));
   const updateCount = (id: string, count: number) =>
     save(sources.map((s) => (s.id === id ? { ...s, packageCount: count } : s)));
 
-  return { sources, addSource, removeSource, updateCount };
+  return { sources, addSource, addSources, removeSource, updateCount };
 }
 
 // ── Add by URL modal ──────────────────────────────────────────────────────────
@@ -387,7 +390,7 @@ function ImportVccModal({
 // ── Packages tab ──────────────────────────────────────────────────────────────
 
 function PackagesSection() {
-  const { sources, addSource, removeSource } = useVpmSources();
+  const { sources, addSources, removeSource } = useVpmSources(); // ← usa addSources
   const [addUrlOpen, setAddUrlOpen] = useState(false);
   const [importVccOpen, setImportVccOpen] = useState(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
@@ -406,9 +409,12 @@ function PackagesSection() {
   };
 
   const handleImportVcc = (imported: ImportedVccSource[]) => {
-    imported.forEach((s) =>
-      addSource({ id: crypto.randomUUID(), name: s.name, url: s.url })
-    );
+    const newSources = imported.map(s => ({
+      id: crypto.randomUUID(),
+      name: s.name,
+      url: s.url,
+    }));
+    addSources(newSources); // ✅ importación múltiple
   };
 
   return (
@@ -416,7 +422,7 @@ function PackagesSection() {
       {addUrlOpen && (
         <AddUrlModal
           onClose={() => setAddUrlOpen(false)}
-          onAdd={(src) => { addSource(src); setAddUrlOpen(false); }}
+          onAdd={(src) => { addSources([src]); setAddUrlOpen(false); }}
         />
       )}
       {importVccOpen && (
@@ -427,7 +433,6 @@ function PackagesSection() {
       )}
 
       <div className="flex flex-col gap-6">
-        {/* Header */}
         <div>
           <h1 className="text-lg font-semibold text-zinc-100">Packages</h1>
           <p className="text-sm text-zinc-500 mt-0.5">
@@ -435,7 +440,6 @@ function PackagesSection() {
           </p>
         </div>
 
-        {/* VPM Sources */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">VPM Sources ({sources.length})</h2>
@@ -699,16 +703,44 @@ function BoothBlock() {
 
 function IntegrationsSection() {
   const t = useT();
+  const { riperstoreExperimental, setRiperstoreExperimental } = useAppStore();
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-lg font-semibold text-zinc-100">Integrations</h1>
         <p className="text-sm text-zinc-500 mt-0.5">Connect to external services for inventory sync and downloads.</p>
       </div>
+
+      {/* Booth */}
       <div className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t("settings_integrations")}</h2>
         <BoothBlock />
-        <RipperBlock />
+      </div>
+
+      {/* Riperstore — experimental */}
+      <div className="flex flex-col gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+          <Beaker className="h-3.5 w-3.5 text-blue-400" />
+          Riperstore
+          <span className="text-[9px] bg-blue-600/20 border border-blue-500/30 text-blue-400 px-1.5 py-0.5 rounded font-semibold tracking-wider">EXPERIMENTAL</span>
+        </h2>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-zinc-100">Activar Riperstore</p>
+            <p className="text-[10px] text-zinc-500 mt-px">
+              Habilita la integración con Ripper.store. Función experimental — puede cambiar sin previo aviso.
+            </p>
+          </div>
+          <button
+            onClick={() => setRiperstoreExperimental(!riperstoreExperimental)}
+            className={`relative flex-shrink-0 w-12 h-6 rounded-full border transition-all duration-300 ${riperstoreExperimental ? "bg-blue-500/20 border-blue-500/60" : "bg-zinc-800 border-zinc-700"}`}
+            style={riperstoreExperimental ? { boxShadow: "0 0 10px rgba(59,130,246,0.25)" } : {}}
+          >
+            <div className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-all duration-300 ${riperstoreExperimental ? "left-[calc(100%-22px)] bg-blue-400" : "left-0.5 bg-zinc-600"}`} />
+          </button>
+        </div>
+        {riperstoreExperimental && <RipperBlock />}
       </div>
     </div>
   );
@@ -811,13 +843,14 @@ function DebugSection() {
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 
-type SettingsTab = "general" | "packages" | "integrations" | "appearance" | "debug";
+type SettingsTab = "general" | "packages" | "integrations" | "appearance" | "compression" | "debug";
 
 const NAV_ITEMS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: "general",      label: "General",      icon: SettingsIcon },
   { id: "packages",     label: "Packages",     icon: Package },
   { id: "integrations", label: "Integrations", icon: Plug },
   { id: "appearance",   label: "Appearance",   icon: Layers },
+  { id: "compression",  label: "Compression",  icon: Archive },
   { id: "debug",        label: "Debug",        icon: Bug },
 ];
 
@@ -849,11 +882,12 @@ export default function Settings() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto px-8 py-8 max-w-2xl">
-        {activeTab === "general"      && <GeneralSection />}
-        {activeTab === "packages"     && <PackagesSection />}
-        {activeTab === "integrations" && <IntegrationsSection />}
-        {activeTab === "appearance"   && <AppearanceSection />}
-        {activeTab === "debug"        && <DebugSection />}
+          {activeTab === "general"      && <GeneralSection />}
+          {activeTab === "packages"     && <PackagesSection />}
+          {activeTab === "integrations" && <IntegrationsSection />}
+          {activeTab === "appearance"   && <AppearanceSection />}
+          {activeTab === "compression"  && <CompressionSection />}
+          {activeTab === "debug"        && <DebugSection />}
       </main>
     </div>
   );

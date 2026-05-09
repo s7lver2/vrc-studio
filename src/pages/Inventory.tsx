@@ -1,3 +1,5 @@
+// 📁 src/pages/Inventory.tsx (fixed version)
+
 import { useState, useRef, useEffect } from "react";
 import {
   LayoutGrid, List, Upload, HardDrive, Search, X,
@@ -20,55 +22,6 @@ interface Suggestion {
   completion: string;
   icon: React.ReactNode;
   description: string;
-}
-
-function buildSuggestions(raw: string, allTags: string[]): Suggestion[] {
-  const lower = raw.toLowerCase();
-
-  // Suggest syntax keywords when user starts typing
-  const syntaxSuggestions: Suggestion[] = [];
-
-  if ("tags:".startsWith(lower) || lower === "") {
-    syntaxSuggestions.push({
-      text: "tags:",
-      completion: "tags:",
-      icon: <Tag className="h-3 w-3 text-amber-400" />,
-      description: "Filter by tag",
-    });
-  }
-  if ("author:".startsWith(lower) || lower === "") {
-    syntaxSuggestions.push({
-      text: "author:",
-      completion: "author:",
-      icon: <User className="h-3 w-3 text-blue-400" />,
-      description: "Filter by author",
-    });
-  }
-  if ("name:".startsWith(lower) || lower === "") {
-    syntaxSuggestions.push({
-      text: "name:",
-      completion: "name:",
-      icon: <FileText className="h-3 w-3 text-zinc-400" />,
-      description: "Filter by name",
-    });
-  }
-
-  // After typing "tags:" suggest known tags
-  if (lower.startsWith("tags:") || lower.startsWith("tag:")) {
-    const prefix = lower.includes("tags:") ? "tags:" : "tag:";
-    const partial = lower.slice(prefix.length);
-    return allTags
-      .filter((t) => t.startsWith(partial))
-      .slice(0, 8)
-      .map((t) => ({
-        text: `tags:${t}`,
-        completion: `${prefix}${t}`,
-        icon: <Tag className="h-3 w-3 text-amber-400" />,
-        description: t,
-      }));
-  }
-
-  return syntaxSuggestions.slice(0, 5);
 }
 
 // ── Active filter chips ────────────────────────────────────────────────────────
@@ -148,10 +101,11 @@ function AdvancedSearchBar({
 
   const suggestions = buildSuggestions(value);
 
-  // ... resto igual, pero el texto de "Suggestions" se puede traducir:
-  // En el dropdown, cambia "Suggestions" -> t("inventory_search_suggestions") (hay que agregar esa clave)
-  // Y el label de filtros activos ya usa t("inventory_active_filters").
-  // El botón de limpiar ya usa t("inventory_clear_filters").
+  const applySuggestion = (s: Suggestion) => {
+    onChange(s.completion);
+    setShowSuggestions(false);
+    inputRef.current?.focus();
+  };
 
   const hasFilters = parsed.tags.length > 0 || parsed.authors.length > 0 || parsed.names.length > 0;
 
@@ -186,7 +140,8 @@ function AdvancedSearchBar({
             className="absolute top-full mt-1 left-0 right-0 z-50 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl overflow-hidden"
           >
             <div className="px-3 py-1.5 border-b border-zinc-800">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("inventory_search_suggestions")}</p>
+              {/* Fixed: replaced missing i18n key with static "Suggestions" */}
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Suggestions</p>
             </div>
             {suggestions.map((s) => (
               <button
@@ -211,7 +166,15 @@ function AdvancedSearchBar({
       {hasFilters && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("inventory_active_filters")}:</span>
-          {/* chips igual */}
+          {parsed.tags.map((tag) => (
+            <FilterChip key={`tag-${tag}`} label="Tag" value={tag} color="bg-amber-950/60 text-amber-400 border-amber-800/60" onRemove={() => onChange(value.replace(new RegExp(`\\s*tags:${tag}\\s*`, "g"), " ").trim())} />
+          ))}
+          {parsed.authors.map((author) => (
+            <FilterChip key={`author-${author}`} label="Author" value={author} color="bg-blue-950/60 text-blue-400 border-blue-800/60" onRemove={() => onChange(value.replace(new RegExp(`\\s*author:${author}\\s*`, "g"), " ").trim())} />
+          ))}
+          {parsed.names.map((name) => (
+            <FilterChip key={`name-${name}`} label="Name" value={name} color="bg-zinc-800 text-zinc-400 border-zinc-700/60" onRemove={() => onChange(value.replace(new RegExp(`\\s*name:${name}\\s*`, "g"), " ").trim())} />
+          ))}
           <button
             className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors"
             onClick={() => onChange("")}

@@ -1,9 +1,5 @@
 /**
  * PackagesTab — VPM package manager for an existing Unity project.
- *
- * Sub-tabs:
- *   Installed  — lists direct + transitive deps from vpm-manifest.json
- *   Browse     — searchable VPM index with one-click install + version picker
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -21,6 +17,7 @@ import {
   tauriInstallVpmPackageToProject,
   tauriRemoveVpmPackageFromProject,
 } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,7 +25,6 @@ function cn(...c: (string | boolean | undefined)[]) {
   return c.filter(Boolean).join(" ");
 }
 
-/** Returns the sorted list of version strings for a package (latest first). */
 function sortedVersions(pkg: VpmPackage): string[] {
   return Object.keys(pkg.versions).sort((a, b) => {
     const parse = (v: string) => v.split(".").map(Number);
@@ -47,41 +43,29 @@ interface Recommendation {
   packageId: string;
   label: string;
   reason: string;
-  priority: number; // higher = shown first
+  priority: number;
 }
 
 function getRecommendations(project: Project, index: VpmPackage[]): Recommendation[] {
-  const installed = new Set<string>(); // will be filled externally
   const available = new Set(index.map((p) => p.id));
-
   const recs: Recommendation[] = [];
-
   const add = (id: string, label: string, reason: string, priority: number) => {
     if (available.has(id)) recs.push({ packageId: id, label, reason, priority });
   };
-
-  // Always useful for avatar projects
   add("com.vrchat.avatars", "VRChat SDK – Avatars", "Required for avatar uploads", 100);
   add("com.vrchat.base", "VRChat SDK – Base", "Core VRChat runtime", 90);
-
-  // World SDK
   add("com.vrchat.worlds", "VRChat SDK – Worlds", "Required for world uploads", 80);
   add("com.vrchat.udonsharp", "UdonSharp", "Write Udon scripts in C#", 70);
   add("com.vrchat.clientsim", "ClientSim", "Simulate VRChat in the editor", 60);
-
-  // Shader-specific
   if (project.shader === "liltoon") {
     add("jp.lilxyzw.liltoon", "lilToon", "Your project uses lilToon shader", 95);
   }
   if (project.shader === "poiyomi") {
     add("com.poiyomi.toon", "Poiyomi Toon", "Your project uses Poiyomi shader", 95);
   }
-
-  // VCS projects often want animator tools
   if (project.vcs_enabled) {
     add("com.vrchat.vrcfury", "VRCFury", "Non-destructive avatar tools", 55);
   }
-
   return recs.sort((a, b) => b.priority - a.priority);
 }
 
@@ -90,9 +74,10 @@ function getRecommendations(project: Project, index: VpmPackage[]): Recommendati
 type SubTab = "installed" | "browse";
 
 function SubTabBar({ active, onChange }: { active: SubTab; onChange: (t: SubTab) => void }) {
+  const t = useT();
   const tabs: { id: SubTab; label: string }[] = [
-    { id: "installed", label: "Installed" },
-    { id: "browse", label: "Browse" },
+    { id: "installed", label: t("packages_tab_installed") },
+    { id: "browse", label: t("packages_tab_browse") },
   ];
   return (
     <div className="flex items-center gap-0.5 px-1 py-1 border-b border-zinc-800/60 bg-zinc-900/40">
@@ -147,6 +132,7 @@ function InstalledTab({
   removing: Set<string>;
   onRemove: (id: string) => void;
 }) {
+  const t = useT();
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -162,9 +148,9 @@ function InstalledTab({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
         <Package className="h-8 w-8 text-zinc-700" />
-        <p className="text-xs text-zinc-500">No VPM packages installed</p>
+        <p className="text-xs text-zinc-500">{t("packages_tab_no_packages")}</p>
         <p className="text-[10px] text-zinc-700">
-          Switch to Browse to add packages from the VRChat registry.
+          {t("packages_tab_no_packages_hint")}
         </p>
       </div>
     );
@@ -183,7 +169,7 @@ function InstalledTab({
           <button
             onClick={() => onRemove(pkg.name)}
             disabled={isRemoving}
-            title="Remove package"
+            title={t("packages_tab_remove_package")}
             className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-red-400 disabled:opacity-30"
           >
             {isRemoving ? (
@@ -202,7 +188,7 @@ function InstalledTab({
       {direct.length > 0 && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-1.5 px-1">
-            Direct ({direct.length})
+            {t("packages_tab_direct")} ({direct.length})
           </p>
           <div className="flex flex-col gap-0.5">
             {direct.map((p) => <PackageRow key={p.name} pkg={p} />)}
@@ -212,7 +198,7 @@ function InstalledTab({
       {transitive.length > 0 && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-1.5 px-1">
-            Dependencies ({transitive.length})
+            {t("packages_tab_dependencies")} ({transitive.length})
           </p>
           <div className="flex flex-col gap-0.5">
             {transitive.map((p) => <PackageRow key={p.name} pkg={p} />)}
@@ -244,6 +230,7 @@ function BrowseTab({
   installing: Record<string, { step: string; progress: number; error: string | null }>;
   onInstall: (packageId: string, version: string) => void;
 }) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
   const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>({});
@@ -275,7 +262,7 @@ function BrowseTab({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <Loader2 className="h-5 w-5 animate-spin text-zinc-600" />
-        <p className="text-xs text-zinc-600">Fetching VRChat package index…</p>
+        <p className="text-xs text-zinc-600">{t("packages_tab_fetching_index")}</p>
       </div>
     );
   }
@@ -284,13 +271,13 @@ function BrowseTab({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
         <AlertTriangle className="h-6 w-6 text-red-500" />
-        <p className="text-xs text-zinc-400 font-medium">Failed to load VPM index</p>
+        <p className="text-xs text-zinc-400 font-medium">{t("packages_tab_index_failed")}</p>
         <pre className="text-[10px] text-zinc-600 bg-zinc-900 rounded p-2 max-w-full overflow-auto max-h-20 text-left">{indexError}</pre>
         <button
           onClick={onReloadIndex}
           className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded px-3 py-1.5 transition-colors"
         >
-          <RefreshCw className="h-3 w-3" /> Retry
+          <RefreshCw className="h-3 w-3" /> {t("packages_tab_retry")}
         </button>
       </div>
     );
@@ -311,7 +298,6 @@ function BrowseTab({
 
     return (
       <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 flex flex-col gap-2.5">
-        {/* Header */}
         <div className="flex items-start gap-2">
           <Package className="h-4 w-4 text-zinc-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
@@ -319,7 +305,7 @@ function BrowseTab({
               <p className="text-xs font-semibold text-zinc-100 truncate">{pkgVersion.display_name}</p>
               {isInstalled && (
                 <span className="shrink-0 flex items-center gap-0.5 text-[9px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-900/40 rounded px-1.5 py-0.5">
-                  <CheckCircle2 className="h-2.5 w-2.5" /> Installed
+                  <CheckCircle2 className="h-2.5 w-2.5" /> {t("packages_tab_installed_ok")}
                 </span>
               )}
             </div>
@@ -327,15 +313,9 @@ function BrowseTab({
           </div>
         </div>
 
-        {/* Description */}
         {pkgVersion.description && (
           <div>
-            <p
-              className={cn(
-                "text-[11px] text-zinc-400 leading-relaxed",
-                !expanded && "line-clamp-2"
-              )}
-            >
+            <p className={cn("text-[11px] text-zinc-400 leading-relaxed", !expanded && "line-clamp-2")}>
               {pkgVersion.description}
             </p>
             {pkgVersion.description.length > 80 && (
@@ -343,13 +323,12 @@ function BrowseTab({
                 onClick={() => setExpandedDesc((prev) => ({ ...prev, [pkg.id]: !prev[pkg.id] }))}
                 className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors mt-0.5"
               >
-                {expanded ? "Show less" : "Show more"}
+                {expanded ? t("packages_tab_show_less") : t("packages_tab_show_more")}
               </button>
             )}
           </div>
         )}
 
-        {/* Progress */}
         {installState && (isInstalling || hasError) && (
           <div>
             {hasError ? (
@@ -360,9 +339,7 @@ function BrowseTab({
           </div>
         )}
 
-        {/* Controls */}
         <div className="flex items-center gap-2">
-          {/* Version selector */}
           <div className="relative flex-1">
             <select
               value={selectedVer}
@@ -380,7 +357,6 @@ function BrowseTab({
             <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500" />
           </div>
 
-          {/* Install / installed */}
           <button
             onClick={() => onInstall(pkg.id, selectedVer)}
             disabled={isInstalling || (isInstalled && !hasError)}
@@ -398,7 +374,13 @@ function BrowseTab({
             ) : (
               <Download className="h-3 w-3" />
             )}
-            {isInstalling ? "Installing…" : isInstalled && !hasError ? "Installed" : hasError ? "Retry" : "Install"}
+            {isInstalling
+              ? t("packages_tab_installing")
+              : isInstalled && !hasError
+              ? t("packages_tab_installed_ok")
+              : hasError
+              ? t("packages_tab_install_retry")
+              : t("packages_tab_install")}
           </button>
         </div>
       </div>
@@ -410,13 +392,12 @@ function BrowseTab({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Search */}
       <div className="p-3 border-b border-zinc-800/60">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
           <input
             type="text"
-            placeholder="Search packages…"
+            placeholder={t("packages_tab_search_placeholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-zinc-800/60 border border-zinc-700/60 rounded-lg text-xs text-zinc-300 pl-8 pr-3 py-2 focus:outline-none focus:border-zinc-500 placeholder-zinc-600"
@@ -425,13 +406,12 @@ function BrowseTab({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
-        {/* Recommendations (only when not searching) */}
         {!search.trim() && recommendations.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <Sparkles className="h-3 w-3 text-amber-400" />
               <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Recommended for this project
+                {t("packages_tab_recommended")}
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -449,20 +429,19 @@ function BrowseTab({
 
             {nonRecFiltered.length > 0 && (
               <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mt-4 mb-2">
-                All packages ({index.length})
+                {t("packages_tab_all_packages", { count: index.length })}
               </p>
             )}
           </div>
         )}
 
-        {/* All packages */}
         <div className="flex flex-col gap-2">
           {nonRecFiltered.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} />)}
         </div>
 
         {filtered.length === 0 && search.trim() && (
           <div className="text-center py-8">
-            <p className="text-xs text-zinc-600">No packages found for "{search}"</p>
+            <p className="text-xs text-zinc-600">{t("packages_tab_no_search_results", { search })}</p>
           </div>
         )}
       </div>
@@ -473,25 +452,22 @@ function BrowseTab({
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function PackagesTab({ project }: { project: Project }) {
+  const t = useT();
   const [subTab, setSubTab] = useState<SubTab>("installed");
 
-  // Installed state
   const [installed, setInstalled] = useState<InstalledVpmPackage[]>([]);
   const [loadingInstalled, setLoadingInstalled] = useState(true);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
 
-  // VPM index state
   const [index, setIndex] = useState<VpmPackage[]>([]);
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [indexLoaded, setIndexLoaded] = useState(false);
 
-  // Install progress state
   const [installing, setInstalling] = useState<
     Record<string, { step: string; progress: number; error: string | null }>
   >({});
 
-  // Load installed packages on mount
   const loadInstalled = useCallback(() => {
     setLoadingInstalled(true);
     tauriGetInstalledVpmPackages(project.path)
@@ -502,7 +478,6 @@ export function PackagesTab({ project }: { project: Project }) {
 
   useEffect(() => { loadInstalled(); }, [loadInstalled]);
 
-  // Load VPM index when Browse tab is first opened
   const loadIndex = useCallback(() => {
     setLoadingIndex(true);
     setIndexError(null);
@@ -518,7 +493,6 @@ export function PackagesTab({ project }: { project: Project }) {
     }
   }, [subTab, indexLoaded, loadingIndex, loadIndex]);
 
-  // Listen for install progress events
   useEffect(() => {
     const unlisten = listen<PkgProgress>("project:pkg_progress", (ev) => {
       const { package_id, step, progress, done, error } = ev.payload;
@@ -527,7 +501,6 @@ export function PackagesTab({ project }: { project: Project }) {
         [package_id]: { step, progress, error },
       }));
       if (done && !error) {
-        // Reload installed list after successful install
         setTimeout(loadInstalled, 300);
       }
     });
@@ -537,16 +510,16 @@ export function PackagesTab({ project }: { project: Project }) {
   const handleInstall = useCallback((packageId: string, version: string) => {
     setInstalling((prev) => ({
       ...prev,
-      [packageId]: { step: "Starting…", progress: 0, error: null },
+      [packageId]: { step: t("packages_tab_starting"), progress: 0, error: null },
     }));
-    tauriInstallVpmPackageToProject(project.path, packageId, version)
+    tauriInstallVpmPackageToProject(project.path, packageId, version, [])
       .catch((e) => {
         setInstalling((prev) => ({
           ...prev,
           [packageId]: { ...prev[packageId], error: String(e), progress: prev[packageId]?.progress ?? 0 },
         }));
       });
-  }, [project.path]);
+  }, [project.path, t]);
 
   const handleRemove = useCallback((packageId: string) => {
     setRemoving((prev) => new Set([...prev, packageId]));
@@ -560,7 +533,7 @@ export function PackagesTab({ project }: { project: Project }) {
     <div className="flex-1 flex flex-col overflow-hidden">
       <SubTabBar active={subTab} onChange={setSubTab} />
 
-      <div className={subTab === "installed" ? "contents" : "hidden"}>
+      {subTab === "installed" && (
         <InstalledTab
           project={project}
           installed={installed}
@@ -569,9 +542,9 @@ export function PackagesTab({ project }: { project: Project }) {
           removing={removing}
           onRemove={handleRemove}
         />
-      </div>
+      )}
 
-      <div className={subTab === "browse" ? "contents" : "hidden"}>
+      {subTab === "browse" && (
         <BrowseTab
           project={project}
           index={index}
@@ -582,7 +555,7 @@ export function PackagesTab({ project }: { project: Project }) {
           installing={installing}
           onInstall={handleInstall}
         />
-      </div>
+      )}
     </div>
   );
 }

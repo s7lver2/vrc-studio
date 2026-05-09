@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use crate::services::github_oauth::{self, DevicePrompt, GithubUserInfo};
 use crate::services::auth_store;
-use crate::services::git_service::{self, GitStatus, CommitEntry, BranchInfo};
+use crate::services::git_service::{self, GitStatus, CommitEntry, BranchInfo, CommitDiffFile, FileDiff};
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -164,4 +164,21 @@ pub async fn github_get_token() -> Result<String, String> {
 #[tauri::command]
 pub async fn github_logout() -> Result<(), String> {
     auth_store::delete_token(GITHUB_PROVIDER)
+}
+// ── Commit Diff ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn vcs_get_commit_diff(project_path: String, commit_sha: String) -> Result<Vec<CommitDiffFile>, String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || git_service::get_commit_diff_files(&path, &commit_sha))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn vcs_get_file_diff(project_path: String, commit_sha: String, file_path: String) -> Result<FileDiff, String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || git_service::get_file_diff(&path, &commit_sha, &file_path))
+        .await
+        .map_err(|e| e.to_string())?
 }

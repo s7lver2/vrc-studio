@@ -11,6 +11,7 @@ import {
   tauriBoothIsAuthenticated,
   tauriBoothGetOwnedIds,
 } from "../lib/tauri";
+import { loadRiperstoreExperimental } from "./app";
 
 interface ShopFilters {
   source: "all" | "booth" | "riperstore";
@@ -194,7 +195,9 @@ async function fetchCombined(
   page: number
 ): Promise<{ products: ShopProduct[]; ripperPageCount: number }> {
   const EMPTY_RIPPER: RiperstoreSearchResult = { products: [], page_count: 1, current_page: 1 };
-  const ripperAuthenticated = await tauriRipperIsAuthenticated();
+  // Gate: Riperstore only runs when the experimental flag is enabled
+  const riperstoreEnabled = loadRiperstoreExperimental();
+  const ripperAuthenticated = riperstoreEnabled && await tauriRipperIsAuthenticated();
 
   // ── Booth ID / URL mode ────────────────────────────────────────────────────
   // Si el query es un ID numérico o una URL de Booth, buscamos el item

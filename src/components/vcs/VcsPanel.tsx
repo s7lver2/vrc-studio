@@ -1,14 +1,20 @@
 import { useEffect, useState, useCallback } from "react";
 import { useVcsStore } from "@/store/vcsStore";
 import { CommitHistory } from "./CommitHistory";
+import { CommitDiffView } from "./CommitDiffView";
 import { BranchSelector } from "./BranchSelector";
+import { ConflictResolverTab } from "./ConflictResolverTab";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { vcs, github, type GithubUserInfo } from "@/lib/tauri";
+import type { CommitEntry } from "@/types/vcs";
+import { RefreshCw } from "lucide-react";
+import { useT } from "@/i18n";
 
 interface Props {
   projectPath: string;
 }
 
-type Tab = "changes" | "history" | "branches";
+type Tab = "changes" | "history" | "branches" | "conflicts";
 
 // ── GitHub Auth hook ──────────────────────────────────────────────────────────
 
@@ -97,6 +103,8 @@ function GithubAuthWidget({
   auth: GitHubAuthState;
   onStart: () => void;
 }) {
+  const t = useT();
+
   if (auth.step === "idle") {
     return (
       <div className="flex flex-col gap-1.5">
@@ -105,7 +113,7 @@ function GithubAuthWidget({
           className="flex items-center gap-2 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
         >
           <GithubIcon />
-          Conectar con GitHub
+          {t("vcs_github_connect")}
         </button>
         {auth.error && <p className="text-xs text-red-400">{auth.error}</p>}
       </div>
@@ -116,23 +124,15 @@ function GithubAuthWidget({
     return (
       <div className="flex flex-col gap-2 rounded border border-zinc-700 bg-zinc-900 p-3">
         <p className="text-xs text-zinc-400">
-          1. Abre{" "}
-          <a
-            href={auth.verificationUri ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            className="text-red-400 underline"
-          >
-            github.com/login/device
-          </a>
+          {t("vcs_github_step1", { url: auth.verificationUri ?? "#" })}
         </p>
-        <p className="text-xs text-zinc-400">2. Introduce este código:</p>
+        <p className="text-xs text-zinc-400">{t("vcs_github_step2")}</p>
         <span className="font-mono text-base font-bold tracking-widest text-zinc-100 text-center py-1.5 bg-zinc-800 rounded select-all">
           {auth.userCode}
         </span>
         {auth.step === "polling" && (
           <p className="text-xs text-zinc-500 text-center animate-pulse">
-            Esperando autorización…
+            {t("vcs_github_waiting")}
           </p>
         )}
       </div>
@@ -145,6 +145,7 @@ function GithubAuthWidget({
 // ── Main VcsPanel ─────────────────────────────────────────────────────────────
 
 export function VcsPanel({ projectPath }: Props) {
+  const t = useT();
   const {
     status, log, branches, isLoading, error,
     loadStatus, loadLog, loadBranches, commit,
@@ -161,11 +162,13 @@ export function VcsPanel({ projectPath }: Props) {
   const [pushPullError, setPushPullError] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState("");
   const [showAddRemote, setShowAddRemote] = useState(false);
+  const [selectedCommit, setSelectedCommit] = useState<CommitEntry | null>(null);
 
   useEffect(() => {
     loadStatus(projectPath);
     loadLog(projectPath);
     loadBranches(projectPath);
+    setSelectedCommit(null);
   }, [projectPath]);
 
   const handleCommit = async () => {
@@ -224,42 +227,45 @@ export function VcsPanel({ projectPath }: Props) {
   };
 
   if (isLoading && !status) {
-    return <div className="p-4 text-sm text-zinc-500">Cargando repositorio…</div>;
+    return <div className="p-4 text-sm text-zinc-500">{t("vcs_loading")}</div>;
   }
   if (error) {
-    return <div className="p-4 text-sm text-red-400">Error: {error}</div>;
+    return <div className="p-4 text-sm text-red-400">{t("vcs_error", { error })}</div>;
   }
   if (!status) return null;
 
   const totalChanges = status.staged.length + status.unstaged.length + status.untracked.length;
 
+  const tabDefinitions: [Tab, string][] = [
+    ["changes", totalChanges > 0 ? t("vcs_tab_changes_count", { count: totalChanges }) : t("vcs_tab_changes")],
+    ["history", t("vcs_tab_history")],
+    ["branches", t("vcs_tab_branches")],
+    ["conflicts", t("vcs_tab_conflicts")],
+  ];
+
   return (
     <div className="flex flex-col h-full">
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-zinc-800 px-4">
-        {(["changes", "history", "branches"] as Tab[]).map((t) => (
+      <div className="flex gap-0 border-b border-zinc-800 px-3">
+        {tabDefinitions.map(([id, label]) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={id}
+            onClick={() => setTab(id)}
             className={`px-3 py-2 text-xs transition-colors ${
-              tab === t
+              tab === id
                 ? "border-b-2 border-red-500 font-medium text-zinc-100"
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            {t === "changes"
-              ? `Cambios${totalChanges > 0 ? ` (${totalChanges})` : ""}`
-              : t === "history"
-              ? "Historial"
-              : "Ramas"}
+            {label}
           </button>
         ))}
         <button
           onClick={() => { loadStatus(projectPath); loadLog(projectPath); }}
-          className="ml-auto text-xs text-zinc-600 hover:text-zinc-400 py-2"
-          title="Actualizar"
+          className="ml-auto text-xs text-zinc-600 hover:text-zinc-400 py-2 px-2"
+          title={t("vcs_refresh")}
         >
-          ↺
+          <RefreshCw className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -282,17 +288,29 @@ export function VcsPanel({ projectPath }: Props) {
           <div className="flex flex-col gap-4 p-4">
             {/* Changed files list */}
             {totalChanges === 0 ? (
-              <p className="text-sm text-zinc-500">Sin cambios pendientes.</p>
+              <p className="text-sm text-zinc-500">{t("vcs_no_changes")}</p>
             ) : (
-              <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto text-xs font-mono">
+              <div className="flex flex-col gap-0 rounded-lg border border-zinc-800 overflow-hidden">
                 {status.staged.map((f) => (
-                  <span key={f} className="text-green-400">S  {f}</span>
+                  <div key={f} className="flex items-center gap-2 px-3 py-1.5 bg-green-950/20 border-b border-zinc-800/50 last:border-0">
+                    <FileTypeIcon path={f} className="h-3.5 w-3.5 shrink-0" />
+                    <span className="text-[10px] font-mono text-zinc-300 flex-1 truncate">{f}</span>
+                    <span className="text-[9px] font-bold text-green-400 bg-green-950/60 border border-green-900/40 rounded px-1">S</span>
+                  </div>
                 ))}
                 {status.unstaged.map((f) => (
-                  <span key={f} className="text-yellow-400">M  {f}</span>
+                  <div key={f} className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30">
+                    <FileTypeIcon path={f} className="h-3.5 w-3.5 shrink-0" />
+                    <span className="text-[10px] font-mono text-zinc-300 flex-1 truncate">{f}</span>
+                    <span className="text-[9px] font-bold text-yellow-400 bg-yellow-950/60 border border-yellow-900/40 rounded px-1">M</span>
+                  </div>
                 ))}
                 {status.untracked.map((f) => (
-                  <span key={f} className="text-zinc-500">?  {f}</span>
+                  <div key={f} className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30">
+                    <FileTypeIcon path={f} className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                    <span className="text-[10px] font-mono text-zinc-500 flex-1 truncate">{f}</span>
+                    <span className="text-[9px] font-bold text-zinc-500 bg-zinc-800 border border-zinc-700 rounded px-1">?</span>
+                  </div>
                 ))}
               </div>
             )}
@@ -302,7 +320,7 @@ export function VcsPanel({ projectPath }: Props) {
               <div className="flex flex-col gap-2">
                 <input
                   type="text"
-                  placeholder="Mensaje del commit…"
+                  placeholder={t("vcs_commit_placeholder")}
                   value={commitMsg}
                   onChange={(e) => setCommitMsg(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCommit()}
@@ -314,7 +332,7 @@ export function VcsPanel({ projectPath }: Props) {
                   disabled={!commitMsg.trim() || committing}
                   className="rounded bg-red-600 px-4 py-1.5 text-sm text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {committing ? "Commiteando…" : "Commit (stage all)"}
+                  {committing ? t("vcs_committing") : t("vcs_commit_button")}
                 </button>
               </div>
             )}
@@ -330,24 +348,24 @@ export function VcsPanel({ projectPath }: Props) {
                         disabled={pushPullLoading}
                         className="flex-1 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
                       >
-                        ↑ Push
+                        ↑ {t("vcs_push")}
                       </button>
                       <button
                         onClick={handlePull}
                         disabled={pushPullLoading}
                         className="flex-1 rounded border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
                       >
-                        ↓ Pull
+                        ↓ {t("vcs_pull")}
                       </button>
                     </div>
                     {pushPullError && <p className="text-xs text-red-400">{pushPullError}</p>}
                     <div className="flex items-center justify-between text-xs text-zinc-500">
                       <span className="flex items-center gap-1">
                         <GithubIcon />
-                        {auth.user?.login ?? "autenticado"}
+                        {auth.user?.login ?? t("vcs_github_authenticated")}
                       </span>
                       <button onClick={logout} className="hover:text-zinc-300">
-                        Cerrar sesión
+                        {t("vcs_github_logout")}
                       </button>
                     </div>
                   </>
@@ -362,7 +380,7 @@ export function VcsPanel({ projectPath }: Props) {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="https://github.com/user/repo.git"
+                        placeholder={t("vcs_remote_placeholder")}
                         value={remoteUrl}
                         onChange={(e) => setRemoteUrl(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleAddRemote()}
@@ -372,7 +390,7 @@ export function VcsPanel({ projectPath }: Props) {
                         onClick={handleAddRemote}
                         className="rounded bg-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-600"
                       >
-                        Add
+                        {t("vcs_add")}
                       </button>
                       <button
                         onClick={() => setShowAddRemote(false)}
@@ -388,7 +406,7 @@ export function VcsPanel({ projectPath }: Props) {
                     onClick={() => setShowAddRemote(true)}
                     className="text-xs text-zinc-500 hover:text-zinc-300 text-left"
                   >
-                    + Añadir remote GitHub
+                    + {t("vcs_remote_add")}
                   </button>
                 )}
               </div>
@@ -396,7 +414,18 @@ export function VcsPanel({ projectPath }: Props) {
           </div>
         )}
 
-        {tab === "history" && <CommitHistory entries={log} />}
+        {tab === "history" && (
+          selectedCommit ? (
+            <CommitDiffView
+              projectPath={projectPath}
+              commitSha={selectedCommit.id}
+              commitMessage={selectedCommit.message}
+              onBack={() => setSelectedCommit(null)}
+            />
+          ) : (
+            <CommitHistory entries={log} onSelect={setSelectedCommit} />
+          )
+        )}
 
         {tab === "branches" && (
           <div className="py-4">
@@ -406,6 +435,12 @@ export function VcsPanel({ projectPath }: Props) {
               onCreate={(name) => createBranch(projectPath, name)}
             />
           </div>
+        )}
+        {tab === "conflicts" && (
+          <ConflictResolverTab
+            projectPath={projectPath}
+            onResolved={() => { setTab("changes"); loadStatus(projectPath); }}
+          />
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { BranchInfo } from "@/types/vcs";
+import { useT } from "@/i18n";
 
 interface Props {
   branches: BranchInfo[];
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function BranchSelector({ branches, onSwitch, onCreate }: Props) {
+  const t = useT();
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,9 @@ export function BranchSelector({ branches, onSwitch, onCreate }: Props) {
   return (
     <div className="flex flex-col gap-3 px-4">
       <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+        {branches.length === 0 && (
+          <p className="text-xs text-zinc-500 px-2">{t("vcs_no_branches")}</p>
+        )}
         {branches.map((b) => (
           <button
             key={b.name}
@@ -52,7 +57,7 @@ export function BranchSelector({ branches, onSwitch, onCreate }: Props) {
       <div className="flex gap-2">
         <input
           type="text"
-          placeholder="nueva-rama…"
+          placeholder={t("vcs_branch_new_placeholder")}
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
@@ -63,7 +68,7 @@ export function BranchSelector({ branches, onSwitch, onCreate }: Props) {
           disabled={!newName.trim() || loading}
           className="rounded bg-zinc-700 px-3 py-1 text-sm text-zinc-200 hover:bg-zinc-600 disabled:opacity-50"
         >
-          Crear
+          {t("vcs_branch_create")}
         </button>
       </div>
 

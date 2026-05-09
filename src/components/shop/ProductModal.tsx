@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   X, ExternalLink, Download, Loader2, ShoppingCart,
   CheckCircle2, AlertCircle, Store,
-  Link2, ScanSearch, ChevronRight,
+  Link2, ScanSearch, ChevronRight, Package,
 } from "lucide-react";
 import { useShopStore } from "../../store/shopStore";
 import { useInventoryStore } from "../../store/inventoryStore";
+import { useAppStore } from "../../store/app";
+import { useDownloadProgress } from "../../hooks/useDownloadProgress";
 import {
   ShopProduct, BoothProductDetail, DownloadLinkContext,
   tauriStartDownload, tauriGetBoothProductDetail, tauriRipperGetTopicDetail,
@@ -13,6 +15,7 @@ import {
   tauriRipperResolveHidelink, tauriDownloadDirectUrl,
 } from "../../lib/tauri";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { useT } from "@/i18n";
 
 // ── Gallery ────────────────────────────────────────────────────────────────────
 
@@ -974,14 +977,18 @@ async function searchRiperstoreWithFallbacks(
 // ── Right purchase panel ───────────────────────────────────────────────────────
 
 interface PanelProps {
-  p: ShopProduct; detail: BoothProductDetail | null; loading: boolean; isOwned: boolean;
+  p: ShopProduct; detail: BoothProductDetail | null; loading: boolean;
+  isPurchased: boolean; isInInventory: boolean;
+  riperstoreExperimental: boolean;
   ripperDescription: string;
   ripperLinks: DownloadLinkContext[];
-  onDownload: () => void; onOpenUrl: (url: string) => void;
+  onDownload: () => void; onOpenUrl: (url: string) => void; onGoToInventory: () => void;
   downloading: boolean; downloadDone: boolean; downloadError: string | null;
+  dlPercentage: number; dlStatus: string | null;
 }
 
-function PurchasePanel({ p, detail, loading, isOwned, ripperDescription, ripperLinks, onDownload, onOpenUrl, downloading, downloadDone, downloadError }: PanelProps) {
+function PurchasePanel({ p, detail, loading, isPurchased, isInInventory, riperstoreExperimental, ripperDescription, ripperLinks, onDownload, onOpenUrl, onGoToInventory, downloading, downloadDone, downloadError, dlPercentage, dlStatus }: PanelProps) {
+  const t = useT();
   const isBooth = p.source === "booth";
   const name    = detail?.name   || p.name;
   const author  = detail?.author || p.author;
@@ -1043,38 +1050,36 @@ function PurchasePanel({ p, detail, loading, isOwned, ripperDescription, ripperL
         : <h2 className="text-xl font-bold text-zinc-50 leading-snug break-words">{name}</h2>
       }
 
-      {/* Owned badge */}
-      {isOwned && (
+      {/* Owned / inventory badges */}
+      {isInInventory ? (
+        <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-semibold">
+          <Package className="h-3.5 w-3.5 shrink-0" />
+          {t("shop_modal_already_in_inventory")}
+        </div>
+      ) : isPurchased ? (
         <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-          Already in your inventory
+          {t("shop_modal_purchased")}
         </div>
-      )}
+      ) : null}
 
       {/* Avatar compatibility badges */}
       {p.supported_avatars && p.supported_avatars.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Avatars</span>
           {p.supported_avatars.map((av) => (
-            <span
-              key={av}
-              className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/25 font-medium"
-            >
-              {av}
-            </span>
+            <span key={av} className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/25 font-medium">{av}</span>
           ))}
         </div>
       )}
 
-      {/* Avatar base link (boothplorer) */}
+      {/* Avatar base link */}
       {p.avatar_booth_id && (
-        <button
-          onClick={() => onOpenUrl(`https://booth.pm/en/items/${p.avatar_booth_id}`)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/50 hover:border-zinc-500 transition-colors text-left w-full"
-        >
+        <button onClick={() => onOpenUrl(`https://booth.pm/en/items/${p.avatar_booth_id}`)}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/60 border border-zinc-700/50 hover:border-zinc-500 transition-colors text-left w-full">
           <span className="text-sm">🎭</span>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold text-zinc-300">Ver avatar base en Booth</p>
+            <p className="text-[11px] font-semibold text-zinc-300">{t("shop_modal_view_avatar_base")}</p>
             <p className="text-[10px] text-zinc-500">booth.pm/en/items/{p.avatar_booth_id}</p>
           </div>
           <ExternalLink className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
@@ -1108,53 +1113,77 @@ function PurchasePanel({ p, detail, loading, isOwned, ripperDescription, ripperL
         <div className="p-3 flex flex-col gap-2">
           {isBooth ? (
             <>
-              <button
-                onClick={isOwned ? onDownload : () => onOpenUrl(p.url)}
-                disabled={downloading}
-                className={["flex items-center justify-center gap-2 w-full py-3 rounded-lg text-sm font-bold transition-all text-white",
-                  downloading ? "opacity-60 cursor-not-allowed bg-red-600" : "bg-red-600 hover:bg-red-500 active:scale-[0.98]"].join(" ")}>
-                {downloading
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : isOwned ? <Download className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />
-                }
-                {downloadDone ? "Queued!" : isOwned ? "Download" : "Add to Cart"}
-                {!isOwned && !downloading && <ExternalLink className="h-3.5 w-3.5 opacity-60" />}
-              </button>
-              {/* Deep index: use the known Riperstore thread if already cross-listed,
-                  otherwise let DeepIndexButton discover one via search */}
-              {ripperExtra && ripperProduct ? (
-                <ScrapeRipperButton
-                  sourceId={ripperProduct.source_id}
-                  cachedLinks={ripperLinks}
-                  onDone={handleScrapeResult}
-                  threadName={ripperProduct.name}
-                  threadUrl={ripperProduct.url}
-                />
-              ) : (
-                <DeepIndexButton
-                  boothId={p.source_id}
-                  boothName={p.name}
-                  boothAuthor={p.author}
-                  supportedAvatars={p.supported_avatars}
-                  cachedLinks={ripperLinks}
-                  onDone={handleScrapeResult}
-                />
+              {(downloading || (dlStatus && dlStatus !== "done")) && (
+                <div className="flex flex-col gap-1.5 px-1">
+                  <div className="relative h-1.5 w-full rounded-full bg-zinc-700 overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 rounded-full transition-all duration-200 ease-out bg-blue-500"
+                      style={{ width: `${dlPercentage}%` }} />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
+                  </div>
+                  <p className="text-[10px] text-zinc-400 text-center font-mono">
+                    {dlStatus === "extracting" ? t("shop_card_extracting") : `${Math.round(dlPercentage)}%`}
+                  </p>
+                </div>
               )}
+
+              {isInInventory ? (
+                <button onClick={onGoToInventory}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-lg text-sm font-bold transition-all bg-violet-700 hover:bg-violet-600 active:scale-[0.98] text-white">
+                  <Package className="h-4 w-4" />
+                  {t("shop_card_view_in_inventory")}
+                </button>
+              ) : (
+                <button
+                  onClick={isPurchased ? onDownload : () => onOpenUrl(p.url)}
+                  disabled={downloading}
+                  className={["flex items-center justify-center gap-2 w-full py-3 rounded-lg text-sm font-bold transition-all text-white",
+                    downloading ? "opacity-60 cursor-not-allowed bg-red-600" : "bg-red-600 hover:bg-red-500 active:scale-[0.98]"].join(" ")}>
+                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : isPurchased ? <Download className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
+                  {downloadDone ? t("shop_download_done") : isPurchased ? t("shop_card_download") : "Add to cart"}
+                  {!isPurchased && !downloading && <ExternalLink className="h-3.5 w-3.5 opacity-60" />}
+                </button>
+              )}
+
+              {/* Riperstore integration (experimental gate) */ }
+              {riperstoreExperimental && (
+                <>
+                  {ripperExtra && ripperProduct ? (
+                    <ScrapeRipperButton
+                      sourceId={ripperProduct.source_id}
+                      cachedLinks={ripperLinks}
+                      onDone={handleScrapeResult}
+                      threadName={ripperProduct.name}
+                      threadUrl={ripperProduct.url}
+                    />
+                  ) : (
+                    <DeepIndexButton
+                      boothId={p.source_id}
+                      boothName={p.name}
+                      boothAuthor={p.author}
+                      supportedAvatars={p.supported_avatars}
+                      cachedLinks={ripperLinks}
+                      onDone={handleScrapeResult}
+                    />
+                  )}
+                </>
+              )}
+
               <button onClick={() => onOpenUrl(p.url)}
                 className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700/60 hover:border-zinc-600 transition-colors">
-                View on Booth.pm <ExternalLink className="h-3 w-3" />
+                {t("shop_modal_open_booth")} <ExternalLink className="h-3 w-3" />
               </button>
             </>
           ) : (
             <>
-              {/* Riperstore: scrape button → loading bar → download sheet */}
-              <ScrapeRipperButton
-                sourceId={p.source_id}
-                cachedLinks={ripperLinks}
-                onDone={handleScrapeResult}
-                threadName={p.name}
-                threadUrl={p.url}
-              />
+              {riperstoreExperimental && (
+                <ScrapeRipperButton
+                  sourceId={p.source_id}
+                  cachedLinks={ripperLinks}
+                  onDone={handleScrapeResult}
+                  threadName={p.name}
+                  threadUrl={p.url}
+                />
+              )}
               <button onClick={() => onOpenUrl(p.url)}
                 className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700/60 hover:border-zinc-600 transition-colors">
                 Ver hilo en Riperstore <ExternalLink className="h-3 w-3" />
@@ -1168,26 +1197,24 @@ function PurchasePanel({ p, detail, loading, isOwned, ripperDescription, ripperL
         <div className="px-4 py-3.5 flex items-start gap-2.5 border-b border-zinc-700/50">
           <Download className="h-3.5 w-3.5 mt-0.5 shrink-0 text-zinc-500" />
           <div>
-            <p className="text-zinc-300 font-semibold mb-0.5">Download item</p>
+            <p className="text-zinc-300 font-semibold mb-0.5">{t("shop_modal_download_hint")}</p>
             <p className="leading-snug">
-              {isBooth
-                ? "Available from Purchase History on Booth after buying."
-                : "Scrapea el hilo completo para encontrar links de descarga reales."}
+              {isBooth ? t("shop_modal_download_hint_booth") : t("shop_modal_download_hint_ripper")}
             </p>
           </div>
         </div>
         <div className="px-4 py-3 flex items-center justify-between">
-          <span>Source ID</span>
+          <span>{t("shop_modal_source_id")}</span>
           <span className="text-zinc-400 font-mono text-[11px]">{p.source_id}</span>
         </div>
       </div>
 
       <p className="text-[10px] text-zinc-600 leading-relaxed text-center px-2">
-        {isBooth && !isOwned
-          ? "Purchase on Booth first — download activates once you own this item."
+        {isBooth && !isPurchased
+          ? t("shop_modal_footer_booth_purchase")
           : isBooth
-          ? "Re-download any time from your inventory."
-          : "El scrape recorre hasta 8 páginas del hilo buscando links de Mega, GDrive, MediaFire, etc."}
+          ? t("shop_modal_footer_booth_redownload")
+          : t("shop_modal_footer_ripper")}
       </p>
     </div>
   );
@@ -1196,6 +1223,7 @@ function PurchasePanel({ p, detail, loading, isOwned, ripperDescription, ripperL
 // ── Main modal ─────────────────────────────────────────────────────────────────
 
 export function ProductModal() {
+  const t = useT();
   const { selectedProduct, selectProduct } = useShopStore();
   const { items: inventoryItems } = useInventoryStore();
 
@@ -1220,10 +1248,20 @@ export function ProductModal() {
   // Load booth purchases once when modal mounts (no-op if already loaded)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadBoothOwnedIds(); }, []);
-  const isOwned = p
-    ? inventoryItems.some(i => i.source === p.source && i.source_id === p.source_id) ||
-      (p.source === "booth" && boothOwnedIds.has(p.source_id))
+  const riperstoreExperimental = useAppStore(s => s.riperstoreExperimental);
+  const setActiveSection = useAppStore(s => s.setActiveSection);
+  const { downloads } = useDownloadProgress();
+
+  // Separate: has Booth API confirmed purchase vs is item in local inventory
+  const isPurchased = p ? (p.source === "booth" && boothOwnedIds.has(p.source_id)) : false;
+  const isInInventory = p
+    ? inventoryItems.some(i => i.source === p.source && i.source_id === p.source_id)
     : false;
+
+  // Real-time download state for this product
+  const dl = p ? (downloads[p.source_id] ?? null) : null;
+  const dlPercentage = dl?.percentage ?? 0;
+  const dlStatus = dl?.status ?? null;
 
   useEffect(() => {
     if (!p) {
@@ -1381,7 +1419,7 @@ export function ProductModal() {
                   <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-line">{description}</p>
                 ) : (
                   <p className="text-sm text-zinc-600 italic">
-                    {isBooth ? "No description available." : "Open the thread for the full description."}
+                    {isBooth ? t("shop_modal_no_description") : "Open the thread for the full description."}
                   </p>
                 )}
               </section>
@@ -1389,7 +1427,7 @@ export function ProductModal() {
               {(similar.length > 0 || (isBooth && loadingDetail)) && (
                 <section className="flex flex-col gap-4">
                   <div className="h-px bg-zinc-800" />
-                  <h3 className="text-xs font-bold tracking-widest text-zinc-500 uppercase">More from this shop</h3>
+                  <h3 className="text-xs font-bold tracking-widest text-zinc-500 uppercase">{t("shop_modal_similar")}</h3>
                   {loadingDetail ? (
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                       {Array.from({ length: 8 }).map((_, i) => (
@@ -1422,11 +1460,15 @@ export function ProductModal() {
           >
             <div className="p-8">
               <PurchasePanel
-                p={p} detail={detail} loading={loadingDetail} isOwned={isOwned}
+                p={p} detail={detail} loading={loadingDetail}
+                isPurchased={isPurchased} isInInventory={isInInventory}
+                riperstoreExperimental={riperstoreExperimental}
                 ripperDescription={description}
                 ripperLinks={ripperLinks}
                 onDownload={handleDownload} onOpenUrl={handleOpenUrl}
+                onGoToInventory={() => { selectProduct(null); setActiveSection("inventory"); }}
                 downloading={downloading} downloadDone={downloadDone} downloadError={downloadError}
+                dlPercentage={dlPercentage} dlStatus={dlStatus}
               />
             </div>
           </div>

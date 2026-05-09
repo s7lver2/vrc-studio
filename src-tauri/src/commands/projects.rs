@@ -31,7 +31,7 @@ fn row_to_project(
     name: String,
     path: String,
     unity_version: String,
-    unity_type: String,
+    _unity_type: String,
     avatar_base_id: Option<String>,
     shader: Option<String>,
     vcs_enabled: i64,
@@ -136,8 +136,17 @@ pub async fn delete_project(
 }
 
 #[tauri::command]
-pub async fn list_unity_installations() -> Result<Vec<UnityInstallation>, AppError> {
-    Ok(unity_detector::detect_unity_installations().await)
+pub async fn list_unity_installations(app: AppHandle) -> Result<Vec<UnityInstallation>, AppError> {
+    let result = unity_detector::detect_unity_installations().await;
+    let _ = app.emit("unity:installations-detected", serde_json::json!({
+        "count": result.len(),
+        "installations": result.iter().map(|i| serde_json::json!({
+            "version": i.version,
+            "path": i.path,
+            "is_custom": i.is_custom
+        })).collect::<Vec<_>>()
+    }));
+    Ok(result)
 }
 
 #[tauri::command]
@@ -153,6 +162,15 @@ pub async fn create_project(
     pool: State<'_, SqlitePool>,
 ) -> Result<Project, AppError> {
     validate_project_name(&request.name)?;
+
+    const ALLOWED_VERSIONS: &[&str] = &["2022.3.22f1", "2022.3.6f1", "2019.4.31f1"];
+    if !ALLOWED_VERSIONS.contains(&request.unity_version.as_str()) {
+        return Err(AppError::InvalidInput(format!(
+            "Versión de Unity no permitida: '{}'. Versiones soportadas: {}",
+            request.unity_version,
+            ALLOWED_VERSIONS.join(", ")
+        )));
+    }
 
     let project_id = Uuid::new_v4().to_string();
     let project_dir = std::path::PathBuf::from(&request.destination_dir).join(&request.name);
@@ -266,41 +284,126 @@ pub async fn open_project_in_unity(
     Ok(())
 }
 
-/// Capture the primary monitor to `{data_dir}/screenshots/{project_id}.png`.
-/// Uses PowerShell on Windows (no extra crate needed).
+/// Capture the Unity editor window to `{data_dir}/screenshots/{project_id}.png`.
+///
+/// On Windows we use `PrintWindow` with `PW_RENDERFULLCONTENT` (flag=2) so that
+/// DirectX/OpenGL surfaces are included — plain `CopyFromScreen` only captures
+/// the GDI composited layer and returns black for hardware-accelerated windows.
+/// We target the running Unity process window; if Unity isn't open we skip.
 fn capture_screen_to_file(data_dir: &std::path::Path, project_id: &str) -> Result<String, ()> {
     let screenshots_dir = data_dir.join("screenshots");
     std::fs::create_dir_all(&screenshots_dir).map_err(|_| ())?;
     let png_path = screenshots_dir.join(format!("{project_id}.png"));
-    let png_str = png_path.to_string_lossy().replace('\\', "/");
+    // Keep backslashes for the PowerShell path (Windows native).
+    let png_str = png_path.to_string_lossy().into_owned();
 
     #[cfg(target_os = "windows")]
     {
+        // Intentamos varios nombres de proceso por si el editor usa un nombre distinto.
+        // PW_RENDERFULLCONTENT (flag=2) captura superficies DX/OpenGL, no solo GDI.
         let ps = format!(
-            r#"Add-Type -AssemblyName System.Windows.Forms,System.Drawing;
-$s=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;
-$b=New-Object System.Drawing.Bitmap($s.Width,$s.Height);
-$g=[System.Drawing.Graphics]::FromImage($b);
-$g.CopyFromScreen($s.Location,[System.Drawing.Point]::Empty,$s.Size);
-$b.Save('{png_str}');
-$g.Dispose();$b.Dispose()"#,
-            png_str = png_str
+            r#"Add-Type @"
+    using System;
+    using System.Runtime.InteropServices;
+    using System.Drawing;
+    using System.Drawing.Imaging;
+    public class VrcCap {{
+        [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint f);
+        [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+        [StructLayout(LayoutKind.Sequential)] public struct RECT {{ public int L,T,R,B; }}
+        public static bool CapWindow(IntPtr hwnd, string path) {{
+            RECT r; GetClientRect(hwnd, out r);
+            int w = r.R - r.L, h = r.B - r.T;
+            if (w <= 0 || h <= 0) return false;
+            using (var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb))
+            using (var g = Graphics.FromImage(bmp)) {{
+                IntPtr dc = g.GetHdc();
+                bool ok = PrintWindow(hwnd, dc, 2);
+                g.ReleaseHdc(dc);
+                if (ok) bmp.Save(path, ImageFormat.Png);
+                return ok;
+            }}
+        }}
+    }}
+    "@ -ReferencedAssemblies System.Drawing -Language CSharp
+    # Buscar la ventana de Unity por varios nombres de proceso posibles.
+    # Si ninguno está activo con ventana visible, salir sin capturar (exit 0).
+    $candidates = @('Unity', 'Unity Editor', 'UnityEditor')
+    $u = $null
+    foreach ($name in $candidates) {{
+        $proc = Get-Process -Name $name -ErrorAction SilentlyContinue `
+                | Where-Object {{ $_.MainWindowHandle -ne [IntPtr]::Zero }} `
+                | Select-Object -First 1
+        if ($proc) {{ $u = $proc; break }}
+    }}
+    if (-not $u) {{
+        Write-Host "[VRCStudio] Unity window not found — skipping screenshot"
+        exit 0
+    }}
+    $ok = [VrcCap]::CapWindow($u.MainWindowHandle, '{png_str}')
+    if (-not $ok) {{
+        Write-Host "[VRCStudio] PrintWindow returned false"
+        exit 1
+    }}"#,
+            png_str = png_str.replace('\'', "''")
         );
-        let status = std::process::Command::new("powershell")
+        let output = std::process::Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
-            .status();
-        if status.map(|s| s.success()).unwrap_or(false) {
-            return Ok(png_path.to_string_lossy().to_string());
+            .output();
+        if output.map(|o| o.status.success()).unwrap_or(false) {
+            if png_path.exists() {
+                return Ok(png_path.to_string_lossy().to_string());
+            }
         }
     }
 
     #[cfg(target_os = "macos")]
     {
+        // 1. Obtener el ID de ventana de Unity Editor vía AppleScript.
+        //    El proceso puede llamarse "Unity" o "Unity Editor" según la versión.
+        let get_id = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(r#"
+    set appNames to {"Unity", "Unity Editor"}
+    repeat with appName in appNames
+        try
+            tell application "System Events"
+                set procs to (processes whose name is appName)
+                if (count of procs) > 0 then
+                    set proc to first item of procs
+                    set wins to windows of proc
+                    if (count of wins) > 0 then
+                        set win to first item of wins
+                        return id of win
+                    end if
+                end if
+            end tell
+        end try
+    end repeat
+    return ""
+            "#)
+            .output();
+
+        let window_id = match get_id {
+            Ok(o) if o.status.success() => {
+                String::from_utf8_lossy(&o.stdout).trim().to_string()
+            }
+            _ => String::new(),
+        };
+
+        if window_id.is_empty() {
+            eprintln!("[VRCStudio] macOS: Unity window not found — skipping screenshot");
+            return Err(());
+        }
+
+        // 2. Capturar solo esa ventana (sin el escritorio ni otras apps).
+        //    -l: window id; -x: sin sonido de obturador; -o: sin sombra.
         let status = std::process::Command::new("screencapture")
-            .arg("-x")
-            .arg(png_path.to_str().unwrap_or(""))
+            .args(["-l", &window_id, "-x", "-o",
+                png_path.to_str().unwrap_or("")])
             .status();
-        if status.map(|s| s.success()).unwrap_or(false) {
+
+        if status.map(|s| s.success()).unwrap_or(false) && png_path.exists() {
             return Ok(png_path.to_string_lossy().to_string());
         }
     }
@@ -594,6 +697,7 @@ pub async fn install_vpm_package_to_project(
     project_path: String,
     package_id: String,
     version: Option<String>,
+    repo_urls: Option<Vec<String>>,
     app: AppHandle,
 ) -> Result<(), AppError> {
     let emit = |step: &str, progress: f32, done: bool, error: Option<String>| {
@@ -608,14 +712,47 @@ pub async fn install_vpm_package_to_project(
 
     emit("Fetching package index…", 0.05, false, None);
 
-    let all_packages = vpm_client::fetch_vpm_repository(OFFICIAL_VPM_URL).await?;
+    // Determinar qué repos consultar
+    let urls: Vec<String> = match repo_urls {
+        Some(ref urls) if !urls.is_empty() => urls.clone(),
+        _ => vec![OFFICIAL_VPM_URL.to_string()],
+    };
+
+    // Fetch en paralelo y merge; si alguno falla, se ignora siempre que quede al menos uno
+    let fetches: Vec<_> = urls.iter()
+        .map(|url| vpm_client::fetch_vpm_repository(url))
+        .collect();
+    let results = futures::future::join_all(fetches).await;
+
+    let mut all_packages: Vec<crate::models::VpmPackage> = Vec::new();
+    let mut all_failed = true;
+    for result in results {
+        match result {
+            Ok(pkgs) => {
+                all_failed = false;
+                for pkg in pkgs {
+                    if !all_packages.iter().any(|p| p.id == pkg.id) {
+                        all_packages.push(pkg);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[install] repo fetch error (non-fatal): {}", e);
+            }
+        }
+    }
+    if all_failed {
+        let msg = "No se pudo conectar a ningún repositorio VPM".to_string();
+        emit("Failed", 0.0, true, Some(msg.clone()));
+        return Err(AppError::External(msg));
+    }
 
     // Resolve requested version or use latest
     let pkg = all_packages.iter()
         .find(|p| p.id == package_id)
         .ok_or_else(|| AppError::NotFound(format!("Package {package_id} not in index")))?;
 
-    let pkg_version = if let Some(ref ver) = version {
+    let _pkg_version = if let Some(ref ver) = version {
         pkg.versions.get(ver)
             .ok_or_else(|| AppError::NotFound(format!("Version {ver} not found for {package_id}")))?
     } else {

@@ -131,17 +131,33 @@ pub struct CreateProjectProgress {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VpmPackageVersion {
-    pub name: String,
-    pub display_name: String,
-    pub version: String,
-    pub unity: String,
-    pub description: Option<String>,
-    pub url: String,
-    /// { "com.vrchat.base": ">=3.7.0" }
-    pub dependencies: std::collections::HashMap<String, String>,
-}
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+  pub struct VpmPackageSample {
+      pub display_name: String,
+      pub description: String,
+      pub path: String,
+  }
+
+  #[derive(Debug, Clone, Serialize, Deserialize)]
+  pub struct VpmPackageVersion {
+      pub name: String,
+      pub display_name: String,
+      pub version: String,
+      pub unity: String,
+      pub description: Option<String>,
+      pub url: String,
+      /// { "com.vrchat.base": ">=3.7.0" }
+      pub dependencies: std::collections::HashMap<String, String>,
+      // Extra VPM fields (optional — not all repos include them)
+      #[serde(rename = "changelogUrl", default)]
+      pub changelog_url: Option<String>,
+      #[serde(rename = "documentationUrl", default)]
+      pub documentation_url: Option<String>,
+      #[serde(rename = "licensesUrl", default)]
+      pub license_url: Option<String>,
+      #[serde(default)]
+      pub samples: Vec<VpmPackageSample>,
+  }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VpmPackage {

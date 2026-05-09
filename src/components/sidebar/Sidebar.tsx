@@ -1,40 +1,42 @@
-import { Boxes, Package, ShoppingBag, Archive, Settings } from "lucide-react";
+// src/components/sidebar/Sidebar.tsx
+import { Boxes, Package, ShoppingBag, Archive, Settings, Terminal } from "lucide-react";
 import { NavItem } from "./NavItem";
 import { useAppStore, Section } from "@/store/app";
-
-const NAV_ITEMS: { section: Section; label: string; icon: typeof Boxes }[] = [
-  { section: "projects", label: "Projects", icon: Boxes },
-  { section: "packages", label: "Packages", icon: Package },
-  { section: "shop", label: "Shop", icon: ShoppingBag },
-  { section: "inventory", label: "Inventory", icon: Archive },
-  { section: "settings", label: "Settings", icon: Settings },
-];
+import { useLogsStore } from "@/store/logsStore";
+import { useT } from "@/i18n";
 
 export function Sidebar() {
+  const t = useT();
   const { activeSection, setActiveSection } = useAppStore();
+  const errorCount = useLogsStore((s) => s.errorCount);
+
+  const navItems: { section: Section; label: string; icon: typeof Boxes }[] = [
+    { section: "projects",  label: t("nav_projects"),  icon: Boxes },
+    { section: "packages",  label: t("nav_packages"),  icon: Package },
+    { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag },
+    { section: "inventory", label: t("nav_inventory"), icon: Archive },
+    { section: "settings",  label: t("nav_settings"),  icon: Settings },
+    { section: "logs",      label: t("nav_logs"),      icon: Terminal },
+  ];
 
   return (
     <aside className="flex flex-col w-56 min-h-screen bg-[hsl(var(--sidebar-bg))] border-r border-zinc-800 px-3 py-5 gap-1">
-      {/* Logo */}
       <div className="flex items-center gap-2 px-3 mb-6">
         <div className="w-6 h-6 bg-red-600 rounded-sm" />
         <span className="font-semibold text-zinc-100 text-sm tracking-wide">VRC Studio</span>
       </div>
-
-      {/* Nav */}
       <nav className="flex flex-col gap-1 flex-1">
-        {NAV_ITEMS.map(({ section, label, icon }) => (
+        {navItems.map(({ section, label, icon }) => (
           <NavItem
             key={section}
             icon={icon}
             label={label}
             active={activeSection === section}
             onClick={() => setActiveSection(section)}
+            badge={section === "logs" && errorCount > 0 ? errorCount : undefined}
           />
         ))}
       </nav>
-
-      {/* Version */}
       <p className="px-3 text-xs text-zinc-600">v0.1.0</p>
     </aside>
   );

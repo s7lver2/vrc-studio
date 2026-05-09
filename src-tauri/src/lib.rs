@@ -29,12 +29,20 @@ impl Default for RipperState {
 pub struct BoothState {
     pub webview_label: Mutex<Option<String>>,
     pub purchased_ids: Mutex<std::collections::HashSet<String>>,
+    /// ID del listener de `booth:session-check`. Se deregistra en booth_logout.
+    pub session_listener: Mutex<Option<tauri::EventId>>,
+    /// True solo cuando el session-check confirmó sesión activa en booth.pm.
+    /// A diferencia de webview_label, este flag no es un falso positivo por
+    /// el mero hecho de que el WebviewWindow exista en memoria.
+    pub authenticated: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl Default for BoothState {
     fn default() -> Self {
         Self {
             webview_label: Mutex::new(None),
             purchased_ids: Mutex::new(std::collections::HashSet::new()),
+            session_listener: Mutex::new(None),
+            authenticated: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -51,6 +59,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_fs::init())
         .manage(RipperState::default())
         .manage(BoothState::default())
+        .manage(commands::build_monitor::BuildMonitorState::default())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -94,6 +103,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::packages::update_package,
             commands::packages::delete_package,
             commands::packages::build_package,
+            commands::packages::get_vpm_package_files,
             // ── Shop ──
             commands::shop::search_shop,
             commands::shop::get_booth_product_detail,
@@ -147,5 +157,23 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::vcs::github_get_user,
             commands::vcs::github_get_token,
             commands::vcs::github_logout,
+            commands::vcs::vcs_get_commit_diff,
+            commands::vcs::vcs_get_file_diff,
+            // ── Journal ──
+            commands::journal::journal_list,
+            commands::journal::journal_create,
+            commands::journal::journal_update,
+            commands::journal::journal_delete,
+            // ── Terminal ──
+            commands::terminal::run_in_project,
+            // ── Build Monitor ──
+            commands::build_monitor::start_build_monitor,
+            commands::build_monitor::stop_build_monitor,
+            // ── VCS Conflicts ──
+            commands::conflicts::vcs_get_conflicts,
+            commands::conflicts::vcs_resolve_conflict,
+            // ── Updates ──
+            commands::updates::check_for_update,
+            commands::updates::download_and_install_update,
         ])
 }
