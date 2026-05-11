@@ -1,6 +1,8 @@
 import { Loader2 } from "lucide-react";
 import { useShopStore } from "../../store/shopStore";
 import { ProductCard } from "./ProductCard";
+import { useAppearanceStore } from "@/store/appearanceStore";
+
 
 function ProductCardSkeleton() {
   return (
@@ -20,10 +22,17 @@ function ProductCardSkeleton() {
 
 export function ProductGrid() {
   const { results, loading, error, loadNextPage } = useShopStore();
+  const shopItemSize = useAppearanceStore((s) => s.shopItemSize);
+
+  const gridCols = {
+    compact: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7",
+    normal:  "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
+    large:   "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4",
+  }[shopItemSize];
 
   if (loading && results.length === 0) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+      <div className={`grid ${gridCols} gap-3`}>
         {Array.from({ length: 18 }).map((_, i) => (
           <ProductCardSkeleton key={i} />
         ))}
@@ -49,7 +58,7 @@ export function ProductGrid() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+      <div className={`grid ${gridCols} gap-3`}>
         {results.map((p) => (
           <ProductCard key={`${p.source}-${p.source_id}`} product={p} />
         ))}

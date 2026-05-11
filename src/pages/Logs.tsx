@@ -1,10 +1,9 @@
-// src/pages/Logs.tsx
 import { useState, useMemo, useRef, useEffect } from "react";
+import { Download, Trash2 } from "lucide-react";
 import { useLogsStore, LogLevel } from "@/store/logsStore";
 import { LogEntry } from "@/components/logs/LogEntry";
 import { LogsToolbar } from "@/components/logs/LogsToolbar";
 import { useT } from "@/i18n";
-
 
 export default function Logs() {
   const t = useT();
@@ -16,7 +15,6 @@ export default function Logs() {
   const [autoScroll, setAutoScroll] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Filtrar
   const visible = useMemo(() => {
     return entries.filter((e) => {
       if (filter !== "all" && e.level !== filter) return false;
@@ -32,7 +30,6 @@ export default function Logs() {
     });
   }, [entries, filter, search]);
 
-  // Auto-scroll al fondo cuando llegan entradas nuevas
   useEffect(() => {
     if (autoScroll && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
@@ -50,47 +47,60 @@ export default function Logs() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
-      {/* Header */}
-      <div className="px-4 pt-4 pb-2 border-b border-zinc-800">
-        <h1 className="text-base font-semibold text-zinc-100">{t("logs_title")}</h1>
-        <p className="text-xs text-zinc-500 mt-0.5">
-          Diagnóstico en tiempo real — reemplaza DevTools
-        </p>
+    <div className="flex flex-col h-full">
+      {/* Header — igual que Projects */}
+      <div className="flex items-center justify-between border-b border-zinc-800 px-8 py-5">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-100">{t("logs_title")}</h1>
+          <p className="text-sm text-zinc-500 mt-0.5">
+            {t("logs_subtitle")}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            title={t("logs_export")}
+            className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            {t("logs_export")}
+          </button>
+          <button
+            onClick={clear}
+            title={t("logs_clear")}
+            className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-red-500/50 hover:text-red-400 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            {t("logs_clear")}
+          </button>
+        </div>
       </div>
 
-      {/* Toolbar */}
       <LogsToolbar
         search={search}
         onSearch={setSearch}
         filter={filter}
         onFilter={setFilter}
-        onClear={clear}
-        onExport={handleExport}
         count={visible.length}
       />
 
-      {/* Auto-scroll toggle */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800 bg-zinc-900/40">
+      <div className="flex items-center gap-2 px-8 py-2 border-b border-zinc-800">
         <label className="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={autoScroll}
             onChange={(e) => setAutoScroll(e.target.checked)}
-            className="accent-zinc-400"
+            className="accent-red-500"
           />
           Auto-scroll
         </label>
         {visible.length === 0 && (
           <span className="text-xs text-zinc-600 ml-2">
-            {entries.length === 0
-              ? t("logs_empty")
-              : "Sin resultados para el filtro actual."}
+            {entries.length === 0 ? t("logs_empty") : t("logs_no_results")}
           </span>
         )}
       </div>
 
-      {/* Log list — newest first */}
       <div className="flex-1 overflow-y-auto">
         {visible.map((entry) => (
           <LogEntry key={entry.id} entry={entry} />

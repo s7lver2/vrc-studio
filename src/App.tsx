@@ -9,6 +9,8 @@ import Inventory from "@/pages/Inventory";
 import Settings from "@/pages/Settings";
 import { WorkspacePage } from "@/components/workspace/WorkspacePage";
 import Logs from "@/pages/Logs";
+import TrackerPage from "@/pages/Tracker";
+import Sandbox from "@/pages/Sandbox";
 import { useBoothDebug } from "./hooks/useBoothDebug";
 import { UpdateDialog } from "@/components/updates/UpdateDialog";
 
@@ -29,6 +31,10 @@ function PageContent() {
       return <Settings />;
     case "logs":
       return <Logs />;
+    case "tracker":
+      return <TrackerPage />;
+    case "sandbox":
+      return <Sandbox />;
     default:
       return null;
   }
@@ -38,14 +44,8 @@ export default function App() {
   useBoothDebug();
   const [splashDone, setSplashDone] = useState(false);
   const handleSplashDone = useCallback(() => setSplashDone(true), []);
-  const awesomeAnimations = useAppStore((s) => s.awesomeAnimations);
   const activeSection = useAppStore((s) => s.activeSection);
   const workspaceProject = useAppStore((s) => s.workspaceProject);
-
-  // Sync body class for CSS animation system
-  useEffect(() => {
-    document.body.classList.toggle("vrc-animations-on", awesomeAnimations > 0);
-  }, [awesomeAnimations]);
 
   // Workspace mode — pantalla completa sin sidebar
   if (activeSection === "workspace" && workspaceProject) {

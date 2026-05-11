@@ -78,6 +78,14 @@ pub struct InventoryItem {
     pub size_bytes: Option<i64>,
     pub tags: Vec<String>,
     pub is_compressed: bool,
+    // ── v2 ──────────────────────────────────────────
+    pub display_name: Option<String>,
+    pub custom_cover_path: Option<String>,
+    pub sort_order: Option<i32>,
+    pub product_images: Vec<String>,
+    pub custom_images: Vec<String>,
+    /// ID de la carpeta a la que pertenece este item (None = raíz)
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +93,8 @@ pub struct InventoryFolder {
     pub id: String,
     pub name: String,
     pub parent_id: Option<String>,
+    pub color: Option<String>,
+    pub custom_image_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,4 +187,116 @@ impl VpmPackage {
                 va.cmp(&vb)
             })
     }
+}
+
+// ── Tracker ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackerKind {
+    Item,
+    Author,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackerItem {
+    pub id: String,
+    pub kind: TrackerKind,
+    // item fields
+    pub booth_id: Option<String>,
+    pub item_name: Option<String>,
+    pub item_author: Option<String>,
+    pub item_thumbnail_url: Option<String>,
+    pub item_url: Option<String>,
+    pub last_known_price: Option<String>,
+    pub track_price_drops: bool,
+    pub track_availability: bool,
+    // author fields
+    pub author_name: Option<String>,
+    pub author_booth_shop_id: Option<String>,
+    pub track_new_items: bool,
+    // common
+    pub check_interval_minutes: i64,
+    pub last_checked_at: Option<String>,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackerEvent {
+    pub id: String,
+    pub tracker_item_id: String,
+    pub event_type: String,
+    pub payload: String, // JSON string
+    pub detected_at: String,
+    pub is_read: bool,
+}
+
+/// Payload para crear un nuevo tracker item desde el frontend.
+#[derive(Debug, Deserialize)]
+pub struct CreateTrackerItemPayload {
+    pub kind: TrackerKind,
+    // item
+    pub booth_id: Option<String>,
+    pub item_name: Option<String>,
+    pub item_author: Option<String>,
+    pub item_thumbnail_url: Option<String>,
+    pub item_url: Option<String>,
+    pub track_price_drops: Option<bool>,
+    pub track_availability: Option<bool>,
+    // author
+    pub author_name: Option<String>,
+    pub author_booth_shop_id: Option<String>,
+    pub track_new_items: Option<bool>,
+    // common
+    pub check_interval_minutes: Option<i64>,
+}
+
+/// Payload para actualizar configuración de un tracker item existente.
+#[derive(Debug, Deserialize)]
+pub struct UpdateTrackerItemPayload {
+    pub track_price_drops: Option<bool>,
+    pub track_availability: Option<bool>,
+    pub track_new_items: Option<bool>,
+    pub check_interval_minutes: Option<i64>,
+    pub is_active: Option<bool>,
+}
+
+// ── Prefab / Unity scene ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrefabNode {
+    pub file_id: u64,
+    pub name: String,
+    pub is_active: bool,
+    pub children: Vec<PrefabNode>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AnimStateInfo {
+    pub name: String,
+    pub clip_name: Option<String>,
+    pub is_blend_tree: bool,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AnimLayerInfo {
+    pub name: String,           // "Base", "Additive", "Gesture", "Action", "FX"
+    pub states: Vec<AnimStateInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AvatarInfo {
+    pub view_position: Option<[f32; 3]>,  // ViewPosition {x,y,z}
+    pub lip_sync_mode: Option<u8>,         // 0=VisemeBlendShape, etc.
+    pub has_vrc_descriptor: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrefabScene {
+    pub root_nodes: Vec<PrefabNode>,
+    pub anim_layers: Vec<AnimLayerInfo>,  // vacío si no hay .controller parseable
+    pub avatar_info: AvatarInfo,
+    pub suggested_mesh_file: Option<String>, // ruta relativa al FBX/GLB encontrado al lado del prefab
 }

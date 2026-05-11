@@ -12,8 +12,9 @@ import {
   FileText, Globe, RefreshCw, ChevronDown, ChevronUp,
   TerminalSquare, Package, Upload,
 } from "lucide-react";
-import { tauriGetBoothProductDetail, tauriSearchShop, tauriImportLocalPackage, ShopProduct } from "../../lib/tauri";
+import { tauriGetBoothProductDetail, tauriSearchShop, tauriImportLocalPackage, tauriSetItemProductImages, ShopProduct } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";
+import { GlobalBoothPickerModal, type BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
 import { TagInput } from "./TagInput";
 import { useT } from "../../i18n";
 
@@ -42,6 +43,7 @@ interface ScannedItem extends DetectedFile {
   tags?: string[];
   boothUrl?: string;
   boothFound?: boolean;
+  productImages?: string[];
 }
 
 type ConflictResolution = "keep_copy" | "delete" | "combine" | "ignore";
@@ -143,6 +145,7 @@ async function realAnalyze(file: DetectedFile): Promise<Partial<ScannedItem>> {
         boothId: detail.source_id,
         boothUrl: detail.url,
         thumbnailUrl: detail.images?.[0] ?? undefined,
+        productImages: detail.images ?? [],
         description: detail.description || undefined,
         boothFound: true,
         detectedAvatars: [],
@@ -727,6 +730,8 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
   const t = useT();
   const [step, setStep] = useState<1 | 2>(1);
 
+  const [boothPickerOpen, setBoothPickerOpen] = useState(false);
+  const [boothPickerForItemId, setBoothPickerForItemId] = useState<string | null>(null);
   const [rootDir, setRootDir] = useState<string | null>(null);
   const [recursive, setRecursive] = useState(true);
   const [scanTypes, setScanTypes] = useState<Set<string>>(new Set(["unitypackage", "zip", "fbx", "vrm", "glb"]));
@@ -754,6 +759,22 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
 
   const toggleScanType = (t: string) => {
     setScanTypes((s) => { const next = new Set(s); if (next.has(t)) next.delete(t); else next.add(t); return next; });
+  };
+
+  const openBoothPicker = (itemId: string) => {
+    setBoothPickerForItemId(itemId);
+    setBoothPickerOpen(true);
+  };
+
+  const handleBoothSelect = (result: BoothPickerResult) => {
+    if (!boothPickerForItemId) return;
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === boothPickerForItemId
+          ? { ...item, boothId: result.boothId, name: result.name, author: result.author, thumbnailUrl: result.thumbnailUrl, boothUrl: result.url, boothFound: true }
+          : item
+      )
+    );
   };
 
   const startScan = async () => {
@@ -835,13 +856,17 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
     for (let i = 0; i < readyItems.length; i++) {
       const item = readyItems[i];
       try {
-        await tauriImportLocalPackage({
+        const newId = await tauriImportLocalPackage({
           zip_path: item.filePath,
           name: item.name ?? item.fileName,
           author: item.author ?? undefined,
           thumbnail_url: item.customThumbnailUrl ?? item.thumbnailUrl ?? undefined,
           booth_id: item.boothId ?? undefined,
         });
+        // Guardar todas las imágenes de producto de Booth
+        if (item.productImages && item.productImages.length > 0) {
+          await tauriSetItemProductImages(newId, item.productImages).catch(() => {});
+        }
         addLog(`✓ Imported: ${item.name ?? item.fileName}`);
       } catch (e: any) {
         const msg = `✗ Failed: ${item.fileName} — ${e?.message ?? String(e)}`;
@@ -1111,6 +1136,14 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
 
       {conflict && (
         <ConflictPopup conflict={conflict} onResolve={(resolution) => handleConflictResolve(resolution)} />
+      )}
+      {boothPickerOpen && (
+        <GlobalBoothPickerModal
+          title="Link Booth Product"
+          subtitle="Find the Booth listing for this asset"
+          onClose={() => setBoothPickerOpen(false)}
+          onSelect={handleBoothSelect}
+        />
       )}
     </>
   );

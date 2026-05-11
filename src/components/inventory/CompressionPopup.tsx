@@ -23,22 +23,33 @@ interface Props {
   mode: "compress" | "decompress";
   onDone: () => void;
   onError: (msg: string) => void;
+  /** Multi-select queue: índice actual (1-based) */
+  queueCurrent?: number;
+  /** Multi-select queue: total de items */
+  queueTotal?: number;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function CompressionPopup({ itemId, itemName, mode, onDone, onError }: Props) {
+export function CompressionPopup({ itemId, itemName, mode, onDone, onError, queueCurrent, queueTotal }: Props) {
   const t = useT();
   const [percentage, setPercentage] = useState(0);
   const [phase, setPhase] = useState<string>(mode === "compress" ? "compressing" : "decompressing");
   const unlistenRef = useRef<(() => void) | null>(null);
+
+  // Resetear el porcentaje cuando cambia el item (cola multi-select)
+  useEffect(() => {
+    setPercentage(0);
+    setPhase(mode === "compress" ? "compressing" : "decompressing");
+  }, [itemId, mode]);
 
   useEffect(() => {
     let active = true;
     listen<CompressProgressEvent>("compress://progress", (event) => {
       if (!active) return;
       if (event.payload.item_id !== itemId) return;
-      setPercentage(Math.round(event.payload.percentage));
+      // Nunca retroceder: solo aceptamos valores mayores al actual
+      setPercentage((prev) => Math.max(prev, Math.round(event.payload.percentage)));
       setPhase(event.payload.phase);
       if (event.payload.phase === "done") {
         setTimeout(() => { if (active) onDone(); }, 800);
@@ -76,17 +87,38 @@ export function CompressionPopup({ itemId, itemName, mode, onDone, onError }: Pr
           <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[220px]">{itemName}</p>
           <p className="text-[10px] text-zinc-600 mt-1">{subtitle}</p>
         </div>
-        <div className="w-full">
-          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-red-500 rounded-full transition-all duration-300"
-              style={{ width: `${percentage}%` }}
-            />
+        <div className="w-full flex flex-col gap-3">
+          {/* Barra de progreso del item actual */}
+          <div>
+            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-red-500 rounded-full transition-all duration-300"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1.5">
+              <span className="text-[10px] text-zinc-600">{phase}</span>
+              <span className="text-[10px] text-zinc-500 tabular-nums">{percentage}%</span>
+            </div>
           </div>
-          <div className="flex justify-between mt-1.5">
-            <span className="text-[10px] text-zinc-600">{phase}</span>
-            <span className="text-[10px] text-zinc-500 tabular-nums">{percentage}%</span>
-          </div>
+
+          {/* Barra de cola — solo en multi-select */}
+          {queueTotal && queueTotal > 1 ? (
+            <div>
+              <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-zinc-500 rounded-full transition-all duration-500"
+                  style={{ width: `${((queueCurrent ?? 1) / queueTotal) * 100}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-[10px] text-zinc-600">Cola</span>
+                <span className="text-[10px] text-zinc-500 tabular-nums">
+                  {queueCurrent} / {queueTotal}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

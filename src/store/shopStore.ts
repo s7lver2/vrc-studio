@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import {
   ShopProduct,
-  BoothProductDetail,
   RiperstoreSearchResult,
   tauriSearchShop,
   tauriRipperSearch,
@@ -12,10 +11,21 @@ import {
   tauriBoothGetOwnedIds,
 } from "../lib/tauri";
 import { loadRiperstoreExperimental } from "./app";
+import { BoothProductDetail } from "@/lib/tauri";
+import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
+
+// ── Nuevo tipo (también se añadirá a lib/tauri.ts) ────────────────────────────
+export interface ShopAuthor {
+  name: string;
+  product_count: number;
+  sample_thumbnail: string;
+  sample_products: ShopProduct[];
+}
 
 interface ShopFilters {
   source: "all" | "booth" | "riperstore";
   priceType: "all" | "free" | "paid" | "owned";
+  searchMode: "items" | "authors"; // ← nuevo
 }
 
 interface ShopState {
@@ -29,6 +39,10 @@ interface ShopState {
   boothOwnedIds: Set<string>;
   /** Total pages available in the last RipperStore search. Used by loadNextPage. */
   ripperPageCount: number;
+  // ── Nuevos campos para autores ─────────────────────────────────────────────
+  authorResults: ShopAuthor[];
+  selectedAuthor: ShopAuthor | null;
+  setSelectedAuthor: (author: ShopAuthor | null) => void;
 
   setQuery: (q: string) => void;
   setFilters: (f: Partial<ShopFilters>) => void;
@@ -46,17 +60,12 @@ function normalizeTitle(name: string): string {
     .trim();
 }
 
-/**
- * Palabras ignoradas al comparar títulos (artículos, preposiciones, conjunciones
- * y palabras de relleno comunes en nombres de assets de VRChat).
- */
 const STOP_WORDS = new Set([
   "a", "an", "the", "and", "or", "for", "of", "in", "on", "at", "to",
   "with", "by", "from", "is", "it", "be", "as", "set", "pack", "full",
   "free", "ver", "version", "v", "dl", "bl",
 ]);
 
-/** Devuelve el conjunto de palabras significativas de un título normalizado. */
 function titleWords(name: string): Set<string> {
   return new Set(
     normalizeTitle(name)
@@ -65,10 +74,6 @@ function titleWords(name: string): Set<string> {
   );
 }
 
-/**
- * Coeficiente Jaccard entre los conjuntos de palabras de dos títulos.
- * 0 = sin palabras en común; 1 = idénticos.
- */
 function titleSimilarity(a: string, b: string): number {
   const wa = titleWords(a);
   const wb = titleWords(b);
@@ -78,29 +83,30 @@ function titleSimilarity(a: string, b: string): number {
   return intersection / (wa.size + wb.size - intersection);
 }
 
-/**
- * Combina resultados de Booth y Riperstore, deduplicando los assets que
- * aparecen en ambos.
- *
- * Estrategia de matching (en orden de prioridad):
- *  1. Booth ID exacto: un producto de Riperstore lleva `booth_ids[]` con los
- *     IDs que encontró en el contenido del post (líneas "BL:"). Si el
- *     `source_id` de un producto de Booth aparece en ese array, son el mismo
- *     asset — match perfecto.
- *  2. Título normalizado: fallback para cuando el post de Riperstore no tenía
- *     link de Booth o la búsqueda lo trajo solo por título.
- *
- * El resultado final:
- *  - Productos de Booth que tienen match con Riperstore: se muestran como
- *    producto de Booth (mejor thumbnail/precio) con `extra_sources` apuntando
- *    al hilo de Riperstore.
- *  - Productos de Riperstore sin match: se añaden al final tal cual.
- *  - Productos de Booth sin match: se añaden sin modificar.
- */
+// ── Agrupar productos por autor ────────────────────────────────────────────────
+function groupByAuthor(products: ShopProduct[]): ShopAuthor[] {
+  const map = new Map<string, ShopAuthor>();
+  for (const p of products) {
+    const key = p.author.trim().toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, {
+        name: p.author,
+        product_count: 0,
+        sample_thumbnail: p.thumbnail_url,
+        sample_products: [],
+      });
+    }
+    const entry = map.get(key)!;
+    entry.product_count++;
+    if (entry.sample_products.length < 6) {
+      entry.sample_products.push(p);
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.product_count - a.product_count);
+}
+
 function mergeResults(booth: ShopProduct[], ripper: ShopProduct[]): ShopProduct[] {
-  // Índice 1: Riperstore por cada uno de sus booth_ids → O(1) lookup
   const ripperByBoothId = new Map<string, ShopProduct>();
-  // Índice 2: Riperstore por título normalizado → fallback
   const ripperByTitle = new Map<string, ShopProduct>();
 
   for (const rp of ripper) {
@@ -116,12 +122,7 @@ function mergeResults(booth: ShopProduct[], ripper: ShopProduct[]): ShopProduct[
   const consumedRipperTids = new Set<string>();
 
   for (const bp of booth) {
-    // Prioridad 1: match por Booth ID exacto — es autoritativo.
-    // Si el post de Riperstore incluyó "BL: booth.pm/items/XXXX" con este ID,
-    // el match es definitivo independientemente de la similitud de título
-    // (p.ej. "FOR AIRI - SomeOutfit" vs "SomeOutfit [Airi compatible]").
     const rpById = ripperByBoothId.get(bp.source_id);
-    // Prioridad 2: match por título (fallback)
     const rpByTitle = ripperByTitle.get(normalizeTitle(bp.name));
     const rp = rpById ?? rpByTitle;
 
@@ -136,7 +137,6 @@ function mergeResults(booth: ShopProduct[], ripper: ShopProduct[]): ShopProduct[
     }
   }
 
-  // Añadir los de Riperstore que no tuvieron match con ningún producto de Booth
   for (const rp of ripper) {
     if (!consumedRipperTids.has(rp.source_id)) {
       merged.push(rp);
@@ -146,26 +146,13 @@ function mergeResults(booth: ShopProduct[], ripper: ShopProduct[]): ShopProduct[
   return merged;
 }
 
-// ── Booth ID / URL detection ───────────────────────────────────────────────────
-
-/**
- * Extrae el ID numérico de Booth de una URL completa o de un ID suelto.
- * Acepta:
- *   - "6082686"  (solo dígitos, 5-8 cifras)
- *   - "https://booth.pm/en/items/6082686"
- *   - "https://xxx.booth.pm/items/6082686"
- * Devuelve el ID como string, o null si no coincide.
- */
 function extractBoothId(query: string): string | null {
   const trimmed = query.trim();
-  // Purely numeric (5–8 digits) → treat as Booth item ID
   if (/^\d{5,8}$/.test(trimmed)) return trimmed;
-  // Full URL pattern
   const m = trimmed.match(/booth\.pm\/(?:[a-z]{2}\/)?items\/(\d+)/);
   return m ? m[1] : null;
 }
 
-/** Convierte un BoothProductDetail en un ShopProduct sintético para la grid. */
 function detailToShopProduct(d: BoothProductDetail): ShopProduct {
   return {
     source_id: d.source_id,
@@ -178,30 +165,14 @@ function detailToShopProduct(d: BoothProductDetail): ShopProduct {
   };
 }
 
-/**
- * Fetches results from both Booth and Riperstore in parallel.
- *
- * Strategy:
- *   1. If the query is a Booth ID or URL, fetch the item directly by ID and
- *      search Riperstore for that ID — skips the text search entirely.
- *   2. Otherwise: parallel text search on Booth + primary Riperstore search,
- *      followed by a secondary Riperstore search by each Booth ID returned
- *      (catches threads titled "FOR AIRI" whose body has "BL: booth.pm/items/6082686").
- *
- * Returns merged products plus the total page count from Riperstore.
- */
 async function fetchCombined(
   query: string,
   page: number
 ): Promise<{ products: ShopProduct[]; ripperPageCount: number }> {
   const EMPTY_RIPPER: RiperstoreSearchResult = { products: [], page_count: 1, current_page: 1 };
-  // Gate: Riperstore only runs when the experimental flag is enabled
-  const riperstoreEnabled = loadRiperstoreExperimental();
+  const riperstoreEnabled = isUntrustedSourcesUnlocked() && loadRiperstoreExperimental();
   const ripperAuthenticated = riperstoreEnabled && await tauriRipperIsAuthenticated();
 
-  // ── Booth ID / URL mode ────────────────────────────────────────────────────
-  // Si el query es un ID numérico o una URL de Booth, buscamos el item
-  // directamente por ID en lugar de usar el buscador de texto.
   const boothId = extractBoothId(query);
   if (boothId) {
     let boothProduct: ShopProduct | null = null;
@@ -212,7 +183,6 @@ async function fetchCombined(
       console.warn("[BoothID] detail fetch failed:", e);
     }
 
-    // Buscar en Riperstore por el ID exacto en paralelo
     let ripperById: ShopProduct[] = [];
     if (ripperAuthenticated) {
       try {
@@ -228,10 +198,7 @@ async function fetchCombined(
     return { products: merged, ripperPageCount: 1 };
   }
 
-  // ── Búsqueda por texto normal ──────────────────────────────────────────────
   const boothPromise = tauriSearchShop(query, page);
-
-  // Primary Riperstore search
   const ripperPromise: Promise<RiperstoreSearchResult> = ripperAuthenticated
     ? tauriRipperSearch(query, page).catch((e) => {
         console.warn("[Riperstore] primary search failed:", e);
@@ -242,7 +209,6 @@ async function fetchCombined(
   const [boothResults, ripperResult] = await Promise.all([boothPromise, ripperPromise]);
   const ripper1 = ripperResult.products;
 
-  // Secondary Riperstore search by Booth IDs (for "FOR AIRI"-style threads)
   let ripper2: ShopProduct[] = [];
   if (ripperAuthenticated && boothResults.length > 0) {
     const primaryBoothIds = new Set(
@@ -311,14 +277,26 @@ export const useShopStore = create<ShopState>((set, get) => ({
   loading: false,
   error: null,
   selectedProduct: null,
-  filters: { source: "all", priceType: "all" },
+  filters: { source: "all", priceType: "all", searchMode: "items" },
   boothOwnedIds: new Set<string>(),
   ripperPageCount: 1,
+  authorResults: [],
+  selectedAuthor: null,
+  setSelectedAuthor: (author) => set({ selectedAuthor: author }),
 
-  setQuery: (q) => set({ query: q, page: 1, results: [], ripperPageCount: 1 }),
+  setQuery: (q) => set({ query: q, page: 1, results: [], ripperPageCount: 1, authorResults: [], selectedAuthor: null }),
 
   setFilters: (f) => {
-    set((s) => ({ filters: { ...s.filters, ...f }, page: 1, results: [] }));
+    set((s) => {
+      const newFilters = { ...s.filters, ...f };
+      return {
+        filters: newFilters,
+        page: 1,
+        results: [],
+        authorResults: [],
+        selectedAuthor: null,
+      };
+    });
     const { query } = get();
     if (query.trim()) {
       get().search();
@@ -332,7 +310,16 @@ export const useShopStore = create<ShopState>((set, get) => ({
     try {
       const { products, ripperPageCount } = await fetchCombined(query, 1);
       const filtered = applyFilters(products, filters, boothOwnedIds);
-      set({ results: filtered, loading: false, ripperPageCount });
+      
+
+      // ── Agrupar por autor si estamos en modo "authors" ──
+      // Se usa la lista completa de productos SIN filtrar por priceType,
+      // para que el perfil del autor muestre todos sus productos.
+      const allProducts = applyFilters(products, { ...filters, priceType: "all" }, boothOwnedIds);
+      const authorResults = filters.searchMode === "authors"
+        ? groupByAuthor(products) // sobre todos los productos, sin filtro de priceType
+        : [];
+      set({ results: filtered, loading: false, ripperPageCount, authorResults });
     } catch (e) {
       set({ error: String(e), loading: false });
     }

@@ -1265,12 +1265,12 @@ export default function PackagesPage() {
   const selectedProject = useAppStore((s) => s.selectedProject);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+    <div className="h-full flex flex-col overflow-hidden">
       <ProjectPickerBar />
       {selectedProject ? (
         <PackagesTab project={selectedProject} />
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6">
+        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 min-h-0">
           <div className="rounded-2xl bg-gradient-to-b from-zinc-800/40 to-zinc-900/60 border border-zinc-700/40 p-7 shadow-xl shadow-black/30">
             <Boxes className="h-10 w-10 text-zinc-600" />
           </div>

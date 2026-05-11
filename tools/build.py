@@ -6,8 +6,8 @@ Ubicación: tools/build.py
 Ejecutar desde la raíz del proyecto:  python tools/build.py
 
 Modos:
-  python tools/build.py              Build dev (host) + instala via wizard
-  python tools/build.py --quick      Build dev + copia el exe directamente (sin wizard)
+  python tools/build.py              Abre la app en modo dev con HMR (tauri dev)
+  python tools/build.py --quick      Build debug compilado + copia directa (sin wizard)
   python tools/build.py clean        Limpia dist/ y releases/
   python tools/build.py clean --deep También limpia target/ y node_modules/
   python tools/build.py release                        Build todas las plataformas
@@ -410,17 +410,13 @@ Name: "{group}\Desinstalar VRC Studio"; Filename: "{uninstallexe}";      Tasks: 
 Name: "{userdesktop}\VRC Studio";     Filename: "{app}\vrc-studio.exe"; Tasks: desktopicon
 
 [Registry]
-; Guardar ruta de instalación (usada por el sistema de actualizaciones)
-Root: HKCU; Subkey: "Software\VRC Studio"; ValueType: string;
-      ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\VRC Studio"; ValueType: string;
-      ValueName: "Version";    ValueData: "@@version@@"; Flags: uninsdeletekey
+; Guardar ruta de instalación
+Root: HKCU; Subkey: "Software\VRC Studio"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\VRC Studio"; ValueType: string; ValueName: "Version"; ValueData: "@@version@@"; Flags: uninsdeletekey
 
 [Run]
 ; Lanzar VRC Studio al terminar la instalación
-Filename: "{app}\vrc-studio.exe";
-    Description: "Abrir VRC Studio";
-    Flags: nowait postinstall skipifsilent
+Filename: "{app}\vrc-studio.exe"; Description: "Abrir VRC Studio"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function InitializeSetup: Boolean;
@@ -743,11 +739,30 @@ def cmd_dev(forced_version=None, quick=False):
         ok("Build dev completado.")
         return
 
-    version, commit, date = get_version(forced_version)
-    info(f"Version: {BOLD}{version}{RESET}  Commit: {commit}  Host: {HOST_PLATFORM}")
-    clean(deep=False)
+    # Modo dev: lanza tauri dev con HMR completo
+    step("→ Iniciando VRC Studio en modo desarrollo (HMR)")
+    npm = shutil.which("npm") or "npm"
 
-    app_bundle, exe_name = build_tauri(HOST_PLATFORM, version)
+    # npm install si hace falta
+    if not os.path.isdir(os.path.join(PROJECT_ROOT, "node_modules")):
+        info("  Instalando dependencias npm…")
+        run([npm, "install"], cwd=PROJECT_ROOT)
+
+    info("  Lanzando: npm run tauri dev")
+    info("  (Ctrl+C para salir · los cambios en src/ se recargan en tiempo real)")
+    print()
+
+    # Lanzar tauri dev — esto bloquea hasta que el usuario hace Ctrl+C
+    try:
+        subprocess.run(
+            [npm, "run", "tauri", "dev"],
+            cwd=PROJECT_ROOT
+        )
+    except KeyboardInterrupt:
+        print()
+        ok("Modo desarrollo cerrado.")
+    return
+
     if not app_bundle:
         error("Build falló.")
         sys.exit(1)
@@ -767,6 +782,48 @@ def cmd_dev(forced_version=None, quick=False):
         create_unix_installer(HOST_PLATFORM, app_bundle, version)
 
     print(f"\n{BOLD}Build completado en {elapsed()}{RESET}")
+
+def cmd_dev(forced_version=None, quick=False):
+    step("→ dev" + (" [--quick]" if quick else ""))
+    info(f"Host: {HOST_PLATFORM}")
+
+    npm = shutil.which("npm") or "npm"
+
+    if quick:
+        # build --debug rápido + copia directa (comportamiento anterior)
+        version, _, _ = get_version(forced_version)
+        _patch_tauri_version(version)
+
+        for d in [os.path.join(PROJECT_ROOT, "dist")]:
+            if os.path.exists(d):
+                shutil.rmtree(d, ignore_errors=True)
+                info(f"  {d} eliminado")
+
+        run([npm, "run", "tauri", "build", "--", "--debug",
+             "--target", PLATFORMS[HOST_PLATFORM]["rust_target"]],
+            cwd=PROJECT_ROOT)
+        ok("Build dev completado.")
+        return
+
+    # Modo dev: lanza tauri dev con HMR completo
+    step("→ Iniciando VRC Studio en modo desarrollo (HMR)")
+
+    if not os.path.isdir(os.path.join(PROJECT_ROOT, "node_modules")):
+        info("  Instalando dependencias npm…")
+        run([npm, "install"], cwd=PROJECT_ROOT)
+
+    info("  Lanzando: npm run tauri dev")
+    info("  (Ctrl+C para salir · los cambios en src/ se recargan en tiempo real)")
+    print()
+
+    try:
+        subprocess.run(
+            [npm, "run", "tauri", "dev"],
+            cwd=PROJECT_ROOT
+        )
+    except KeyboardInterrupt:
+        print()
+        ok("Modo desarrollo cerrado.")
 
 def cmd_release(forced_version=None, channel="stable", notes="", no_publish=False):
     step(f"→ release [{channel}]")

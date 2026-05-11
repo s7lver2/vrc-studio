@@ -1,20 +1,9 @@
-/**
- * ImportLocalDialog — Import a local .zip into the inventory and optionally
- * associate it with a Booth.pm product.
- *
- * Features:
- * - Full i18n via useT()
- * - Avatar variant detection from filenames like: ProductName_AvatarName_v1.0.zip
- * - Materials bundle detection: _____Materials_____ProductName_v1.0.zip
- * - UI to review detected variants before import
- * - Group-as-single-item toggle
- */
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   X, FolderOpen, Link, User, Package, Loader2,
   CheckCircle, AlertTriangle, Users, Layers, ChevronDown, ChevronUp,
+  Search, Store,
 } from "lucide-react";
 import { useInventoryStore } from "../../store/inventoryStore";
 import {
@@ -22,9 +11,9 @@ import {
   BoothProductDetail,
 } from "../../lib/tauri";
 import { useT } from "../../i18n";
+import { GlobalBoothPickerModal, BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
 
 // ── Known VRChat avatar bases ─────────────────────────────────────────────────
-
 const KNOWN_VRCHAT_BASES = [
   "Airi", "Karin", "Kikyo", "Manuka", "Lime", "Chiffon",
   "Selestia", "Shinano", "Moe", "Milltina", "Kumaly", "Chocolat",
@@ -42,7 +31,6 @@ const KNOWN_VRCHAT_BASES = [
 ].sort((a, b) => b.length - a.length);
 
 // ── Detection helpers ─────────────────────────────────────────────────────────
-
 export interface DetectedVariant {
   filename: string;
   avatarName: string;
@@ -89,7 +77,6 @@ export function detectAvatarVariants(filename: string): DetectionResult | null {
 }
 
 // ── Booth ID helper ───────────────────────────────────────────────────────────
-
 function extractBoothId(input: string): string | null {
   const trimmed = input.trim();
   if (/^\d{5,8}$/.test(trimmed)) return trimmed;
@@ -98,14 +85,12 @@ function extractBoothId(input: string): string | null {
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
-
 interface Props {
   onClose: () => void;
   onImported?: (itemId: string) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-
 export function ImportLocalDialog({ onClose, onImported }: Props) {
   const t = useT();
   const { importLocalPackage } = useInventoryStore();
@@ -123,14 +108,39 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importedId, setImportedId] = useState<string | null>(null);
+  const [showBoothPicker, setShowBoothPicker] = useState(false);
 
   // Avatar detection
   const [detection, setDetection] = useState<DetectionResult | null>(null);
   const [groupVariants, setGroupVariants] = useState(true);
   const [showVariants, setShowVariants] = useState(false);
 
-  // ── File picker ──────────────────────────────────────────────────────────
+  // ── AUTO‑FETCH: cuando el usuario escribe un Booth ID/URL ────────────────────
+  useEffect(() => {
+    const boothId = extractBoothId(boothInput);
+    if (!boothId) return;
 
+    const timer = setTimeout(async () => {
+      setFetchingBooth(true);
+      try {
+        const detail = await tauriGetBoothProductDetail(boothId);
+        // Solo rellenar si el campo está vacío (no sobreescribir lo que el usuario ya escribió)
+        if (!name) setName(detail.name);
+        if (!author) setAuthor(detail.author);
+        if (!thumbnailUrl && detail.images[0]) setThumbnailUrl(detail.images[0]);
+        setBoothDetail(detail);
+        setBoothError(null);
+      } catch (err) {
+        console.warn("[auto-fetch] Booth detail error:", err);
+      } finally {
+        setFetchingBooth(false);
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [boothInput, name, author, thumbnailUrl]);
+
+  // ── File picker ──────────────────────────────────────────────────────────
   const pickFile = async () => {
     try {
       const result = await openDialog({
@@ -156,18 +166,22 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
     }
   };
 
-  // ── Booth lookup ─────────────────────────────────────────────────────────
-
+  // ── Booth lookup manual (botón) ──────────────────────────────────────────
   const lookupBooth = async () => {
     const boothId = extractBoothId(boothInput);
-    if (!boothId) { setBoothError("URL o ID de Booth.pm inválido"); return; }
-    setFetchingBooth(true); setBoothError(null); setBoothDetail(null);
+    if (!boothId) {
+      setBoothError("URL o ID de Booth.pm inválido");
+      return;
+    }
+    setFetchingBooth(true);
+    setBoothError(null);
+    setBoothDetail(null);
     try {
       const detail = await tauriGetBoothProductDetail(boothId);
       setBoothDetail(detail);
       if (!name) setName(detail.name);
       if (!author) setAuthor(detail.author);
-      if (!thumbnailUrl && detail.images.length > 0) setThumbnailUrl(detail.images[0]);
+      if (!thumbnailUrl && detail.images[0]) setThumbnailUrl(detail.images[0]);
     } catch (e) {
       setBoothError(`No se pudo obtener el producto: ${e}`);
     } finally {
@@ -175,11 +189,27 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
     }
   };
 
-  // ── Import ───────────────────────────────────────────────────────────────
+  // ── Booth picker callback ─────────────────────────────────────────────────
+  const handleBoothPick = async (result: BoothPickerResult) => {
+    setBoothInput(`https://booth.pm/items/${result.boothId}`);
+    if (!name) setName(result.name);
+    if (!author) setAuthor(result.author);
+    if (!thumbnailUrl && result.thumbnailUrl) setThumbnailUrl(result.thumbnailUrl);
+    // Fetch full detail to get all images
+    try {
+      const detail = await tauriGetBoothProductDetail(result.boothId);
+      setBoothDetail(detail);
+      if (!name) setName(detail.name);
+      if (!author) setAuthor(detail.author);
+      if (!thumbnailUrl && detail.images[0]) setThumbnailUrl(detail.images[0]);
+    } catch { /* ignore */ }
+  };
 
+  // ── Import ───────────────────────────────────────────────────────────────
   const handleImport = async () => {
     if (!zipPath || !name.trim()) return;
-    setImporting(true); setImportError(null);
+    setImporting(true);
+    setImportError(null);
     try {
       const boothId = extractBoothId(boothInput) ?? undefined;
       const newId = await importLocalPackage({
@@ -188,6 +218,8 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
         author: author.trim() || undefined,
         thumbnail_url: thumbnailUrl.trim() || boothDetail?.images[0] || undefined,
         booth_id: boothId,
+        // Guardar todas las imágenes de Booth (saltando la primera que ya es thumbnail)
+        product_images: boothDetail?.images ?? [],
       });
       setImportedId(newId);
       onImported?.(newId);
@@ -201,7 +233,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
   const canImport = zipPath.trim() !== "" && name.trim() !== "" && !importing;
 
   // ── Done state ───────────────────────────────────────────────────────────
-
   if (importedId) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -226,6 +257,7 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
   }
 
   return (
+  <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
@@ -325,21 +357,34 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
             </div>
           )}
 
-          {/* ── Booth association ── */}
+          {/* ── Booth association con AUTO‑FILL y spinner ── */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
               <Link className="h-3 w-3" />
               {t("import_booth_label")}
             </label>
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={boothInput}
-                onChange={(e) => { setBoothInput(e.target.value); setBoothError(null); setBoothDetail(null); }}
-                onKeyDown={(e) => e.key === "Enter" && boothInput && lookupBooth()}
-                placeholder="https://booth.pm/items/1234567"
-                className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 focus:border-zinc-500 text-xs text-zinc-200 placeholder-zinc-600 outline-none transition-colors"
-              />
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={boothInput}
+                  onChange={(e) => { setBoothInput(e.target.value); setBoothError(null); setBoothDetail(null); }}
+                  onKeyDown={(e) => e.key === "Enter" && boothInput && lookupBooth()}
+                  placeholder="https://booth.pm/items/1234567"
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 focus:border-zinc-500 text-xs text-zinc-200 placeholder-zinc-600 outline-none transition-colors pr-8"
+                />
+                {fetchingBooth && (
+                  <Search className="absolute right-2 top-2.5 w-3.5 h-3.5 text-violet-400 animate-pulse" />
+                )}
+              </div>
+              {/* Buscar en catálogo Booth */}
+              <button
+                onClick={() => setShowBoothPicker(true)}
+                title="Buscar en Booth"
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-pink-400 hover:text-pink-300 text-xs transition-colors"
+              >
+                <Store className="h-3.5 w-3.5" />
+              </button>
               <button
                 onClick={lookupBooth}
                 disabled={!boothInput.trim() || fetchingBooth}
@@ -372,7 +417,7 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
             )}
           </div>
 
-          {/* ── Name ── */}
+          {/* ── Name, Author, Thumbnail ── */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
               {t("import_name_label")} *
@@ -386,7 +431,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
             />
           </div>
 
-          {/* ── Author ── */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
               <User className="h-3 w-3" />
@@ -402,7 +446,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
             />
           </div>
 
-          {/* ── Thumbnail URL ── */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
               {t("import_thumbnail_label")}
@@ -446,5 +489,16 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
         </div>
       </div>
     </div>
+
+    {/* GlobalBoothPicker */}
+    {showBoothPicker && (
+      <GlobalBoothPickerModal
+        title="Buscar en Booth"
+        subtitle="Selecciona el producto para asociarlo al import"
+        onClose={() => setShowBoothPicker(false)}
+        onSelect={handleBoothPick}
+      />
+    )}
+  </>
   );
 }

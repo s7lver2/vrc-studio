@@ -16,6 +16,14 @@
   box-sizing: border-box;
 }
 
+@keyframes inventory-sweep {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0% 0 0); }
+}
+.inventory-sweep {
+  animation: inventory-sweep 0.38s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
 body {
   margin: 0;
   background-color: hsl(var(--background));
@@ -87,4 +95,14 @@ body.vrc-animations-on [data-anim="sidebar-item"]:hover {
 
 body.vrc-animations-on [data-anim="glow-active"] {
   animation: vrc-glow 3s ease-in-out infinite;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-6px); }
+  30%       { transform: translateX(6px); }
+  45%       { transform: translateX(-4px); }
+  60%       { transform: translateX(4px); }
+  75%       { transform: translateX(-2px); }
+  90%       { transform: translateX(2px); }
 }

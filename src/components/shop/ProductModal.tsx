@@ -3,11 +3,13 @@ import {
   X, ExternalLink, Download, Loader2, ShoppingCart,
   CheckCircle2, AlertCircle, Store,
   Link2, ScanSearch, ChevronRight, Package,
+  Bell,
 } from "lucide-react";
 import { useShopStore } from "../../store/shopStore";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { useAppStore } from "../../store/app";
 import { useDownloadProgress } from "../../hooks/useDownloadProgress";
+import { AddTrackerModal } from "@/components/tracker/AddTrackerModal";
 import {
   ShopProduct, BoothProductDetail, DownloadLinkContext,
   tauriStartDownload, tauriGetBoothProductDetail, tauriRipperGetTopicDetail,
@@ -1232,10 +1234,10 @@ export function ProductModal() {
   const [detailError, setDetailError]             = useState<string | null>(null);
   const [ripperDescription, setRipperDescription] = useState<string>("");
   const [ripperImages, setRipperImages]           = useState<string[]>([]);
-  // DownloadLinkContext[] — enriquecidos con avatar tags por post
   const [ripperLinks, setRipperLinks]             = useState<DownloadLinkContext[]>([]);
   const [downloading, setDownloading]             = useState(false);
   const [downloadDone, setDownloadDone]           = useState(false);
+  const [showTracker, setShowTracker] = useState(false);
   const [downloadError, setDownloadError]         = useState<string | null>(null);
 
   const leftRef     = useRef<HTMLDivElement>(null);
@@ -1245,23 +1247,24 @@ export function ProductModal() {
   const isBooth = p?.source === "booth";
   const boothOwnedIds = useShopStore(s => s.boothOwnedIds);
   const { loadBoothOwnedIds } = useShopStore();
-  // Load booth purchases once when modal mounts (no-op if already loaded)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadBoothOwnedIds(); }, []);
   const riperstoreExperimental = useAppStore(s => s.riperstoreExperimental);
   const setActiveSection = useAppStore(s => s.setActiveSection);
   const { downloads } = useDownloadProgress();
 
-  // Separate: has Booth API confirmed purchase vs is item in local inventory
   const isPurchased = p ? (p.source === "booth" && boothOwnedIds.has(p.source_id)) : false;
   const isInInventory = p
     ? inventoryItems.some(i => i.source === p.source && i.source_id === p.source_id)
     : false;
 
-  // Real-time download state for this product
   const dl = p ? (downloads[p.source_id] ?? null) : null;
   const dlPercentage = dl?.percentage ?? 0;
   const dlStatus = dl?.status ?? null;
+
+  const handleTrackerCreated = () => {
+    setShowTracker(false);
+    setActiveSection("tracker");
+  };
 
   useEffect(() => {
     if (!p) {
@@ -1281,7 +1284,6 @@ export function ProductModal() {
         .catch(e  => { if (!cancelled) setDetailError(String(e)); })
         .finally(() => { if (!cancelled) setLoadingDetail(false); });
 
-      // Also fetch riperstore detail when this booth product has a cross-listed entry
       const ripperExtra = p.extra_sources?.find(s => s.source === "riperstore");
       if (ripperExtra) {
         tauriRipperGetTopicDetail(ripperExtra.source_id)
@@ -1289,14 +1291,12 @@ export function ProductModal() {
             if (!cancelled) {
               setRipperDescription(desc);
               setRipperImages(imgs);
-              // Wrap raw URLs as DownloadLinkContext (no avatar context from topic-detail)
               setRipperLinks((lnks ?? []).map(url => ({ url, avatars: [] })));
             }
           })
           .catch(e => console.warn("[Riperstore] cross-detail fetch failed:", e));
       }
     } else {
-      // Riperstore-only product: fetch topic detail for description + images
       setLoadingDetail(true);
       tauriRipperGetTopicDetail(p.source_id)
         .then(([desc, imgs, lnks]) => {
@@ -1309,20 +1309,16 @@ export function ProductModal() {
         .catch(e => { if (!cancelled) setDetailError(String(e)); })
         .finally(() => { if (!cancelled) setLoadingDetail(false); });
 
-      // For riperstore products that have booth_ids, also fetch Booth detail
-      // to get high-quality images and description when the topic has none.
       const firstBoothId = p.booth_ids?.[0];
       if (firstBoothId) {
         tauriGetBoothProductDetail(firstBoothId)
           .then(boothDetail => {
             if (!cancelled) {
-              // Only use Booth images if riperstore gave us none
               setRipperImages(prev => prev.length > 0 ? prev : boothDetail.images);
-              // Use Booth description as fallback if riperstore description is empty
               setRipperDescription(prev => prev.trim() ? prev : boothDetail.description);
             }
           })
-          .catch(() => { /* booth fetch is best-effort */ });
+          .catch(() => {});
       }
     }
 
@@ -1392,7 +1388,7 @@ export function ProductModal() {
 
         {/* Body */}
         <div className="flex flex-1 min-h-0">
-          {/* LEFT — gallery + description; ancho fijo */}
+          {/* LEFT — gallery + description */}
           <div
             ref={leftRef}
             className="w-[540px] shrink-0 overflow-y-auto"
@@ -1453,7 +1449,7 @@ export function ProductModal() {
             </div>
           </div>
 
-          {/* RIGHT — purchase panel, crece */}
+          {/* RIGHT — purchase panel */}
           <div
             className="flex-1 min-w-0 border-l border-zinc-800/80 overflow-y-auto"
             style={{ scrollbarWidth: "thin", scrollbarColor: "#3f3f46 transparent" }}
@@ -1473,6 +1469,22 @@ export function ProductModal() {
             </div>
           </div>
         </div>
+
+        {/* 🔁 TRACK MODAL */}
+        {showTracker && p && (
+          <AddTrackerModal
+            onClose={() => setShowTracker(false)}
+            prefill={{
+              kind: "item",
+              boothId: p.source_id,
+              itemName: p.name,
+              itemAuthor: p.author,
+              itemThumbnailUrl: p.thumbnail_url,
+              itemUrl: p.url,
+            }}
+            onCreated={handleTrackerCreated}
+          />
+        )}
       </div>
     </div>
   );

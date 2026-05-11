@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import type { Project } from "@/lib/tauri";
-import { vcs } from "@/lib/tauri";
-import { terminal } from "@/lib/tauri";
+import { vcs, terminal } from "@/lib/tauri";
 import { ChevronRight, HelpCircle } from "lucide-react";
-import { useT } from "@/i18n";
+import { useT,TranslationKey } from "@/i18n";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -37,7 +36,7 @@ interface WizardState {
 
 interface CommandDef {
   usage: string;
-  descriptionKey: string;   // clave i18n en lugar de string directo
+  descriptionKey: TranslationKey;
   group: string;
   interactive?: boolean;
 }
@@ -83,7 +82,7 @@ async function executeAllowedCommand(
   rawCmd: string,
   project: Project,
   addLine: (type: OutputLine["type"], text: string) => void,
-  t: (key: string, vars?: Record<string, any>) => string,
+  t: (key: string, vars?: Record<string, any>) => string,  // ← ahora acepta string
 ): Promise<"done" | "clear" | "wizard:avatar" | "wizard:world"> {
   const parts = rawCmd.trim().toLowerCase().split(/\s+/);
   const cmd2 = parts.slice(0, 2).join(" ");
@@ -210,7 +209,7 @@ async function executeAllowedCommand(
 function startWizard(
   type: UploadType,
   addLine: (type: OutputLine["type"], text: string) => void,
-  t: (key: string, vars?: Record<string, any>) => string,
+  t: (key: TranslationKey, vars?: Record<string, any>) => string,
 ): WizardState {
   const label = type === "avatar" ? t("vcs_terminal_wizard_avatar") : t("vcs_terminal_wizard_world");
   addLine("header",  `── VRChat SDK Upload · ${label} ─────────────────`);
@@ -223,7 +222,7 @@ async function advanceWizard(
   answer: string,
   wizard: WizardState,
   addLine: (type: OutputLine["type"], text: string) => void,
-  t: (key: string, vars?: Record<string, any>) => string,
+  t: (key: TranslationKey, vars?: Record<string, any>) => string,
 ): Promise<WizardState | null> {
   if (answer.trim().toLowerCase() === "cancel") {
     addLine("warn", t("vcs_terminal_wizard_cancelled"));
@@ -308,6 +307,7 @@ export function SandboxedTerminal({ project }: Props) {
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [wizard, setWizard] = useState<WizardState | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const _t = (key: string, vars?: Record<string, any>) => t(key as TranslationKey, vars);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -323,7 +323,7 @@ export function SandboxedTerminal({ project }: Props) {
     addLine("command", `  › ${display}`);
     setRunning(true);
     try {
-      const next = await advanceWizard(answer, wizard, addLine, t);
+      const next = await advanceWizard(answer, wizard, addLine, _t);
       setWizard(next);
     } finally {
       setRunning(false);
@@ -357,7 +357,7 @@ export function SandboxedTerminal({ project }: Props) {
     }
 
     try {
-      const result = await executeAllowedCommand(trimmed, project, addLine, t);
+      const result = await executeAllowedCommand(trimmed, project, addLine, _t);
       if (result === "clear") {
         setOutput([mkLine("info", t("vcs_terminal_welcome", { name: project.name }))]);
       } else if (result === "wizard:avatar" || result === "wizard:world") {
@@ -486,7 +486,7 @@ export function SandboxedTerminal({ project }: Props) {
         <div className="flex-1 overflow-y-auto p-2">
           {quickGroups.map(([group, items]) => (
             <div key={group} className="mb-3">
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-600 px-1 mb-1">{t(`vcs_terminal_group_${group.toLowerCase()}`)}</p>
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-600 px-1 mb-1">  {t(`vcs_terminal_group_${group.toLowerCase()}` as TranslationKey)}</p>
               {items.map(({ key, def }) => (
                 <button
                   key={key}

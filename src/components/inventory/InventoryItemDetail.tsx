@@ -3,20 +3,26 @@ import {
   Info, FileArchive, Box, ChevronLeft, ChevronRight,
   Calendar, HardDrive, User, Link, Tag, Loader2,
   AlertTriangle, Package, Archive, Download, Star,
-  FileText, Layers, Clock,
+  FileText, Layers, Clock, Pencil, Check as CheckIcon, Upload,
+  Globe
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { FileTreeViewer } from "./FileTreeViewver";
 import { FileIcon, ExtBadge } from "./FileIcon";
 import { Preview3D } from "./Preview3D";
+import { TagInput } from "./TagInput";
 import {
   InventoryItem, InventoryFolder, FileNode, UnityAsset,
   BoothProductDetail, DeleteMode,
   tauriGetFileTree, tauriOpenItemLocation, tauriReadUnitypackage,
   tauriGetItemProductImages, tauriGetBoothProductDetail,
+  tauriSetItemProductImages,
 } from "../../lib/tauri";
 import { useT } from "@/i18n";
+import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
+import { GlobalBoothPickerModal, BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
+import { toAssetUrl } from "@/lib/utils";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +84,7 @@ function ImageGallery({ images, fallback }: { images: string[]; fallback: string
         {current && !errored.has(safeIdx) ? (
           <img src={current} alt="" className="w-full h-full object-contain" onError={() => setErrored((s) => new Set([...s, safeIdx]))} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">t("inventory_detail_image_unavailable")</div>
+          <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">{t("inventory_detail_image_unavailable")}</div>
         )}
         {all.length > 1 && (
           <>
@@ -265,6 +271,7 @@ function UnityPackageViewer({ path }: { path: string }) {
 // ── Action menus ──────────────────────────────────────────────────────────────
 
 function DeleteMenu({ item, onDeleted }: { item: InventoryItem; onDeleted: () => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const { removeItem } = useInventoryStore();
   const del = async (mode: DeleteMode) => { await removeItem(item.id, mode); setOpen(false); onDeleted(); };
@@ -286,6 +293,7 @@ function DeleteMenu({ item, onDeleted }: { item: InventoryItem; onDeleted: () =>
 }
 
 function MoveMenu({ item, folders }: { item: InventoryItem; folders: InventoryFolder[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const { moveItem } = useInventoryStore();
   return (
@@ -344,11 +352,19 @@ function StatPill({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
+// ── Helper para convertir rutas locales a asset URLs ─────────────────────────
+
+function pathToAssetUrl(p: string): string {
+  if (!p) return "";
+  if (p.startsWith("http")) return p;
+  return toAssetUrl(p) ?? "";
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
   const t = useT();
-  const { folders, items } = useInventoryStore();
+  const { folders, items, updateItemMetadata, setItemCustomImages } = useInventoryStore();
   const [tab, setTab] = useState<Tab>("overview");
 
   const [boothDetail, setBoothDetail] = useState<BoothProductDetail | null>(null);
@@ -362,6 +378,24 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
   const [selectedUnityPkg, setSelectedUnityPkg] = useState<string | null>(null);
   const [fileCount, setFileCount] = useState<number | null>(null);
 
+  // Edit mode state – imágenes múltiples
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(item.display_name ?? item.name);
+  const [editTags, setEditTags] = useState<string[]>([...item.tags]);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editImages, setEditImages] = useState<string[]>(
+    item.custom_images?.length > 0
+      ? item.custom_images
+      : item.custom_cover_path ? [item.custom_cover_path] : []
+  );
+
+  // Booth picker states
+  const [showBoothPicker, setShowBoothPicker] = useState(false);
+  const [boothCandidate, setBoothCandidate] = useState<BoothPickerResult | null>(null);
+  const [boothFields, setBoothFields] = useState({
+    name: true, tags: false, images: true,
+  });
+
   useEffect(() => {
     tauriGetItemProductImages(item.id).then(setProductImages);
     if (item.source === "booth" && item.source_id) {
@@ -370,6 +404,32 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
         .then(setBoothDetail).catch(() => {}).finally(() => setBoothLoading(false));
     }
   }, [item.id, item.source, item.source_id]);
+
+  // Reset edit state when item changes (and not editing)
+  useEffect(() => {
+    if (!isEditing) {
+      setEditName(item.display_name ?? item.name);
+      setEditTags([...item.tags]);
+      setEditImages(
+        item.custom_images?.length > 0
+          ? item.custom_images
+          : item.custom_cover_path ? [item.custom_cover_path] : []
+      );
+    }
+  }, [item, isEditing]);
+
+  const prevLocalPath = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevLocalPath.current !== null && prevLocalPath.current !== item.local_path) {
+      setFileTree(null);
+      setUnityPackagePaths([]);
+      setModel3DPaths([]);
+      setFileCount(null);
+      setSelectedUnityPkg(null);
+      setTreeLoading(false);
+    }
+    prevLocalPath.current = item.local_path;
+  }, [item.local_path]);
 
   const loadTree = useCallback(() => {
     if (fileTree || treeLoading) return;
@@ -388,11 +448,67 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
     if (tab === "files" || tab === "3d") loadTree();
   }, [tab, loadTree]);
 
-  const allImages = boothDetail?.images.length ? boothDetail.images : productImages;
   const src = SOURCE_LABELS[item.source] ?? SOURCE_LABELS.local;
   const boothUrl = item.source === "booth" && item.source_id
     ? `https://booth.pm/items/${item.source_id}`
-    : boothDetail?.url ?? null;
+    : boothDetail?.url ?? undefined;
+
+  // ── Edit handlers ──────────────────────────────────────────────────────────
+  const handleSaveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      await updateItemMetadata({
+        item_id: item.id,
+        display_name: editName !== item.name ? editName : undefined,
+        tags: editTags,
+      });
+
+      // Sincronizar imágenes custom siempre (incluso si se vaciaron)
+      // Las rutas "https://asset.localhost/..." (Windows Tauri v2) o
+      // "asset://localhost/..." ya están en el sistema de archivos;
+      // extraemos el path real eliminando el prefijo del protocolo.
+      const resolvedPaths = editImages.map((p) => {
+        if (p.startsWith("https://asset.localhost/")) {
+          // Tauri v2 Windows: "https://asset.localhost/C:/..." → "C:/..."
+          return decodeURIComponent(p.replace("https://asset.localhost/", ""));
+        }
+        if (p.startsWith("asset://localhost/")) {
+          // Formato legacy: "asset://localhost/C:/..." → "C:/..."
+          return decodeURIComponent(p.replace("asset://localhost/", ""));
+        }
+        return p; // rutas locales normales o http (http se filtrarán abajo)
+      });
+
+      // Solo rutas locales (no http/https — esas son de Booth/riperstore)
+      const localPaths = resolvedPaths.filter(
+        (p) => p && !p.startsWith("http")
+      );
+
+      // Siempre llamar: si está vacío, limpia las imágenes custom en la DB
+      await setItemCustomImages(item.id, localPaths);
+
+      setIsEditing(false);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // ── Imágenes para la galería (modo vista) ───────────────────────────────────
+  const allDetailImages = useMemo(() => {
+    const imgs: string[] = [];
+    // Custom images del usuario (convertidas a URL)
+    for (const p of item.custom_images ?? []) {
+      const url = pathToAssetUrl(p);
+      if (url) imgs.push(url);
+    }
+    // Imágenes de Booth / riperstore
+    for (const url of productImages) {
+      if (url && !imgs.includes(url)) imgs.push(url);
+    }
+    // Fallback thumbnail
+    if (imgs.length === 0 && item.thumbnail_url) imgs.push(item.thumbnail_url);
+    return imgs;
+  }, [item.custom_images, productImages, item.thumbnail_url]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6">
@@ -411,7 +527,19 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-zinc-100 leading-tight pr-8 truncate">{item.name}</h2>
+            {/* Name: editable or static */}
+            {isEditing ? (
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="text-lg font-bold bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1
+                           text-zinc-100 outline-none focus:border-red-500 w-full"
+              />
+            ) : (
+              <h2 className="text-lg font-bold text-zinc-100 leading-tight pr-8 truncate">
+                {item.display_name ?? item.name}
+              </h2>
+            )}
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${src.color}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${src.dot}`} />
@@ -425,7 +553,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
               {item.source_id && (
                 <span className="text-[10px] text-zinc-600 font-mono">#{item.source_id}</span>
               )}
-              {item.tags.length > 0 && (
+              {!isEditing && item.tags.length > 0 && (
                 <div className="flex gap-1 flex-wrap">
                   {item.tags.slice(0, 4).map((t) => (
                     <span key={t} className="text-[10px] bg-zinc-800 text-zinc-500 rounded-full px-1.5 py-px">{t}</span>
@@ -435,9 +563,43 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
               )}
             </div>
           </div>
-          <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors shrink-0 mt-0.5">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0 mt-0.5">
+            {/* Edit/Save button */}
+            <button
+              onClick={() => {
+                if (isEditing) {
+                  handleSaveEdit();
+                } else {
+                  setIsEditing(true);
+                }
+              }}
+              disabled={savingEdit}
+              className={`p-2 rounded-lg border transition-colors ${
+                isEditing
+                  ? "bg-red-600 border-red-600 text-white hover:bg-red-500"
+                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+              }`}
+              title={isEditing ? "Guardar cambios" : "Editar item"}
+            >
+              {isEditing
+                ? <CheckIcon className="h-4 w-4" />
+                : <Pencil className="h-4 w-4" />
+              }
+            </button>
+            {/* Botón para abrir el picker de Booth */}
+            <button
+              onClick={() => setShowBoothPicker(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700
+                        bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
+              title="Importar metadatos de Booth"
+            >
+              <Globe className="h-3.5 w-3.5 text-pink-400" />
+              Importar Booth
+            </button>
+            <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* ── Tabs ── */}
@@ -468,9 +630,9 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
           {tab === "overview" && (
             <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] h-full divide-y md:divide-y-0 md:divide-x divide-zinc-800/60">
 
-              {/* LEFT: Gallery + tags + actions */}
+              {/* LEFT: Gallery + tags + actions + edit sections */}
               <div className="p-6 flex flex-col gap-5 overflow-y-auto">
-                <ImageGallery images={allImages} fallback={item.thumbnail_url} />
+                <ImageGallery images={allDetailImages} fallback={null} />
 
                 {/* Quick stats row */}
                 <div className="flex gap-2">
@@ -479,19 +641,76 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                   {fileCount != null && <StatPill icon={Layers} label={t("inventory_detail_stat_files")} value={String(fileCount)} />}
                 </div>
 
-                {/* Tags */}
-                {item.tags.length > 0 && (
-                  <div>
-                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag className="h-3 w-3" />{t("inventory_detail_tags")}</p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {item.tags.map((t) => (
-                        <span key={t} className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">{t}</span>
+                {/* Tags - edit mode vs static */}
+                {isEditing ? (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Etiquetas</p>
+                    <TagInput tags={editTags} onChange={setEditTags} placeholder="Añadir etiqueta…" />
+                  </div>
+                ) : (
+                  item.tags.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2 flex items-center gap-1"><Tag className="h-3 w-3" />{t("inventory_detail_tags")}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {item.tags.map((t) => (
+                          <span key={t} className="text-[11px] bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-full px-2 py-0.5">{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {/* Multi‑image editor (edit mode) */}
+                {isEditing && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+                      Imágenes <span className="normal-case text-zinc-600">(la primera es portada)</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {editImages.map((imgPath, i) => (
+                        <div
+                          key={i}
+                          className="relative group w-16 h-16 rounded-lg overflow-hidden border border-zinc-700 shrink-0"
+                        >
+                          <img
+                            src={pathToAssetUrl(imgPath)}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                          {i === 0 && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[8px] text-white text-center py-0.5">
+                              portada
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setEditImages((imgs) => imgs.filter((_, j) => j !== i))}
+                            className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/70 text-white
+                                       opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
                       ))}
+                      <button
+                        onClick={async () => {
+                          const files = await tauriOpenDialog({
+                            multiple: true,
+                            filters: [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp"] }],
+                          });
+                          if (!files) return;
+                          const paths = Array.isArray(files) ? files : [files];
+                          setEditImages((prev) => [...prev, ...paths]);
+                        }}
+                        className="w-16 h-16 rounded-lg border-2 border-dashed border-zinc-700 hover:border-zinc-500
+                                   flex items-center justify-center text-zinc-600 hover:text-zinc-400 transition-colors shrink-0"
+                      >
+                        <Upload className="h-5 w-5" />
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* Actions */}
+                {/* Actions always visible */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 text-zinc-300 text-xs transition-colors" onClick={() => tauriOpenItemLocation(item.local_path)}>
                     <FolderOpen className="h-3.5 w-3.5" /> {t("inventory_detail_actions_open")}
@@ -506,7 +725,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                 </div>
               </div>
 
-              {/* RIGHT: Metadata panel */}
+              {/* RIGHT: Metadata panel - unchanged */}
               <div className="p-6 flex flex-col gap-5 overflow-y-auto">
                 {/* Meta fields */}
                 <div className="flex flex-col gap-3">
@@ -633,6 +852,95 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
             </div>
           )}
         </div>
+
+        {/* ── Booth Picker y modal de confirmación (Step 3) ── */}
+        {showBoothPicker && (
+          <GlobalBoothPickerModal
+            title="Buscar en Booth"
+            subtitle="Selecciona el producto para importar sus metadatos"
+            onClose={() => setShowBoothPicker(false)}
+            onSelect={(result) => {
+              setBoothCandidate(result);
+              setShowBoothPicker(false);
+            }}
+          />
+        )}
+
+        {boothCandidate && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-80 p-5 flex flex-col gap-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-zinc-200">Importar metadatos de Booth</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Selecciona qué sobrescribir con datos de{" "}
+                    <span className="text-pink-300 font-medium">{boothCandidate.name}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                {([
+                  { key: "name",   label: "Nombre",    warn: !!editName,   preview: boothCandidate.name },
+                  { key: "tags",   label: "Tags",       warn: editTags.length > 0, preview: "(se añaden a los tuyos)" },
+                  { key: "images", label: "Imágenes",   warn: editImages.length > 0, preview: "portada + galería de Booth" },
+                ] as const).map(({ key, label, warn, preview }) => (
+                  <label key={key} className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={boothFields[key]}
+                      onChange={(e) => setBoothFields((f) => ({ ...f, [key]: e.target.checked }))}
+                      className="mt-0.5 accent-red-500"
+                    />
+                    <div className="flex-1">
+                      <span className="text-xs text-zinc-200">{label}</span>
+                      {warn && (
+                        <span className="ml-1.5 text-[9px] text-amber-400 bg-amber-900/30 px-1.5 py-0.5 rounded">
+                          sobrescribirá tus datos
+                        </span>
+                      )}
+                      <p className="text-[10px] text-zinc-600 mt-0.5">{preview}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setBoothCandidate(null)}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-400 text-xs hover:bg-zinc-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    const r = boothCandidate;
+                    if (boothFields.name)   setEditName(r.name);
+                    if (boothFields.tags) {
+                      // No hay tags directos en BoothPickerResult; usar el nombre como base si hace falta
+                    }
+                    if (boothFields.images) {
+                      try {
+                        const detail = await tauriGetBoothProductDetail(r.boothId);
+                        // Actualizar product_images (imágenes de Booth en la DB)
+                        await tauriSetItemProductImages(item.id, detail.images);
+                        // NUEVO: limpiar custom_images para que no se acumulen
+                        await setItemCustomImages(item.id, []);
+                        // Limpiar editImages para que el editor refleje el estado nuevo
+                        setEditImages([]);
+                      } catch { /* silencioso */ }
+                    }
+                    setBoothCandidate(null);
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium"
+                >
+                  Importar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

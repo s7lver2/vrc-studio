@@ -8,6 +8,70 @@ pub fn is_zip_path(path: &str) -> bool {
     path.to_lowercase().ends_with(".zip")
 }
 
+pub fn is_unitypackage_path(path: &str) -> bool {
+    path.to_lowercase().ends_with(".unitypackage")
+}
+
+/// Extrae un .unitypackage (tar.gz con estructura GUID-based) a `dest_dir`.
+/// Reconstruye la jerarquía original usando los archivos `pathname` de cada entry.
+/// Los paths `Assets/...` se extraen como `<dest_dir>/...` (sin el prefijo Assets/).
+pub fn extract_unitypackage_to_dir(
+    pkg_path: &std::path::Path,
+    dest_dir: &std::path::Path,
+) -> anyhow::Result<()> {
+    use std::io::Read;
+    use flate2::read::GzDecoder;
+    use tar::Archive;
+
+    // Paso 1 — recoger mapa guid → pathname original
+    let mut pathnames: std::collections::HashMap<String, String> = Default::default();
+    {
+        let file = std::fs::File::open(pkg_path)?;
+        let mut archive = Archive::new(GzDecoder::new(file));
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let entry_path = entry.path()?.into_owned();
+            let parts: Vec<_> = entry_path.components().collect();
+            if parts.len() < 2 { continue; }
+            let guid = parts[0].as_os_str().to_string_lossy().to_string();
+            let file_name = parts[parts.len() - 1].as_os_str().to_string_lossy().to_string();
+            if file_name == "pathname" {
+                let mut content = String::new();
+                entry.read_to_string(&mut content).unwrap_or(0);
+                pathnames.insert(guid, content.trim().replace('\r', "").to_string());
+            }
+        }
+    }
+
+    // Paso 2 — escribir cada `asset` en su ruta original (sin prefijo Assets/)
+    {
+        let file = std::fs::File::open(pkg_path)?;
+        let mut archive = Archive::new(GzDecoder::new(file));
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let entry_path = entry.path()?.into_owned();
+            let parts: Vec<_> = entry_path.components().collect();
+            if parts.len() < 2 { continue; }
+            let guid = parts[0].as_os_str().to_string_lossy().to_string();
+            let file_name = parts[parts.len() - 1].as_os_str().to_string_lossy().to_string();
+            if file_name == "asset" {
+                if let Some(pathname) = pathnames.get(&guid) {
+                    let rel = pathname.strip_prefix("Assets/").unwrap_or(pathname.as_str());
+                    let out_path = dest_dir.join(rel);
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    let mut data = Vec::new();
+                    entry.read_to_end(&mut data)?;
+                    std::fs::write(&out_path, &data)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| match c {
@@ -127,15 +191,19 @@ pub async fn download_file(
     Ok(dest_path)
 }
 
-/// Si el archivo descargado es un .zip, lo extrae en `dest_dir`.
-/// Retorna el directorio de extracción (o el path del archivo si no era zip).
+/// Si el archivo descargado es un .zip o .unitypackage, lo extrae en `dest_dir`.
+/// Retorna el directorio de extracción (o el path del archivo si no era ninguno de los dos).
 pub async fn maybe_extract_zip(
     app: &AppHandle,
     item_id: &str,
     file_path: &Path,
     dest_dir: &Path,
 ) -> Result<PathBuf, String> {
-    if !is_zip_path(&file_path.to_string_lossy()) {
+    let path_str = file_path.to_string_lossy();
+    let is_zip = is_zip_path(&path_str);
+    let is_unity = is_unitypackage_path(&path_str);
+
+    if !is_zip && !is_unity {
         return Ok(file_path.to_path_buf());
     }
 
@@ -154,13 +222,17 @@ pub async fn maybe_extract_zip(
     let dest_dir_owned = dest_dir.to_path_buf();
 
     tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
-        let file = std::fs::File::open(&file_path_owned).map_err(|e| e.to_string())?;
-        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-        archive
-            .extract(&dest_dir_owned)
-            .map_err(|e| e.to_string())?;
-        // Borrar el .zip tras extraer
-        std::fs::remove_file(&file_path_owned).ok();
+        if is_zip {
+            let file = std::fs::File::open(&file_path_owned).map_err(|e| e.to_string())?;
+            let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+            archive.extract(&dest_dir_owned).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&file_path_owned).ok();
+        } else {
+            // .unitypackage
+            extract_unitypackage_to_dir(&file_path_owned, &dest_dir_owned)
+                .map_err(|e| e.to_string())?;
+            std::fs::remove_file(&file_path_owned).ok();
+        }
         Ok(dest_dir_owned)
     })
     .await
@@ -177,6 +249,14 @@ mod tests {
         assert!(is_zip_path("/tmp/pack.ZIP"));
         assert!(!is_zip_path("/tmp/pack.unitypackage"));
         assert!(!is_zip_path("/tmp/pack.exe"));
+    }
+
+    #[test]
+    fn test_is_unitypackage_by_extension() {
+        assert!(is_unitypackage_path("/tmp/pack.unitypackage"));
+        assert!(is_unitypackage_path("/tmp/pack.UNITYPACKAGE"));
+        assert!(!is_unitypackage_path("/tmp/pack.zip"));
+        assert!(!is_unitypackage_path("/tmp/pack.exe"));
     }
 
     #[test]

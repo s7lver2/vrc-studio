@@ -1,6 +1,6 @@
 [package]
 name = "vrc-studio"
-version = "0.1.0"
+version = "0.0.3"
 edition = "2021"
 
 [lib]
@@ -38,6 +38,8 @@ flate2 = "1.1.9"
 futures = "0.3.32"
 ed25519-dalek    = { version = "2", features = ["digest"] }
 base64           = "0.22"
+tauri-plugin-notification = "2"
+anyhow = "1.0.102"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"

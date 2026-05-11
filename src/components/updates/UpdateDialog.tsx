@@ -1,19 +1,20 @@
-// src/components/updates/UpdateDialog.tsx
 import { useUpdateChecker } from "@/hooks/useUpdateChecker";
+import { useUpdateSettings } from "@/hooks/useUpdateSettings";
+import { useT } from "@/i18n";
 
-/** Formatea bytes a KB/MB. */
 function formatSize(bytes: number): string {
   if (bytes === 0) return "";
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/**
- * Muestra un banner/dialog no bloqueante cuando hay una actualización disponible.
- * Se renderiza en App.tsx sobre el contenido principal.
- */
 export function UpdateDialog() {
-  const { updateInfo, installing, dismiss, installUpdate } = useUpdateChecker("stable");
+  const t = useT();
+  const { settings }                                        = useUpdateSettings();
+  const { updateInfo, installing, dismiss, installUpdate }  = useUpdateChecker({
+    channel:      settings.channel,
+    autoDownload: settings.autoDownload,
+  });
 
   if (!updateInfo) return null;
 
@@ -25,19 +26,22 @@ export function UpdateDialog() {
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
           <p className="font-semibold text-white">
-            VRC Studio {updateInfo.remote_version} disponible
+            {t("updates_dialog_title", { version: updateInfo.remote_version })}
           </p>
           <p className="text-white/50 text-xs mt-0.5">
-            Actual: {updateInfo.current_version}
+            {t("updates_dialog_current", { version: updateInfo.current_version })}
             {updateInfo.download_size > 0 && (
               <> · {formatSize(updateInfo.download_size)}</>
             )}
+            <span className="ml-1.5 rounded px-1 py-0.5 bg-white/10 text-white/40 text-[10px] uppercase tracking-wide">
+              {settings.channel}
+            </span>
           </p>
         </div>
         <button
           onClick={dismiss}
           className="text-white/40 hover:text-white/80 transition-colors text-lg leading-none mt-0.5"
-          aria-label="Cerrar"
+          aria-label={t("updates_dialog_close")}
         >
           ×
         </button>
@@ -54,14 +58,14 @@ export function UpdateDialog() {
           className="flex-1 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-60
                      text-white font-medium py-1.5 text-xs transition-colors"
         >
-          {installing ? "Descargando…" : "Actualizar ahora"}
+          {installing ? t("updates_installing") : t("updates_dialog_update")}
         </button>
         <button
           onClick={dismiss}
           className="flex-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/70
                      font-medium py-1.5 text-xs transition-colors"
         >
-          Más tarde
+          {t("updates_dialog_later")}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { PrefabScene } from "@/types/prefab";
 
 // ── Smoke test ────────────────────────────────────────────────
 export async function tauriPing(msg: string): Promise<string> {
@@ -109,6 +110,13 @@ export interface InventoryItem {
   size_bytes: number | null;
   tags: string[];
   is_compressed: boolean;
+  // v2
+  display_name: string | null;
+  custom_cover_path: string | null;
+  sort_order: number | null;
+  product_images: string[];
+  custom_images: string[];
+  folder_id: string | null;
 }
 
 // ── Commands ────────────────────────────────────────────────────
@@ -297,7 +305,10 @@ export interface InventoryFolder {
   id: string;
   name: string;
   parent_id: string | null;
+  color: string | null;
+  custom_image_path: string | null;
 }
+
 
 export type DeleteMode =
   | "InventoryOnly"
@@ -323,7 +334,7 @@ export const tauriListInventoryFolders = (): Promise<InventoryFolder[]> =>
 
 export const tauriMoveItemToFolder = (
   item_id: string,
-  folder_id: string
+  folder_id: string | null
 ): Promise<void> => invoke("move_item_to_folder", { itemId: item_id, folderId: folder_id });
 
 export const tauriTagInventoryItem = (
@@ -650,3 +661,149 @@ export type ConflictStrategy = "ours" | "theirs" | "manual";
 
 export const tauriGetVpmPackageFiles = (url: string): Promise<string[]> =>
     invoke("get_vpm_package_files", { url });
+
+// ── Tracker ────────────────────────────────────────────────────────────────────
+
+export type TrackerKind = "item" | "author";
+
+export interface TrackerItem {
+  id: string;
+  kind: TrackerKind;
+  // item fields
+  booth_id: string | null;
+  item_name: string | null;
+  item_author: string | null;
+  item_thumbnail_url: string | null;
+  item_url: string | null;
+  last_known_price: string | null;
+  track_price_drops: boolean;
+  track_availability: boolean;
+  // author fields
+  author_name: string | null;
+  author_booth_shop_id: string | null;
+  track_new_items: boolean;
+  // common
+  check_interval_minutes: number;
+  last_checked_at: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface TrackerEvent {
+  id: string;
+  tracker_item_id: string;
+  event_type: "price_drop" | "price_change" | "back_in_stock" | "new_item";
+  payload: string; // JSON string
+  detected_at: string;
+  is_read: boolean;
+}
+
+export interface CreateTrackerItemPayload {
+  kind: TrackerKind;
+  booth_id?: string;
+  item_name?: string;
+  item_author?: string;
+  item_thumbnail_url?: string;
+  item_url?: string;
+  track_price_drops?: boolean;
+  track_availability?: boolean;
+  author_name?: string;
+  author_booth_shop_id?: string;
+  track_new_items?: boolean;
+  check_interval_minutes?: number;
+}
+
+export interface UpdateTrackerItemPayload {
+  track_price_drops?: boolean;
+  track_availability?: boolean;
+  track_new_items?: boolean;
+  check_interval_minutes?: number;
+  is_active?: boolean;
+}
+
+export const tauriTrackerList = (): Promise<TrackerItem[]> =>
+  invoke("tracker_list");
+
+export const tauriTrackerCreate = (
+  payload: CreateTrackerItemPayload
+): Promise<TrackerItem> =>
+  invoke("tracker_create", { payload });
+
+export const tauriTrackerUpdate = (
+  id: string,
+  payload: UpdateTrackerItemPayload
+): Promise<TrackerItem> =>
+  invoke("tracker_update", { id, payload });
+
+export const tauriTrackerDelete = (id: string): Promise<void> =>
+  invoke("tracker_delete", { id });
+
+export const tauriTrackerListEvents = (args: {
+  trackerItemId?: string;
+  unreadOnly?: boolean;
+}): Promise<TrackerEvent[]> =>
+  invoke("tracker_list_events", {
+    trackerItemId: args.trackerItemId ?? null,
+    unreadOnly: args.unreadOnly ?? false,
+  });
+
+export const tauriTrackerMarkEventsRead = (ids: string[]): Promise<void> =>
+  invoke("tracker_mark_events_read", { ids });
+
+export const tauriTrackerUnreadCount = (): Promise<number> =>
+  invoke("tracker_unread_count");
+
+export interface ShopAuthor {
+  name: string;
+  product_count: number;
+  sample_thumbnail: string;
+  sample_products: ShopProduct[];
+}
+
+export async function tauriParsePrefab(path: string): Promise<PrefabScene> {
+  return invoke<PrefabScene>("parse_prefab", { path });
+}
+
+export interface UpdateItemMetadataPayload {
+  item_id: string;
+  display_name?: string | null;
+  tags?: string[];
+}
+
+export const tauriUpdateItemMetadata = (
+  payload: UpdateItemMetadataPayload,
+): Promise<void> => invoke("update_item_metadata", { payload });
+
+export const tauriSetItemCustomCover = (
+  item_id: string,
+  source_path: string,
+): Promise<string> => invoke("set_item_custom_cover", { itemId: item_id, sourcePath: source_path });
+
+export const tauriReorderItems = (item_ids: string[]): Promise<void> =>
+  invoke("reorder_items", { itemIds: item_ids });
+
+export const tauriSetItemCustomImages = (
+  item_id: string,
+  source_paths: string[]
+): Promise<string[]> =>
+  invoke("set_item_custom_images", { itemId: item_id, sourcePaths: source_paths });
+
+export const tauriUpdateFolder = (
+  folder_id: string,
+  opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean }
+): Promise<InventoryFolder> =>
+  invoke("update_folder", {
+    folderId: folder_id,
+    name: opts.name ?? null,
+    color: opts.color ?? null,
+    imageSourcePath: opts.image_source_path ?? null,
+    clearImage: opts.clear_image ?? false,
+  });
+
+export async function tauriDeleteInventoryFolder(folderId: string) {
+  return await invoke("delete_inventory_folder", { folderId });
+}
+
+export async function tauriResetAllFolderAssignments(): Promise<void> {
+  await invoke("reset_all_folder_assignments");
+}

@@ -1,14 +1,8 @@
 import { create } from "zustand";
 import type { Project } from "@/lib/tauri";
+import { isUntrustedSourcesUnlocked, lockUntrustedSources } from "@/hooks/useUntrustedSources";
 
-export type Section = "projects" | "packages" | "shop" | "inventory" | "settings" | "workspace" | "logs";
-
-// ── Awesome Animations setting ─────────────────────────────────────────────────
-const ANIM_KEY = "app:awesomeAnimations";
-function loadAnimLevel(): number {
-  try { const v = Number(localStorage.getItem(ANIM_KEY)); return isNaN(v) ? 0 : Math.min(2, Math.max(0, v)); } catch { return 0; }
-}
-function saveAnimLevel(v: number) { try { localStorage.setItem(ANIM_KEY, String(v)); } catch {} }
+export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "sandbox";
 
 // ── Riperstore experimental flag ───────────────────────────────────────────────
 const RIPERSTORE_KEY = "app:riperstoreExperimental";
@@ -21,36 +15,33 @@ interface AppState {
   activeSection: Section;
   isLoading: boolean;
   loadingMessage: string | null;
-  awesomeAnimations: number; // 0 = off, 1 = subtle, 2 = full
   riperstoreExperimental: boolean;
   workspaceProject: Project | null;
   selectedProject: Project | null;
+  untrustedSourcesUnlocked: boolean;
+  
 
   setActiveSection: (section: Section) => void;
   setLoading: (loading: boolean, message?: string) => void;
-  setAwesomeAnimations: (level: number) => void;
   setRiperstoreExperimental: (enabled: boolean) => void;
   openWorkspace: (project: Project) => void;
   closeWorkspace: () => void;
   setSelectedProject: (project: Project | null) => void;
+  setUntrustedSourcesUnlocked: (unlocked: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
   activeSection: "projects",
   isLoading: false,
   loadingMessage: null,
-  awesomeAnimations: loadAnimLevel(),
   riperstoreExperimental: loadRiperstoreExperimental(),
   workspaceProject: null,
   selectedProject: null,
+  untrustedSourcesUnlocked: isUntrustedSourcesUnlocked(),
 
   setActiveSection: (section) => set({ activeSection: section }),
   setLoading: (loading, message) =>
     set({ isLoading: loading, loadingMessage: loading ? (message ?? null) : null }),
-  setAwesomeAnimations: (level) => {
-    saveAnimLevel(level);
-    set({ awesomeAnimations: level });
-  },
   setRiperstoreExperimental: (enabled) => {
     saveRiperstoreExperimental(enabled);
     set({ riperstoreExperimental: enabled });
@@ -58,4 +49,14 @@ export const useAppStore = create<AppState>((set) => ({
   openWorkspace: (project) => set({ activeSection: "workspace", workspaceProject: project }),
   closeWorkspace: () => set({ activeSection: "projects", workspaceProject: null }),
   setSelectedProject: (project) => set({ selectedProject: project }),
+  setUntrustedSourcesUnlocked: (unlocked) => {
+    if (!unlocked) {
+      lockUntrustedSources();
+      // Desactivar riperstore si se revoca el acceso
+      saveRiperstoreExperimental(false);
+      set({ untrustedSourcesUnlocked: false, riperstoreExperimental: false });
+    } else {
+      set({ untrustedSourcesUnlocked: true });
+    }
+  },
 }));

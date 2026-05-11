@@ -6,22 +6,27 @@
  */
 
 import {
-  Info, FolderInput, Tag, Archive, Trash2, GripVertical,
-  FolderOpen, CheckCircle2, X, Plus, PackageOpen,
-  User, Shirt, Sparkles, Layers, Package,
+  Info, FolderInput, Archive, Trash2, GripVertical,
+  FolderOpen, CheckCircle2, PackageOpen,
+  User, Shirt, Sparkles, Layers, Package, Check,
 } from "lucide-react";
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useDraggable } from "@dnd-kit/core";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { InventoryItem } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { useTagStore } from "../../store/tagStore";
+import { useAppearanceStore } from "../../store/appearanceStore";
 import { CompressionPopup } from "./CompressionPopup";
 import { useT } from "../../i18n";
-import { TagInput } from "./TagInput";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { toAssetUrl } from "../../lib/utils";
 
 interface Props {
   item: InventoryItem;
   viewMode: "grid" | "list";
+  isSelected:       boolean;
+  onCheckboxToggle: () => void;
+  isDragging:       boolean;
 }
 
 // ── Type icon (replaces "No preview") ────────────────────────────────────────
@@ -39,10 +44,40 @@ const BEHAVIOR_ICON_CONFIG: Record<
   shader:    { icon: Layers,   color: "text-green-400",  bg: "bg-green-900/30",  label: "Shader" },
 };
 
+function useHoverCarousel(images: string[], delayMs = 600, intervalMs = 900) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const delayRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cycleRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const start = useCallback(() => {
+    if (images.length < 2) return;
+    delayRef.current = setTimeout(() => {
+      let idx = 1;
+      setActiveIdx(idx);
+      cycleRef.current = setInterval(() => {
+        idx = (idx + 1) % images.length;
+        setActiveIdx(idx);
+      }, intervalMs);
+    }, delayMs);
+  }, [images.length, delayMs, intervalMs]);
+
+  const stop = useCallback(() => {
+    if (delayRef.current)  clearTimeout(delayRef.current);
+    if (cycleRef.current)  clearInterval(cycleRef.current);
+    delayRef.current = null;
+    cycleRef.current = null;
+    setActiveIdx(0);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => () => { stop(); }, [stop]);
+
+  return { activeIdx, start, stop };
+}
+
 function TypePlaceholder({ behavior, size = "full" }: { behavior: ItemBehavior; size?: "full" | "sm" }) {
   const t = useT();
   if (!behavior) {
-    // Default — generic package icon
     return (
       <div className={`${size === "full" ? "w-full h-full" : "w-9 h-9"} flex flex-col items-center justify-center gap-1 text-zinc-600`}>
         <Package className={size === "full" ? "h-8 w-8" : "h-4 w-4"} />
@@ -50,10 +85,8 @@ function TypePlaceholder({ behavior, size = "full" }: { behavior: ItemBehavior; 
       </div>
     );
   }
-
   const cfg = BEHAVIOR_ICON_CONFIG[behavior];
   const Icon = cfg.icon;
-
   return (
     <div className={`${size === "full" ? "w-full h-full" : "w-9 h-9"} flex flex-col items-center justify-center gap-1 ${cfg.bg}`}>
       <Icon className={`${size === "full" ? "h-10 w-10" : "h-5 w-5"} ${cfg.color}`} />
@@ -62,30 +95,9 @@ function TypePlaceholder({ behavior, size = "full" }: { behavior: ItemBehavior; 
   );
 }
 
-// ── Tag editor inline ─────────────────────────────────────────────────────────
+// ── Context menu (sin Tags) ───────────────────────────────────────────────────
 
-function TagEditor({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
-  const t = useT();
-  const { updateTags } = useInventoryStore();
-  const [tags, setTags] = useState<string[]>(item.tags);
-
-  return (
-    <div className="p-3 flex flex-col gap-2.5 min-w-[240px]">
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("ctx_tags_section")}</p>
-      <TagInput tags={tags} onChange={setTags} placeholder={t("ctx_tags_placeholder")} />
-      <button
-        onClick={async () => { await updateTags(item.id, tags); onClose(); }}
-        className="text-[10px] bg-red-600 hover:bg-red-500 text-white rounded-lg px-3 py-1.5 flex items-center gap-1 justify-center mt-1"
-      >
-        <CheckCircle2 className="h-3 w-3" /> {t("ctx_tags_save")}
-      </button>
-    </div>
-  );
-}
-
-// ── Context menu ──────────────────────────────────────────────────────────────
-
-type SubView = null | "move" | "tags" | "delete";
+type SubView = null | "move" | "delete";
 
 function ContextMenu({
   item, x, y, onClose, onCompress,
@@ -131,11 +143,6 @@ function ContextMenu({
             <span className="text-zinc-600 text-xs">›</span>
           </button>
 
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-            onClick={() => setSub("tags")}>
-            <Tag className="h-3.5 w-3.5 text-zinc-400 shrink-0" /> {t("ctx_edit_tags")}
-          </button>
-
           <div className="my-1 border-t border-zinc-800" />
 
           {item.is_compressed ? (
@@ -179,8 +186,6 @@ function ContextMenu({
         </>
       )}
 
-      {sub === "tags" && <TagEditor item={item} onClose={onClose} />}
-
       {sub === "delete" && (
         <>
           <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
@@ -206,33 +211,36 @@ function ContextMenu({
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 
-export function InventoryItemCard({ item, viewMode }: Props) {
+export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle, isDragging }: Props) {
   const t = useT();
+  const { showTagsInGrid } = useAppearanceStore();
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [compressPopup, setCompressPopup] = useState(false);
   const [compressMode, setCompressMode] = useState<"compress" | "decompress">("compress");
   const { compressItem, decompressItem, fetchAll, selectItem } = useInventoryStore();
   const { resolveItemBehavior } = useTagStore();
 
-  // Drag: attach to the grip handle. The sensor in InventoryGrid activates on right-click.
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id, data: { item } });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging: isSortableDragging } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isSortableDragging || isDragging ? 0.4 : 1,
+  };
 
   const behavior = resolveItemBehavior(item.tags);
-
   const sizeMb = item.size_bytes != null
     ? item.size_bytes < 1024 * 1024
       ? `${(item.size_bytes / 1024).toFixed(0)} KB`
       : `${(item.size_bytes / (1024 * 1024)).toFixed(1)} MB`
     : null;
 
-  // Left click → open item detail panel
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     selectItem(item);
   }, [item, selectItem]);
 
-  // Right click → open context menu (drag handled by MouseSensor in InventoryGrid)
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     setMenuPos({ x: e.clientX, y: e.clientY });
@@ -264,22 +272,44 @@ export function InventoryItemCard({ item, viewMode }: Props) {
     </div>
   );
 
+  const coverSrc = item.custom_cover_path
+    ? toAssetUrl(item.custom_cover_path)
+    : item.thumbnail_url ?? null;
+
+  const carouselImages: string[] = useMemo(() => {
+    const imgs: string[] = [];
+    if (coverSrc) imgs.push(coverSrc);
+    // Imágenes custom que el usuario añadió manualmente (paths locales → asset URL)
+    for (const p of item.custom_images ?? []) {
+      if (!p) continue;
+      const url = p.startsWith("http") ? p : (toAssetUrl(p) ?? "");
+      if (url && url !== coverSrc) imgs.push(url);
+    }
+    // Imágenes de producto de Booth (URLs HTTP)
+    for (const url of item.product_images) {
+      if (url && url !== coverSrc) imgs.push(url);
+    }
+    return imgs.filter(Boolean);
+  }, [coverSrc, item.custom_images, item.product_images]);
+
+  const { activeIdx, start, stop } = useHoverCarousel(carouselImages);
+  const displaySrc = carouselImages[activeIdx] ?? null;
+
   if (viewMode === "list") {
     return (
       <>
         <div
-          ref={setNodeRef} {...attributes}
-          className={`flex items-center gap-3 px-3 py-2 rounded hover:bg-zinc-800 transition-colors cursor-pointer select-none ${isDragging ? "opacity-40" : ""}`}
+          ref={setNodeRef} {...attributes} {...listeners}
+          className={`flex items-center gap-3 px-3 py-2 rounded hover:bg-zinc-800 transition-colors cursor-grab active:cursor-grabbing select-none ${isDragging ? "opacity-40" : ""}`}
           onClick={handleClick}
           onContextMenu={handleContextMenu}
         >
-          {/* Grip — right-click-drag activates dnd via custom sensor */}
-          <div {...listeners} className="shrink-0 cursor-grab text-zinc-600 hover:text-zinc-400">
+          <div className="shrink-0 text-zinc-600 hover:text-zinc-400 pointer-events-none">
             <GripVertical className="h-4 w-4" />
           </div>
           <div className="relative w-9 h-9 rounded bg-zinc-800 shrink-0 overflow-hidden">
-            {item.thumbnail_url ? (
-              <img src={item.thumbnail_url} alt="" className={`w-full h-full object-cover ${item.is_compressed ? "blur-[2px]" : ""}`} />
+            {coverSrc ? (
+              <img src={coverSrc} alt="" className={`w-full h-full object-cover ${item.is_compressed ? "blur-[2px]" : ""}`} />
             ) : (
               <TypePlaceholder behavior={behavior} size="sm" />
             )}
@@ -290,7 +320,7 @@ export function InventoryItemCard({ item, viewMode }: Props) {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-zinc-200 truncate">{item.name}</p>
+            <p className="text-sm text-zinc-200 truncate">{item.display_name ?? item.name}</p>
             <p className="text-xs text-zinc-500 truncate flex items-center gap-1.5">
               {item.author ?? "Unknown"}{sizeMb ? ` · ${sizeMb}` : ""}
               {item.is_compressed && <span className="text-[9px] text-amber-400/70 uppercase">zip</span>}
@@ -314,34 +344,79 @@ export function InventoryItemCard({ item, viewMode }: Props) {
   return (
     <>
       <div
-        ref={setNodeRef} {...attributes}
-        className={`group relative flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden cursor-pointer hover:border-zinc-600 transition-all select-none ${isDragging ? "opacity-40 scale-95" : ""}`}
+        ref={setNodeRef} {...attributes} {...listeners}
+        style={style}
+        className={`group relative flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-all select-none ${isDragging ? "opacity-40 scale-95" : ""}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
+        onMouseEnter={() => {
+          // Precargar todas las imágenes del carousel
+          carouselImages.forEach((src) => {
+            if (src) {
+              const img = new Image();
+              img.src = src;
+            }
+          });
+          start();
+        }}
+        onMouseLeave={stop} 
       >
         <div className="relative aspect-square bg-zinc-800 overflow-hidden">
-          {item.thumbnail_url ? (
+          {/* Capa base — siempre visible, sin animación */}
+          {carouselImages[0] ? (
             <img
-              src={item.thumbnail_url} alt={item.name}
-              className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ${item.is_compressed ? "blur-[3px]" : ""}`}
-              loading="lazy"
+              src={carouselImages[0]}
+              alt={item.name}
+              className={`absolute inset-0 w-full h-full object-cover ${item.is_compressed ? "blur-[3px]" : ""}`}
             />
           ) : (
             <TypePlaceholder behavior={behavior} size="full" />
           )}
+
+          {/* Capa de barrido — aparece al hacer hover y cambia de imagen */}
+          {carouselImages.length > 1 && activeIdx > 0 && displaySrc && (
+            <img
+              key={`${item.id}-${activeIdx}`}
+              src={displaySrc}
+              alt=""
+              className={`absolute inset-0 w-full h-full object-cover inventory-sweep ${item.is_compressed ? "blur-[3px]" : ""}`}
+            />
+          )}
+
           {item.is_compressed && <CompressedOverlay />}
         </div>
+
+        {/* Checkbox — visible on hover or when selected */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
+          className={`absolute top-2 left-2 z-10 rounded-md border transition-all
+            ${isSelected
+              ? "opacity-100 bg-red-600 border-red-600"
+              : "opacity-0 group-hover:opacity-100 bg-zinc-900/80 border-zinc-600"
+            } w-5 h-5 flex items-center justify-center`}
+        >
+          {isSelected && <Check className="h-3 w-3 text-white" />}
+        </button>
+
         <div className="p-2">
-          <p className="text-xs font-medium text-zinc-200 truncate">{item.name}</p>
+          <p className="text-xs font-medium text-zinc-200 truncate">
+            {item.display_name ?? item.name}
+          </p>
           <p className="text-[10px] text-zinc-500 truncate">{item.author ?? "Unknown"}</p>
+          {showTagsInGrid && item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-0.5 mt-0.5">
+              {item.tags.slice(0, 3).map((tag) => (
+                <span key={tag} className="text-[8px] px-1 py-0.5 bg-zinc-800 text-zinc-500 rounded">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
+
         {/* Grip handle — right click drag */}
-        <div className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <div
-            {...listeners}
-            title="Right-click drag to reorganize"
-            className="h-6 w-6 flex items-center justify-center rounded bg-zinc-900/80 border border-zinc-700 hover:bg-zinc-800 text-zinc-400 cursor-grab"
-          >
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="h-6 w-6 flex items-center justify-center rounded bg-zinc-900/80 border border-zinc-700 text-zinc-400">
             <GripVertical className="h-3 w-3" />
           </div>
         </div>

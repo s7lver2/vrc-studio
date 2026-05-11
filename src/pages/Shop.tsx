@@ -8,6 +8,9 @@ import { useShopSearch } from "../hooks/useShopSearch";
 import { useRipperStatus } from "../hooks/useRipperStatus";
 import { useAppStore } from "@/store/app";
 import { useT } from "../i18n/index";
+import { AuthorModal } from "@/components/shop/AuthorModal";
+import { useShopStore } from "@/store/shopStore";
+import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
 
 // ── Shop Warning Dialog ───────────────────────────────────────────────────────
 
@@ -63,6 +66,7 @@ function ShopWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
 const SHOP_WARNING_KEY = "shop:warningAccepted";
 
 export default function Shop() {
+  const { filters, authorResults, selectedAuthor, setSelectedAuthor } = useShopStore();
   const { query, handleQueryChange } = useShopSearch();
   const { status: ripperStatus } = useRipperStatus();
   const setActiveSection = useAppStore((s) => s.setActiveSection);
@@ -101,7 +105,7 @@ export default function Shop() {
       <ShopFilters />
 
       {/* Ripper.store status banners */}
-      {ripperStatus === "disconnected" && (
+      {isUntrustedSourcesUnlocked() && ripperStatus === "disconnected" && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-zinc-800/60 border border-zinc-700/50 text-xs text-zinc-400">
           <span>Ripper.store not connected — showing Booth results only.</span>
           <button
@@ -113,7 +117,7 @@ export default function Shop() {
         </div>
       )}
 
-      {ripperStatus === "expired" && (
+      {isUntrustedSourcesUnlocked() && ripperStatus === "expired" && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-yellow-900/20 border border-yellow-500/30 text-xs text-yellow-400">
           <span>Ripper.store session expired.</span>
           <button
@@ -123,6 +127,33 @@ export default function Shop() {
             Reconnect in Settings
           </button>
         </div>
+      )}
+
+      {filters.searchMode === "authors" && authorResults.length > 0 && (
+        <div className="grid grid-cols-3 gap-4 p-4">
+          {authorResults.map((a) => (
+            <button
+              key={a.name}
+              onClick={() => setSelectedAuthor(a)}
+              className="flex flex-col gap-2 p-3 rounded-xl bg-zinc-800/60 border border-zinc-700 hover:border-violet-500/50 text-left"
+            >
+              <div className="flex items-center gap-2">
+                <img
+                  src={a.sample_thumbnail}
+                  className="w-8 h-8 rounded-full object-cover bg-zinc-700"
+                />
+                <div>
+                  <p className="text-sm font-medium text-zinc-100">{a.name}</p>
+                  <p className="text-xs text-zinc-500">{a.product_count} items</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedAuthor && (
+        <AuthorModal author={selectedAuthor} onClose={() => setSelectedAuthor(null)} />
       )}
 
       {/* Results */}

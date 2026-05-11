@@ -117,11 +117,6 @@ export function CompressionSection() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-lg font-semibold text-zinc-100">{t("compression_section_title")}</h1>
-        <p className="text-sm text-zinc-500 mt-0.5">{t("compression_section_desc")}</p>
-      </div>
-
       <div className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t("compression_section_preset")}</h2>
         <div className="grid grid-cols-2 gap-2">

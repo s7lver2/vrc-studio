@@ -49,15 +49,15 @@ fn update_manifest_url(channel: &str) -> String {
     // La variable VRCSTUDIO_UPDATE_BASE_URL se puede inyectar vía RUSTFLAGS
     // en build.py para apuntar a un servidor propio.
     let base = option_env!("VRCSTUDIO_UPDATE_BASE_URL")
-        .unwrap_or("https://github.com/tu-usuario/vrc-studio/releases/latest/download");
+        .unwrap_or("https://github.com/s7lver2/vrc-studio/releases/latest/download");
     format!("{}/update-{}.json", base, channel)
 }
 
 /// Clave pública Ed25519 para el canal stable (base64, 32 bytes raw).
 /// Se genera con:  python build.py gen-keys
 /// y se pega aquí antes de compilar.
-const STABLE_PUBKEY_B64:  &str = "REEMPLAZAR_CON_CLAVE_PUBLICA_STABLE";
-const TESTING_PUBKEY_B64: &str = "REEMPLAZAR_CON_CLAVE_PUBLICA_TESTING";
+const STABLE_PUBKEY_B64:  &str = "vD8PMhYn9r8QpooB5f6rzfXi6ChhSufRfzMZg/GpNro=";
+const TESTING_PUBKEY_B64: &str = "/Cv2qdVuYKzNeaGzsipGIsZ1wOIeORSwCgOM+jcxmzE=";
 
 fn pubkey_for_channel(channel: &str) -> &'static str {
     if channel == "testing" { TESTING_PUBKEY_B64 } else { STABLE_PUBKEY_B64 }
@@ -145,10 +145,35 @@ pub async fn check_for_update(channel: Option<String>) -> Result<UpdateCheckResu
         .build()
         .map_err(|e| e.to_string())?;
 
-    let manifest: UpdateManifest = client
+    let response = client
         .get(&url)
-        .send().await.map_err(|e| format!("network: {e}"))?
-        .json().await.map_err(|e| format!("parse: {e}"))?;
+        .send().await
+        .map_err(|e| format!("network: {e}"))?;
+
+    // 404 = el manifiesto no existe todavía → no hay update
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        let current = env!("CARGO_PKG_VERSION");
+        return Ok(UpdateCheckResult {
+            has_update:                  false,
+            current_version:             current.to_string(),
+            remote_version:              current.to_string(),
+            notes:                       String::new(),
+            download_url:                String::new(),
+            signature:                   String::new(),
+            download_size:               0,
+            forced_onboarding_version:   None,
+            whats_new_version:           None,
+            whats_new_changelog:         None,
+        });
+    }
+
+    if !response.status().is_success() {
+        return Err(format!("server error: HTTP {}", response.status()));
+    }
+
+    let body = response.text().await.map_err(|e| format!("read: {e}"))?;
+    let manifest: UpdateManifest = serde_json::from_str(&body)
+        .map_err(|e| format!("parse: {e} — body was: {}", &body[..body.len().min(200)]))?;
 
     let has_update = compare_versions(&manifest.version, current);
     let pk = host_platform_key();
@@ -249,4 +274,130 @@ pub async fn download_and_install_update(
     }
 
     Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  GitHub Releases API — listar versiones disponibles
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn github_api_releases_url() -> &'static str {
+    option_env!("VRCSTUDIO_GITHUB_API_RELEASES")
+        .unwrap_or("https://api.github.com/repos/s7lver2/vrc-studio/releases?per_page=20")
+}
+
+/// Detecta el canal a partir del tag y el flag prerelease de GitHub.
+/// Público para que los tests de integración puedan usarlo.
+pub fn channel_from_tag(tag: &str, prerelease: bool) -> &'static str {
+    if prerelease
+        || tag.contains("testing")
+        || tag.contains("beta")
+        || tag.contains("alpha")
+    {
+        "testing"
+    } else {
+        "stable"
+    }
+}
+
+/// Comprueba si el nombre de un asset de GitHub corresponde a la plataforma indicada.
+/// Público para los tests.
+pub fn asset_matches_platform(asset_name: &str, platform_key: &str) -> bool {
+    asset_name.contains(platform_key)
+}
+
+#[derive(Debug, Deserialize)]
+struct GhRelease {
+    tag_name:     String,
+    prerelease:   bool,
+    published_at: String,
+    body:         Option<String>,
+    assets:       Vec<GhAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhAsset {
+    name:                 String,
+    browser_download_url: String,
+    size:                 u64,
+}
+
+/// Versión publicada con el asset descargable para la plataforma actual.
+#[derive(Debug, Serialize, Clone)]
+pub struct AvailableVersion {
+    pub version:       String,
+    pub channel:       String,
+    pub pub_date:      String,
+    pub notes:         String,
+    pub download_url:  String,
+    pub download_size: u64,
+    /// true si esta versión es la que está corriendo ahora mismo.
+    pub is_current:    bool,
+}
+
+/// Devuelve la lista de versiones publicadas en GitHub para el canal indicado,
+/// filtradas por plataforma del host (solo muestra versiones instalables).
+/// Resultado ordenado de más reciente a más antiguo.
+#[tauri::command]
+pub async fn list_available_versions(
+    channel: Option<String>,
+) -> Result<Vec<AvailableVersion>, String> {
+    let channel  = channel.as_deref().unwrap_or("stable");
+    let current  = env!("CARGO_PKG_VERSION");
+    let platform = host_platform_key();
+    let url      = github_api_releases_url();
+
+    let client = reqwest::Client::builder()
+        .user_agent(format!("vrc-studio/{}", current))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client
+        .get(url)
+        .send().await
+        .map_err(|e| format!("network: {e}"))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(vec![]);
+    }
+
+    if !response.status().is_success() {
+        return Err(format!("server error: HTTP {}", response.status()));
+    }
+
+    let body = response.text().await.map_err(|e| format!("read: {e}"))?;
+    let releases: Vec<GhRelease> = serde_json::from_str(&body)
+        .map_err(|e| format!("parse: {e} — body was: {}", &body[..body.len().min(200)]))?;
+
+    let mut versions: Vec<AvailableVersion> = releases
+        .into_iter()
+        .filter(|r| channel_from_tag(&r.tag_name, r.prerelease) == channel)
+        .filter_map(|r| {
+            // Solo incluir si existe un asset para la plataforma actual
+            let asset = r.assets.iter()
+                .find(|a| asset_matches_platform(&a.name, platform))?;
+
+            // Normalizar version: quitar "v" inicial y sufijos de canal
+            let version = r.tag_name
+                .trim_start_matches('v')
+                .trim_end_matches("-testing")
+                .trim_end_matches("-beta")
+                .trim_end_matches("-alpha")
+                .to_string();
+
+            Some(AvailableVersion {
+                is_current:    version == current,
+                channel:       channel_from_tag(&r.tag_name, r.prerelease).to_string(),
+                pub_date:      r.published_at,
+                notes:         r.body.unwrap_or_default(),
+                download_url:  asset.browser_download_url.clone(),
+                download_size: asset.size,
+                version,
+            })
+        })
+        .collect();
+
+    // Más reciente primero (pub_date es ISO 8601 — orden lexicográfico funciona)
+    versions.sort_by(|a, b| b.pub_date.cmp(&a.pub_date));
+    Ok(versions)
 }

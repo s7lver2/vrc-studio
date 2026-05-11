@@ -3,6 +3,7 @@ import { Project } from "@/lib/tauri";
 import { ProjectCard } from "./ProjectCard";
 import { Boxes, LayoutGrid, List, AlignJustify, GitBranch, Info, Trash2, ExternalLink, Cpu } from "lucide-react";
 import { useT } from "@/i18n";
+import { toAssetUrl } from "@/lib/utils";
 
 type ViewMode = "grid" | "list" | "compact";
 
@@ -36,7 +37,7 @@ function ProjectListRow({ project, onOpen, onDelete, onDetail, isSelected }: {
     >
       <div className="h-14 w-24 shrink-0 rounded-md overflow-hidden bg-zinc-950 border border-zinc-800/60">
         {project.last_screenshot ? (
-          <img src={`asset://${project.last_screenshot}`} alt="Last session" className="w-full h-full object-cover" />
+          <img src={toAssetUrl(project.last_screenshot) ?? undefined} alt="Last session" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-800">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5">

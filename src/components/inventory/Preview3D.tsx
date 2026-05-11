@@ -4,11 +4,13 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
-  Loader2, RotateCcw, User, ChevronDown, AlertTriangle, Info,
+  Loader2, RotateCcw, User, ChevronDown, AlertTriangle, Info, FlaskConical,
 } from "lucide-react";
 import { InventoryItem } from "../../lib/tauri";
 import type * as THREE from "three";
 import { useT } from "../../i18n";
+import { useAppStore } from "@/store/app";
+import { useSandboxStore } from "@/store/sandboxStore";
 
 // ── Lazy Three.js loader ──────────────────────────────────────────────────────
 
@@ -484,6 +486,7 @@ export function Preview3D({ modelPaths, inventoryItems, currentItem }: Props) {
 
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const setSandboxItem = useSandboxStore((s) => s.setBaseItem);
 
   const isOutfit = useMemo(() => itemIsOutfit(currentItem, modelPaths), [currentItem, modelPaths]);
   const supportedAvatarNames = useMemo(() => (isOutfit ? extractSupportedAvatarNames(modelPaths) : new Set<string>()), [isOutfit, modelPaths]);
@@ -536,6 +539,9 @@ export function Preview3D({ modelPaths, inventoryItems, currentItem }: Props) {
   }, [shaderMode, ready]);
 
   const modelName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+  const setActiveSection = useAppStore((s) => s.setActiveSection);
+  const { setBaseItem } = useSandboxStore();
 
   return (
     <div className="flex flex-col gap-3">
@@ -690,6 +696,20 @@ export function Preview3D({ modelPaths, inventoryItems, currentItem }: Props) {
           <div className="absolute top-2 right-2 flex flex-col gap-1 pointer-events-none">
             <button onClick={() => sceneRef.current?.resetCamera()} className="h-7 w-7 flex items-center justify-center rounded-lg bg-black/50 hover:bg-black/70 text-zinc-300 transition-colors pointer-events-auto" title={t("preview_3d_reset_camera")}>
               <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => {
+                if (currentItem) {
+                  setSandboxItem(currentItem);
+                  setActiveSection("sandbox");
+                }
+              }}
+              disabled={!currentItem}
+              title="Open in Sandbox"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-300 hover:text-zinc-100 transition-colors disabled:opacity-40"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+              Sandbox
             </button>
           </div>
         )}

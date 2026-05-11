@@ -1,5 +1,5 @@
 // src/hooks/useUpdateChecker.ts
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface UpdateCheckResult {
@@ -15,41 +15,54 @@ export interface UpdateCheckResult {
   whats_new_changelog?:        string;
 }
 
-interface UseUpdateCheckerReturn {
-  updateInfo:        UpdateCheckResult | null;
-  checking:          boolean;
-  installing:        boolean;
-  error:             string | null;
-  dismiss:           () => void;
-  installUpdate:     () => Promise<void>;
+interface UseUpdateCheckerOptions {
+  channel?:      string;
+  autoDownload?: boolean;
 }
 
-/**
- * Comprueba actualizaciones al montar el componente (una vez por sesión).
- * Expone `updateInfo` para que el componente UI decida cómo mostrarlo.
- */
-export function useUpdateChecker(channel = "stable"): UseUpdateCheckerReturn {
+interface UseUpdateCheckerReturn {
+  updateInfo:    UpdateCheckResult | null;
+  checking:      boolean;
+  installing:    boolean;
+  error:         string | null;
+  dismiss:       () => void;
+  installUpdate: () => Promise<void>;
+  /** Dispara una comprobación manual, ignorando el flag de sesión. */
+  checkNow:      (overrideChannel?: string) => Promise<void>;
+}
+
+export function useUpdateChecker(
+  { channel = "stable", autoDownload = false }: UseUpdateCheckerOptions = {}
+): UseUpdateCheckerReturn {
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const [checking,   setChecking]   = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
+  // Evita disparar autoDownload más de una vez por update detectado
+  const autoTriggered = useRef(false);
 
-  useEffect(() => {
-    // Solo comprobar una vez por sesión (evita spam al re-montar)
-    const key = `vrc-update-checked-${new Date().toDateString()}`;
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, "1");
-
+  const checkNow = useCallback(async (overrideChannel?: string) => {
     setChecking(true);
-    invoke<UpdateCheckResult>("check_for_update", { channel })
-      .then((result) => {
-        if (result.has_update) setUpdateInfo(result);
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setChecking(false));
+    setError(null);
+    try {
+      const result = await invoke<UpdateCheckResult>("check_for_update", {
+        channel: overrideChannel ?? channel,
+      });
+      setUpdateInfo(result.has_update ? result : null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setChecking(false);
+    }
   }, [channel]);
 
-  const dismiss = useCallback(() => setUpdateInfo(null), []);
+  // Comprobar una vez por sesión (y por canal) al montar
+  useEffect(() => {
+    const key = `vrc-update-checked-${new Date().toDateString()}-${channel}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    checkNow();
+  }, [channel, checkNow]);
 
   const installUpdate = useCallback(async () => {
     if (!updateInfo) return;
@@ -60,8 +73,6 @@ export function useUpdateChecker(channel = "stable"): UseUpdateCheckerReturn {
         signature: updateInfo.signature,
         channel,
       });
-      // El instalador se ha lanzado — cerrar la app para que el usuario
-      // complete la instalación. El instalador de Windows maneja el resto.
     } catch (e) {
       setError(String(e));
     } finally {
@@ -69,5 +80,18 @@ export function useUpdateChecker(channel = "stable"): UseUpdateCheckerReturn {
     }
   }, [updateInfo, channel]);
 
-  return { updateInfo, checking, installing, error, dismiss, installUpdate };
+  // Auto-descarga: arrancar la descarga en cuanto se detecta el update
+  useEffect(() => {
+    if (autoDownload && updateInfo?.has_update && !autoTriggered.current) {
+      autoTriggered.current = true;
+      installUpdate();
+    }
+  }, [autoDownload, updateInfo, installUpdate]);
+
+  const dismiss = useCallback(() => {
+    setUpdateInfo(null);
+    autoTriggered.current = false;
+  }, []);
+
+  return { updateInfo, checking, installing, error, dismiss, installUpdate, checkNow };
 }

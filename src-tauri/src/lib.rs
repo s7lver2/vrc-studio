@@ -6,6 +6,7 @@ pub mod services;
 
 use std::sync::Mutex;
 use tauri::Manager;
+use sqlx::SqlitePool;
 
 /// Estado de autenticación de Ripper.store.
 /// Guardamos el label de la WebviewWindow activa; None = no autenticado.
@@ -76,6 +77,16 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             let pool = tauri::async_runtime::block_on(db::init_pool(&app_data_dir))
                 .expect("DB initialization failed");
             app.manage(pool);
+
+            let app_handle = app.handle().clone();
+
+            // Grant FS scope access to the configured assets directory so that
+            // custom paths (e.g. on a secondary drive) are readable by the frontend.
+            crate::commands::app_settings::grant_assets_scope(&app.handle());
+            
+
+            let db_for_tracker = app.state::<SqlitePool>().inner().clone();
+            crate::services::tracker_service::start_polling(app_handle, db_for_tracker);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -142,6 +153,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::inventory::import_local_package,
             commands::inventory::compress_item,
             commands::inventory::decompress_item,
+            commands::inventory::reimport_all_assets,
             // ── VCS ──
             commands::vcs::get_vcs_status,
             commands::vcs::vcs_commit,
@@ -175,5 +187,30 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             // ── Updates ──
             commands::updates::check_for_update,
             commands::updates::download_and_install_update,
+            commands::updates::list_available_versions,
+            // tracker
+            commands::tracker::tracker_list,
+            commands::tracker::tracker_create,
+            commands::tracker::tracker_update,
+            commands::tracker::tracker_delete,
+            commands::tracker::tracker_list_events,
+            commands::tracker::tracker_mark_events_read,
+            commands::tracker::tracker_unread_count,
+            commands::sandbox::parse_prefab,
+            // ── App settings / Storage ──
+            commands::app_settings::get_app_settings,
+            commands::app_settings::set_app_settings,
+            commands::app_settings::get_storage_stats,
+            commands::app_settings::clear_orphaned_cache,
+            commands::app_settings::migrate_assets,
+            commands::app_settings::clear_thumbnails_cache,
+            commands::app_settings::clear_all_cache,
+            commands::inventory::update_item_metadata,
+            commands::inventory::set_item_custom_cover,
+            commands::inventory::reorder_items,
+            commands::inventory::set_item_custom_images,
+            commands::inventory::update_folder,
+            commands::inventory::delete_inventory_folder,
+            commands::inventory::reset_all_folder_assignments
         ])
 }

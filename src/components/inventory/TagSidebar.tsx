@@ -115,13 +115,17 @@ function TagRow({
 }
 
 export function TagSidebar() {
-  const { pinnedTags, selectedTag, customTags, togglePin, pinTag, selectTag, addCustomTag, removeCustomTag, renameCustomTag, getTagMeta } = useTagStore();
+  const {
+    pinnedTags, selectedTag, customTags,
+    togglePin, pinTag, selectTag,
+    addCustomTag, removeCustomTag, renameCustomTag, getTagMeta,
+  } = useTagStore();
   const { items } = useInventoryStore();
   const [creating, setCreating] = useState(false);
   const [newTagName, setNewTagName] = useState("");
-  const [showAll, setShowAll] = useState(false);
   const t = useT();
 
+  // Contar tags en uso
   const tagCounts = new Map<string, number>();
   items.forEach((item) => {
     item.tags.forEach((tag) => {
@@ -129,10 +133,24 @@ export function TagSidebar() {
     });
   });
 
-  const allSystemTagsInUse = SYSTEM_TAGS.filter((tag) => tagCounts.has(tag.id));
-  const allCustomTagsInUse = customTags.filter((tag) => tagCounts.has(tag.id));
-  const pinnedTagMetas = pinnedTags.map(getTagMeta);
-  const sidebarTags = pinnedTagMetas;
+  // System tags: mostrar siempre las que tienen count > 0, el resto con count 0 pero visibles
+  const systemTagsWithCount = SYSTEM_TAGS.map((t) => ({
+    meta: t,
+    count: tagCounts.get(t.id) ?? 0,
+  }));
+
+  // Custom tags: todas las conocidas + las que aparecen en ítems pero no están definidas
+  const knownCustomIds = new Set(customTags.map((t) => t.id));
+  const orphanedCustomTags: { meta: ReturnType<typeof getTagMeta>; count: number }[] = [];
+  tagCounts.forEach((count, id) => {
+    if (!SYSTEM_TAGS.find((s) => s.id === id) && !knownCustomIds.has(id)) {
+      orphanedCustomTags.push({ meta: getTagMeta(id), count });
+    }
+  });
+  const allCustomWithCount = [
+    ...customTags.map((t) => ({ meta: t, count: tagCounts.get(t.id) ?? 0 })),
+    ...orphanedCustomTags,
+  ];
 
   const handleCreate = () => {
     const name = newTagName.trim();
@@ -147,29 +165,24 @@ export function TagSidebar() {
 
   return (
     <div className="flex flex-col gap-0.5 mt-4 pt-3 border-t border-zinc-800">
+      {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 mb-0.5">
         <div className="flex items-center gap-1.5">
           <Tag className="h-3 w-3 text-zinc-500" />
-          <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">{t("tags_title")}</span>
+          <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+            {t("tags_title")}
+          </span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            className="h-5 w-5 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
-            onClick={() => setShowAll((v) => !v)}
-            title={showAll ? "Show pinned only" : "Show all tags"}
-          >
-            <Tag className="h-3 w-3" />
-          </button>
-          <button
-            className="h-5 w-5 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
-            onClick={() => setCreating(true)}
-            title={t("tags_create")}
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-        </div>
+        <button
+          className="h-5 w-5 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
+          onClick={() => setCreating(true)}
+          title={t("tags_create")}
+        >
+          <Plus className="h-3 w-3" />
+        </button>
       </div>
 
+      {/* New tag input */}
       {creating && (
         <div className="px-2 mb-1">
           <input
@@ -183,16 +196,14 @@ export function TagSidebar() {
               if (e.key === "Escape") { setCreating(false); setNewTagName(""); }
             }}
             onBlur={() => {
-              if (newTagName.trim()) {
-                handleCreate();
-              } else {
-                setCreating(false);
-              }
+              if (newTagName.trim()) handleCreate();
+              else setCreating(false);
             }}
           />
         </div>
       )}
 
+      {/* "All items" row */}
       <button
         className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors ${
           selectedTag === null
@@ -206,28 +217,46 @@ export function TagSidebar() {
         <span className="text-[10px] text-zinc-600">{items.length}</span>
       </button>
 
-      {(showAll ? [...allSystemTagsInUse, ...allCustomTagsInUse] : sidebarTags).map((meta) => (
+      {/* ── Sistema ─────────────────────────────────────── */}
+      <div className="mt-2 mb-0.5 px-2">
+        <span className="text-[9px] font-semibold text-zinc-600 uppercase tracking-widest">
+          Sistema
+        </span>
+      </div>
+      {systemTagsWithCount.map(({ meta, count }) => (
         <TagRow
           key={meta.id}
           meta={meta}
-          count={tagCounts.get(meta.id) ?? 0}
+          count={count}
           selected={selectedTag === meta.id}
           pinned={pinnedTags.includes(meta.id)}
           onSelect={() => selectTag(selectedTag === meta.id ? null : meta.id)}
           onTogglePin={() => togglePin(meta.id)}
-          onDelete={meta.isSystem ? undefined : () => removeCustomTag(meta.id)}
-          onRename={meta.isSystem ? undefined : (newId) => renameCustomTag(meta.id, newId)}
         />
       ))}
 
-      {!showAll && sidebarTags.length === 0 && (
-        <p className="px-2 text-[10px] text-zinc-600 leading-relaxed">
-          {t("tag_sidebar_pin_hint")}{" "}
-          <Pin className="inline h-2.5 w-2.5" />{" "}
-          {t("tag_sidebar_pin_hint2")}{" "}
-          <Tag className="inline h-2.5 w-2.5" />{" "}
-          {t("tag_sidebar_pin_hint3")}
-        </p>
+      {/* ── Custom ──────────────────────────────────────── */}
+      {allCustomWithCount.length > 0 && (
+        <>
+          <div className="mt-2 mb-0.5 px-2">
+            <span className="text-[9px] font-semibold text-zinc-600 uppercase tracking-widest">
+              Custom
+            </span>
+          </div>
+          {allCustomWithCount.map(({ meta, count }) => (
+            <TagRow
+              key={meta.id}
+              meta={meta}
+              count={count}
+              selected={selectedTag === meta.id}
+              pinned={pinnedTags.includes(meta.id)}
+              onSelect={() => selectTag(selectedTag === meta.id ? null : meta.id)}
+              onTogglePin={() => togglePin(meta.id)}
+              onDelete={meta.isSystem ? undefined : () => removeCustomTag(meta.id)}
+              onRename={meta.isSystem ? undefined : (newId) => renameCustomTag(meta.id, newId)}
+            />
+          ))}
+        </>
       )}
     </div>
   );

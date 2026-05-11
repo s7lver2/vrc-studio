@@ -21,10 +21,10 @@ function FolderNode({
   return (
     <div>
       <button
-        className={`w-full flex items-center gap-2 py-1.5 pr-2 rounded text-sm text-left transition-colors ${
+        className={`w-full flex items-center gap-2 py-1.5 pr-2 rounded-lg text-sm text-left transition-colors ${
           isSelected
-            ? "bg-zinc-700 text-zinc-100 font-medium"
-            : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            ? "bg-zinc-800 text-zinc-100 font-medium"
+            : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
         }`}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         onClick={() => selectFolder(folder.id)}
@@ -71,7 +71,7 @@ export function FolderTree() {
           {t("folders_title")}
         </span>
         <button
-          className="h-5 w-5 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="h-5 w-5 flex items-center justify-center rounded-lg hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
           onClick={() => setCreating(true)}
           title={t("folders_new")}
         >
@@ -83,7 +83,7 @@ export function FolderTree() {
         <div className="px-2 mb-1">
           <input
             autoFocus
-            className="w-full text-xs bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-zinc-200 outline-none focus:border-red-500"
+            className="w-full text-xs bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-500 transition-colors"
             placeholder={t("folders_placeholder")}
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
@@ -99,10 +99,10 @@ export function FolderTree() {
       )}
 
       <button
-        className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left transition-colors ${
+        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-left transition-colors ${
           selectedFolderId === null
-            ? "bg-zinc-700 text-zinc-100 font-medium"
-            : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            ? "bg-zinc-800 text-zinc-100 font-medium"
+            : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
         }`}
         onClick={() => selectFolder(null)}
       >

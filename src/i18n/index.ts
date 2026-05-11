@@ -160,17 +160,6 @@ const translations = {
     shop_connect_in_settings: "Connect in Settings",
     shop_reconnect_in_settings: "Reconnect in Settings",
 
-    // ── Settings – Development ─────────────────────────────────────────────
-    settings_development_title: "Development",
-    settings_development_beta: "BETA",
-    settings_development_desc: "Experimental settings. These may change or be removed in future versions.",
-    settings_awesome_animations_label: "awesome_animations",
-    settings_awesome_animations_on: "Animations active — transitions, glows, and effects.",
-    settings_awesome_animations_off: "No animations — instant interface.",
-    settings_awesome_preview_transitions: "Page transitions",
-    settings_awesome_preview_glow: "Glow effects",
-    settings_awesome_preview_ripples: "Button ripples",
-
     // ── Compression popup ──────────────────────────────────────────────────
     compression_title_compress: "Compressing…",
     compression_title_decompress: "Decompressing…",
@@ -268,6 +257,10 @@ const translations = {
     scan_wizard_search_button: "Search",
     scan_wizard_search_no_results: "No results found.",
     scan_wizard_package_contents: "Package contents",
+    scan_wizard_not_on_booth: "Not on Booth",
+    scan_wizard_avatar_coverage: "Avatar coverage",
+    scan_wizard_save_changes: "Save changes",
+    scan_wizard_start_scan: "Start Scan",
 
     // ── File viewer ────────────────────────────────────────────────────────
     file_viewer_empty_folder: "Empty folder",
@@ -349,6 +342,11 @@ const translations = {
     scan_projects_done: "{count} project{s} imported!",
     scan_projects_rename_hint: "Click to rename",
     scan_projects_vcs_hint: "Initialize Git repository",
+    scan_projects_clear: "Clear selection",
+    scan_projects_imported: "Already imported",
+    scan_projects_selected_count: "{selected} of {importable} selected",
+    scan_projects_no_results: "No Unity projects found in the selected directory.",
+    scan_projects_no_selection: "No projects selected",
 
     // ── Projects – detail modal ────────────────────────────────────────────────
     project_detail_badge_unity: "Unity Version",
@@ -360,6 +358,18 @@ const translations = {
     project_detail_compress: "Compress",
     project_detail_decompress: "Decompress",
     project_detail_delete: "Delete",
+    project_detail_tab_overview: "Overview",
+    project_detail_tab_files: "Files",
+    project_detail_tab_packages: "Packages",
+    project_detail_tab_git: "Git",
+    project_detail_section_details: "Details",
+    project_detail_badge_type: "Project Type",
+    project_detail_badge_shader: "Shader",
+    project_detail_badge_vcs: "Version Control",
+    project_detail_hint_tabs: "Open the Files tab to browse the project directory, the Packages tab to manage VPM packages, or the Git tab to manage commits and branches.",
+    project_detail_unity_missing: "Unity {version} was not detected automatically. Enter the path to the Unity executable manually.",
+    project_detail_logs_hint: "Unity detection logs are available in the Logs tab.",
+    project_detail_open_workspace: "Open Workspace Tab",
 
     // ── Projects – packages tab ────────────────────────────────────────────────
     packages_tab_installed: "Installed",
@@ -378,66 +388,6 @@ const translations = {
     packages_tab_install_retry: "Retry",
     packages_tab_install: "Install",
     packages_tab_no_source: "Could not load any VPM source",
-
-    // ── Projects – create wizard ───────────────────────────────────────────────
-    create_project_title: "Create Project",
-    create_project_name_label: "Project name",
-    create_project_name_placeholder: "My Avatar Project",
-    create_project_name_required: "Name required",
-    create_project_id_required: "ID required",
-    create_project_location_label: "Location",
-    create_project_location_browse: "Browse…",
-    create_project_unity_label: "Unity version",
-    create_project_sdk_label: "VRChat SDK",
-    create_project_cancel: "Cancel",
-    create_project_submit: "Create",
-
-    // ── Projects – creation progress ──────────────────────────────────────────
-    creation_progress_title: "Creating project…",
-    creation_progress_done: "Project created!",
-    creation_progress_error: "Creation failed",
-    creation_progress_open: "Open in Unity",
-    creation_progress_close: "Close",
-
-    // ── Projects – compression popup ──────────────────────────────────────────
-    project_compress_title_compress: "Compressing project…",
-    project_compress_title_decompress: "Decompressing project…",
-    project_compress_title_done_compress: "Project compressed",
-    project_compress_title_done_decompress: "Project decompressed",
-    project_compress_restore: "Restoring project to its original folder",
-
-    // ── Scan Projects extras ───────────────────────────────────────────────────
-    scan_projects_clear: "Clear selection",
-    scan_projects_imported: "Already imported",
-    scan_projects_selected_count: "{selected} of {importable} selected",
-    scan_projects_no_results: "No Unity projects found in the selected directory.",
-    scan_projects_no_selection: "No projects selected",
-
-    // ── Project card extras ────────────────────────────────────────────────────
-    project_card_open: "open",
-    project_card_closed: "closed",
-    project_card_compressed: "compressed",
-    project_card_compress: "Compress",
-    project_card_decompress: "Decompress",
-    project_card_details: "Details",
-    project_card_delete: "Delete",
-    project_card_decompress_hint: "Decompress the project first",
-
-    // ── Project detail modal extras ────────────────────────────────────────────
-    project_detail_tab_overview: "Overview",
-    project_detail_tab_files: "Files",
-    project_detail_tab_packages: "Packages",
-    project_detail_tab_git: "Git",
-    project_detail_section_details: "Details",
-    project_detail_badge_type: "Project Type",
-    project_detail_badge_shader: "Shader",
-    project_detail_badge_vcs: "Version Control",
-    project_detail_hint_tabs: "Open the Files tab to browse the project directory, the Packages tab to manage VPM packages, or the Git tab to manage commits and branches.",
-    project_detail_unity_missing: "Unity {version} was not detected automatically. Enter the path to the Unity executable manually.",
-    project_detail_logs_hint: "Unity detection logs are available in the Logs tab.",
-    project_detail_open_workspace: "Open Workspace Tab",
-
-    // ── Packages tab extras ────────────────────────────────────────────────────
     packages_tab_browse: "Browse",
     packages_tab_no_packages: "No VPM packages installed",
     packages_tab_no_packages_hint: "Switch to Browse to add packages from the VRChat registry.",
@@ -454,7 +404,62 @@ const translations = {
     packages_tab_no_search_results: "No packages found for \"{search}\"",
     packages_tab_starting: "Starting…",
 
-    // ── Create project wizard extras ───────────────────────────────────────────
+    // ── Settings tabs & section headers ────────────────────────────────────
+    settings_tab_general: "General",
+    settings_tab_packages: "Packages",
+    settings_tab_integrations: "Integrations",
+    settings_tab_compression: "Compression",
+    settings_tab_updates: "Updates",
+    settings_tab_debug: "Debug",
+    settings_general_desc: "Language and labeling preferences.",
+    settings_packages_title: "VPM Packages",
+    settings_packages_desc: "Manage VPM repositories used when installing packages.",
+    settings_vpm_sources_label: "VPM Sources",
+    settings_vpm_add_url: "Add from URL",
+    settings_vpm_import_vcc: "Import from alcom / VCC",
+    settings_integrations_title: "Integrations",
+    settings_integrations_desc: "Connect to external services for inventory and downloads.",
+    settings_riperstore_enable_label: "Enable Riperstore",
+    settings_riperstore_enable_desc: "Experimental — may change without notice.",
+    settings_updates_title: "Updates",
+    settings_updates_desc: "Manage app version, channel, and automatic downloads.",
+    settings_debug_title: "Debug",
+    settings_debug_desc: "Diagnostic tools and IPC bridge testing.",
+    settings_group_app: "App",
+    settings_group_connect: "Connect",
+    settings_group_system: "System",
+    settings_source_official: "Official",
+    settings_source_packages: "packages available",
+    settings_source_name: "Source name",
+    settings_source_test: "Test connection",
+    settings_source_remove: "Remove source",
+    settings_preview_title: "Preview packages",
+    settings_preview_label: "Packages found",
+    settings_preview_valid: "Valid repository",
+    settings_add_from_url_title: "Add VPM source from URL",
+    settings_add_from_url_desc: "Paste a VPM repository URL to preview its packages",
+    settings_add_source: "Add source",
+    settings_import_vcc_title: "Import from alcom / VCC",
+    settings_import_vcc_desc: "Import your existing VPM sources from Creator Companion",
+    settings_import_browse: "Browse for settings.json",
+    settings_import_select: "Select which ones to import",
+    settings_cancel: "Cancel",
+    settings_saved: "Saved!",
+    settings_save: "Save",
+    settings_ipc_ok: "IPC bridge working",
+
+    // ── Projects – create wizard ───────────────────────────────────────────────
+    create_project_title: "Create Project",
+    create_project_name_label: "Project name",
+    create_project_name_placeholder: "My Avatar Project",
+    create_project_name_required: "Name required",
+    create_project_id_required: "ID required",
+    create_project_location_label: "Location",
+    create_project_location_browse: "Browse…",
+    create_project_unity_label: "Unity version",
+    create_project_sdk_label: "VRChat SDK",
+    create_project_cancel: "Cancel",
+    create_project_submit: "Create",
     create_project_scanning_unity: "Searching for Unity installations…",
     create_project_no_unity: "No compatible version found. Install Unity 2022.3.22f1, 2022.3.6f1, or 2019.4.31f1 from Unity Hub.",
     create_project_vcs_label: "Version control (Git)",
@@ -464,9 +469,31 @@ const translations = {
     create_project_back: "Back",
     create_project_skip: "Skip and create without packages",
 
-    // ── Project compression popup extras ───────────────────────────────────────
+    // ── Projects – creation progress ──────────────────────────────────────────
+    creation_progress_title: "Creating project…",
+    creation_progress_done: "Project created!",
+    creation_progress_error: "Creation failed",
+    creation_progress_open: "Open in Unity",
+    creation_progress_close: "Close",
+
+    // ── Projects – compression popup ──────────────────────────────────────────
+    project_compress_title_compress: "Compressing project…",
+    project_compress_title_decompress: "Decompressing project…",
+    project_compress_title_done_compress: "Project compressed",
+    project_compress_title_done_decompress: "Project decompressed",
+    project_compress_restore: "Restoring project to its original folder",
     project_compress_error: "Compression error",
     project_compress_saving: "Saving project as .zip file",
+
+    // ── Project card extras ────────────────────────────────────────────────────
+    project_card_open: "open",
+    project_card_closed: "closed",
+    project_card_compressed: "compressed",
+    project_card_compress: "Compress",
+    project_card_decompress: "Decompress",
+    project_card_details: "Details",
+    project_card_delete: "Delete",
+    project_card_decompress_hint: "Decompress the project first",
 
     // ── Logs ──────────────────────────────────────────────────────────────────
     logs_filter_all: "All",
@@ -526,7 +553,93 @@ const translations = {
     vcs_conflict_theirs_header: "Their changes (incoming)",
     vcs_no_content: "(no content)",
     vcs_all_conflicts_resolved_hint: "All conflicts resolved. Go to Changes tab and commit the merge.",
-    // Terminal keys omitted for brevity — they are present in the full file but not shown here to keep the answer short.
+
+    // ── VCS GitHub ──────────────────────────────────────────────────────────
+    vcs_github_connect: "Connect with GitHub",
+    vcs_github_step1: "1. Open {url}",
+    vcs_github_step2: "2. Enter this code:",
+    vcs_github_waiting: "Waiting for authorization…",
+    vcs_github_authenticated: "authenticated",
+    vcs_github_logout: "Log out",
+
+    // ── Terminal VCS ───────────────────────────────────────────────────────
+    vcs_terminal_welcome: "VRC Studio Shell — {name}",
+    vcs_terminal_intro: "Curated commands for Unity/VRChat environments. Type 'help' for the list.",
+    vcs_terminal_unknown_cmd: "Unknown command: '{cmd}'. Type 'help' for available commands.",
+    vcs_terminal_command_not_allowed: "Command not allowed: '{cmd}'",
+    vcs_terminal_command_help_hint: "This environment only allows curated commands. Type 'help'.",
+    vcs_terminal_unexpected_error: "Unexpected error: {error}",
+    vcs_terminal_input_placeholder: "Type a command (Tab to autocomplete)…",
+    vcs_terminal_executing: "executing…",
+    vcs_terminal_commands_title: "Commands",
+    vcs_terminal_group_general: "General",
+    vcs_terminal_group_git: "Git",
+    vcs_terminal_group_proyecto: "Project",
+    vcs_terminal_group_vrchat_sdk: "VRChat SDK",
+    vcs_terminal_cmd_help_desc: "Show this help",
+    vcs_terminal_cmd_clear_desc: "Clear the terminal",
+    vcs_terminal_cmd_git_status_desc: "Repository status",
+    vcs_terminal_cmd_git_log_desc: "Commit history (last 10 by default)",
+    vcs_terminal_cmd_git_fetch_desc: "Download remote changes without applying",
+    vcs_terminal_cmd_git_diff_desc: "Differences of modified files",
+    vcs_terminal_cmd_git_stash_desc: "Save changes in stash",
+    vcs_terminal_cmd_git_stash_pop_desc: "Recover last stash",
+    vcs_terminal_cmd_git_branch_desc: "List branches",
+    vcs_terminal_cmd_ls_desc: "List project directory files",
+    vcs_terminal_cmd_project_info_desc: "Unity project info",
+    vcs_terminal_cmd_packages_list_desc: "Installed VPM packages",
+    vcs_terminal_cmd_vrchat_upload_avatar_desc: "Interactive avatar upload wizard",
+    vcs_terminal_cmd_vrchat_upload_world_desc: "Interactive world upload wizard",
+    vcs_terminal_cmd_vrchat_status_desc: "VRChat SDK session status",
+    vcs_terminal_git_branch: "Branch",
+    vcs_terminal_no_remote: "no remote",
+    vcs_terminal_staged: "Staged",
+    vcs_terminal_modified: "Modified",
+    vcs_terminal_untracked: "Untracked",
+    vcs_terminal_clean: "Working tree clean.",
+    vcs_terminal_no_commits: "No commits.",
+    vcs_terminal_no_diff: "No differences.",
+    vcs_terminal_project_name: "Name",
+    vcs_terminal_project_path: "Path",
+    vcs_terminal_project_unity: "Unity",
+    vcs_terminal_project_git: "Git",
+    vcs_terminal_enabled: "enabled",
+    vcs_terminal_disabled: "disabled",
+    vcs_terminal_no_vpm_deps: "No VPM dependencies.",
+    vcs_terminal_vrchat_status_hint: "Run 'vrchat upload avatar' or 'vrchat upload world' to start the wizard.",
+    vcs_terminal_wizard_cancel_hint: "Type 'cancel' at any time to abort.",
+    vcs_terminal_wizard_username: "VRChat username",
+    vcs_terminal_wizard_password: "Password (hidden)",
+    vcs_terminal_wizard_username_required: "Username cannot be empty.",
+    vcs_terminal_wizard_password_required: "Password cannot be empty.",
+    vcs_terminal_wizard_auth_progress: "Authenticating as {username}…",
+    vcs_terminal_wizard_auth_success: "✓ Authenticated as {username}",
+    vcs_terminal_wizard_blueprints_available: "Available blueprints (simulated — Unity must be open with SDK):",
+    vcs_terminal_wizard_avatar: "Avatar",
+    vcs_terminal_wizard_world: "World",
+    vcs_terminal_wizard_avatar_main: "My Main Avatar",
+    vcs_terminal_wizard_avatar_test: "Test Avatar",
+    vcs_terminal_wizard_world_main: "My World",
+    vcs_terminal_wizard_new_blueprint: "Create new blueprint",
+    vcs_terminal_wizard_blueprint_prompt: "Blueprint ID of {type} (or 'new')",
+    vcs_terminal_wizard_blueprint: "Blueprint",
+    vcs_terminal_wizard_blueprint_required: "You must specify a blueprint.",
+    vcs_terminal_wizard_new_bp: "(new {type})",
+    vcs_terminal_wizard_confirm: "Confirm upload? [y/N]",
+    vcs_terminal_wizard_upload_progress: "Starting upload process…",
+    vcs_terminal_wizard_step_validate: "Validating scene…",
+    vcs_terminal_wizard_step_validate_ok: "Scene valid",
+    vcs_terminal_wizard_step_build: "Building {type}…",
+    vcs_terminal_wizard_step_build_ok: "Build complete",
+    vcs_terminal_wizard_step_upload: "Uploading to VRChat SDK…",
+    vcs_terminal_wizard_step_upload_ok: "Upload complete",
+    vcs_terminal_wizard_done_header: "── ✓ {type} published ────────────────",
+    vcs_terminal_wizard_simulated_note: "Note: simulated flow — real integration will be available with Rust SDK.",
+    vcs_terminal_wizard_cancelled: "Upload cancelled.",
+    vcs_terminal_wizard_password_placeholder: "Password (hidden)…",
+    vcs_terminal_wizard_username_placeholder: "VRChat username",
+    vcs_terminal_wizard_blueprint_placeholder: "Blueprint ID",
+    vcs_terminal_wizard_confirm_placeholder: "y / N",
 
     // ── Workspace ─────────────────────────────────────────────────────────────
     ws_tab_git: "Git",
@@ -687,12 +800,6 @@ const translations = {
     inventory_detail_not_on_booth: "Not on Booth",
     inventory_detail_booth_fetching: "Fetching Booth info…",
 
-    // ── Scan Drive Wizard extras (Task 7) ─────────────────────────────────────
-    scan_wizard_not_on_booth: "Not on Booth",
-    scan_wizard_avatar_coverage: "Avatar coverage",
-    scan_wizard_save_changes: "Save changes",
-    scan_wizard_start_scan: "Start Scan",
-
     // ── Error boundary (Task 8) ────────────────────────────────────────────────
     error_boundary_title: "Something went wrong",
     error_boundary_subtitle: "An unexpected error occurred in this section.",
@@ -725,6 +832,45 @@ const translations = {
     compression_section_verify_checksum: "Verify checksum after write",
     compression_section_save: "Save",
     compression_section_saved: "Saved!",
+
+    // ── Updates ──────────────────────────────────────────────────────────────
+    updates_channel_title: "Update Channel",
+    updates_channel_desc: "Defines which versions you receive when checking for updates.",
+    updates_auto_download_label: "Automatic Download",
+    updates_auto_download_desc: "Start the download as soon as a new version is detected.",
+    updates_check_title: "Check for Updates",
+    updates_check_button: "Check now",
+    updates_checking: "Checking…",
+    updates_up_to_date: "VRC Studio is up to date on the {channel} channel.",
+    updates_new_version: "New version available: {version}",
+    updates_install_now: "Install now",
+    updates_installing: "Downloading…",
+    updates_channel_stable_label: "Stable",
+    updates_channel_stable_desc: "Tested and verified releases.",
+    updates_channel_testing_label: "Testing",
+    updates_channel_testing_desc: "Pre-releases. May be unstable.",
+    updates_versions_title: "Available Versions",
+    updates_versions_desc: "Install a specific version or roll back to an older one.",
+    updates_versions_load: "Load list",
+    updates_versions_reload: "Reload",
+    updates_versions_loading: "Loading…",
+    updates_versions_empty: "No versions published for the {channel} channel.",
+    updates_versions_current: "installed",
+    updates_versions_install: "Install",
+    updates_dialog_title: "VRC Studio {version} available",
+    updates_dialog_current: "Current: {version}",
+    updates_dialog_close: "Close",
+    updates_dialog_later: "Later",
+    updates_dialog_update: "Update now",
+
+    nav_tracker: "Tracker",
+    tracker_add: "Add to Tracker",
+    tracker_empty: "No items tracked yet.",
+    logs_subtitle: "Real-time diagnostics — replaces DevTools",
+    logs_no_results: "No results for current filter.",
+    settings_tab_connections: "Connections",
+    settings_tab_appearance:  "Appearance",
+    settings_tab_storage:     "Storage",
   },
 
   es: {
@@ -736,7 +882,6 @@ const translations = {
     nav_settings: "Ajustes",
     nav_logs: "Logs",
 
-    // ── Inventory page ───────────────────────────────────────────────────
     inventory_title: "Inventario",
     inventory_scan_drive: "Escanear disco",
     inventory_import_local: "Importar local",
@@ -749,13 +894,11 @@ const translations = {
     inventory_active_filters: "Filtros activos",
     inventory_clear_filters: "Limpiar",
 
-    // ── Folder tree ──────────────────────────────────────────────────────
     folders_title: "Carpetas",
     folders_new: "Nueva carpeta",
     folders_placeholder: "Nombre de carpeta",
     folders_all: "Todos los ítems",
 
-    // ── Tags sidebar ─────────────────────────────────────────────────────
     tags_title: "Tags",
     tags_all: "Todos los ítems",
     tags_create: "Crear tag",
@@ -764,7 +907,6 @@ const translations = {
     tags_pin_hint2: "para fijarlo aquí. Pulsa",
     tags_pin_hint3: "para ver todos.",
 
-    // ── Context menu ─────────────────────────────────────────────────────
     ctx_view_details: "Ver detalles",
     ctx_move_folder: "Mover a carpeta",
     ctx_edit_tags: "Editar tags",
@@ -781,7 +923,6 @@ const translations = {
     ctx_tags_save: "Guardar",
     ctx_tags_placeholder: "nuevo tag…",
 
-    // ── Item card ────────────────────────────────────────────────────────
     card_compressed: "Comprimido",
     card_no_preview: "Sin preview",
     card_base: "Base",
@@ -789,7 +930,6 @@ const translations = {
     card_accessory: "Accesorio",
     card_material: "Material",
 
-    // ── Settings ─────────────────────────────────────────────────────────
     settings_title: "Ajustes",
     settings_subtitle: "Configuración de la aplicación.",
     settings_integrations: "Integraciones",
@@ -810,7 +950,6 @@ const translations = {
     settings_lang_es: "Español",
     settings_lang_de: "Deutsch",
 
-    // ── Import dialog ─────────────────────────────────────────────────────
     import_title: "Importar paquete local",
     import_zip_label: "Archivo ZIP / unitypackage",
     import_zip_placeholder: "Clic para seleccionar un archivo…",
@@ -828,7 +967,6 @@ const translations = {
     import_detected_desc: "Este archivo parece ser parte de un paquete multi-avatar. Variantes detectadas:",
     import_group_as: "Agrupar como un ítem con variantes",
 
-    // ── Ripper / Booth ───────────────────────────────────────────────────
     ripper_checking: "Comprobando…",
     ripper_connected: "Conectado",
     ripper_disconnected: "No conectado",
@@ -841,14 +979,12 @@ const translations = {
     booth_connected_count: "Conectado — {n} ítem{s} comprado{s} detectado{s}",
     booth_connect_msg: "Conecta tu cuenta de Booth.pm para detectar qué ítems has comprado. Se abrirá un navegador — inicia sesión ahí y se cerrará automáticamente.",
 
-    // ── Shop Warning ──────────────────────────────────────────────────────
     shop_warning_title: "Aviso importante",
     shop_warning_desc: "La Shop es una característica experimental que no funciona correctamente en esta versión.",
     shop_warning_detail: "Puede causar comportamientos inesperados, errores de carga y problemas con las descargas. ¿Deseas continuar de todas formas?",
     shop_warning_cancel: "Cancelar",
     shop_warning_continue: "Continuar igualmente",
 
-    // ── Packages page ─────────────────────────────────────────────────────
     packages_title: "Paquetes",
     packages_subtitle: "{count} paquete{s} VPM custom",
     packages_empty: "Sin paquetes todavía",
@@ -862,7 +998,6 @@ const translations = {
     packages_build_error: "Error al generar ZIP: {error}",
     packages_open_folder_error: "Carpeta del paquete:\n{path}",
 
-    // ── Projects page ─────────────────────────────────────────────────────
     projects_title: "Proyectos",
     projects_subtitle: "{count} proyecto{s} de avatar",
     projects_empty: "Tus proyectos de avatar",
@@ -873,7 +1008,6 @@ const translations = {
     projects_open_unity_error: "Error al abrir Unity: {error}",
     projects_delete_error: "Error al eliminar proyecto: {error}",
 
-    // ── Shop page ─────────────────────────────────────────────────────────
     shop_title: "Tienda",
     shop_search_placeholder: "Buscar assets, o pega una URL de Booth / ID de artículo…",
     shop_ripper_disconnected: "Ripper.store no conectado — mostrando solo resultados de Booth.",
@@ -881,18 +1015,6 @@ const translations = {
     shop_connect_in_settings: "Conectar en Ajustes",
     shop_reconnect_in_settings: "Reconectar en Ajustes",
 
-    // ── Settings – Development ─────────────────────────────────────────────
-    settings_development_title: "Desarrollo",
-    settings_development_beta: "BETA",
-    settings_development_desc: "Ajustes experimentales. Pueden cambiar o desaparecer en futuras versiones.",
-    settings_awesome_animations_label: "awesome_animations",
-    settings_awesome_animations_on: "Animaciones activadas — transiciones, brillos y efectos.",
-    settings_awesome_animations_off: "Sin animaciones — interfaz instantánea.",
-    settings_awesome_preview_transitions: "Transiciones de página",
-    settings_awesome_preview_glow: "Efectos de brillo",
-    settings_awesome_preview_ripples: "Ondas en botones",
-
-    // ── Compression popup ──────────────────────────────────────────────────
     compression_title_compress: "Comprimiendo…",
     compression_title_decompress: "Descomprimiendo…",
     compression_title_compress_done: "¡Comprimido!",
@@ -900,7 +1022,6 @@ const translations = {
     compression_subtitle: "Aplicando compresión máxima al asset",
     compression_subtitle_decomp: "Restaurando archivos originales",
 
-    // ── Import dialog / detail ─────────────────────────────────────────────
     import_dialog_open_location: "Abrir ubicación",
     import_dialog_view_booth: "Ver en Booth",
     import_dialog_description: "Descripción",
@@ -930,7 +1051,50 @@ const translations = {
     import_dialog_no_images: "No hay imágenes disponibles",
     import_dialog_image_unavailable: "Imagen no disponible",
 
-    // ── Scan Drive Wizard ──────────────────────────────────────────────────
+    // ── Settings tabs & section headers ────────────────────────────────────
+    settings_tab_general: "General",
+    settings_tab_packages: "Paquetes",
+    settings_tab_integrations: "Integraciones",
+    settings_tab_compression: "Compresión",
+    settings_tab_updates: "Actualizaciones",
+    settings_tab_debug: "Depuración",
+    settings_general_desc: "Preferencias de idioma y etiquetado.",
+    settings_packages_title: "Paquetes VPM",
+    settings_packages_desc: "Gestiona los repositorios VPM para instalar paquetes en proyectos.",
+    settings_vpm_sources_label: "Fuentes VPM",
+    settings_vpm_add_url: "Añadir desde URL",
+    settings_vpm_import_vcc: "Importar desde alcom / VCC",
+    settings_integrations_title: "Integraciones",
+    settings_integrations_desc: "Conecta servicios externos para el inventario y las descargas.",
+    settings_riperstore_enable_label: "Activar Riperstore",
+    settings_riperstore_enable_desc: "Experimental — puede cambiar sin previo aviso.",
+    settings_updates_title: "Actualizaciones",
+    settings_updates_desc: "Gestiona la versión, el canal y las descargas automáticas.",
+    settings_debug_title: "Depuración",
+    settings_debug_desc: "Herramientas de diagnóstico y prueba del puente IPC.",
+    settings_group_app: "App",
+    settings_group_connect: "Conexiones",
+    settings_group_system: "Sistema",
+    settings_source_official: "Oficial",
+    settings_source_packages: "paquetes disponibles",
+    settings_source_name: "Nombre de la fuente",
+    settings_source_test: "Probar conexión",
+    settings_source_remove: "Eliminar fuente",
+    settings_preview_title: "Previsualizar paquetes",
+    settings_preview_label: "Paquetes encontrados",
+    settings_preview_valid: "Repositorio válido",
+    settings_add_from_url_title: "Añadir fuente VPM desde URL",
+    settings_add_from_url_desc: "Pega una URL de repositorio VPM para previsualizar sus paquetes",
+    settings_add_source: "Añadir fuente",
+    settings_import_vcc_title: "Importar desde alcom / VCC",
+    settings_import_vcc_desc: "Importa tus fuentes VPM existentes del Creator Companion",
+    settings_import_browse: "Buscar settings.json",
+    settings_import_select: "Selecciona cuáles importar",
+    settings_cancel: "Cancelar",
+    settings_saved: "¡Guardado!",
+    settings_save: "Guardar",
+    settings_ipc_ok: "Puente IPC funcionando",
+
     scan_wizard_title: "Escanear disco",
     scan_wizard_step1: "Configurar",
     scan_wizard_step2: "Escanear",
@@ -989,8 +1153,11 @@ const translations = {
     scan_wizard_search_button: "Buscar",
     scan_wizard_search_no_results: "No se encontraron resultados.",
     scan_wizard_package_contents: "Contenido del paquete",
+    scan_wizard_not_on_booth: "No está en Booth",
+    scan_wizard_avatar_coverage: "Cobertura de avatar",
+    scan_wizard_save_changes: "Guardar cambios",
+    scan_wizard_start_scan: "Iniciar escaneo",
 
-    // ── File viewer ────────────────────────────────────────────────────────
     file_viewer_empty_folder: "Carpeta vacía",
     file_viewer_tree: "Árbol",
     file_viewer_flat: "Plano",
@@ -1001,7 +1168,6 @@ const translations = {
     file_viewer_no_models: "No se encontraron modelos 3D en este paquete",
     file_viewer_compatible_formats: "Formatos compatibles: .fbx · .vrm · .glb · .gltf · .obj",
 
-    // ── 3D Preview ────────────────────────────────────────────────────────
     preview_3d_loading: "Cargando {model}…",
     preview_3d_shader: "Shader",
     preview_3d_outline_hint: "contorno + sombreado toon",
@@ -1021,7 +1187,6 @@ const translations = {
     preview_3d_load_error: "Error al cargar {type}: {message}",
     preview_3d_image_unavailable: "Imagen no disponible",
 
-    // ── Tag input ──────────────────────────────────────────────────────────
     tag_input_placeholder: "Añadir tag…",
     tag_sidebar_system_tags: "Tags del sistema",
     tag_sidebar_custom_tags: "Tags personalizados",
@@ -1031,7 +1196,6 @@ const translations = {
     tag_sidebar_all_items: "Todos los ítems",
     tag_sidebar_system: "sistema",
 
-    // ── Projects – list ───────────────────────────────────────────────────────
     project_list_no_projects: "Sin proyectos todavía",
     project_list_no_projects_desc: "Crea tu primer proyecto de avatar para empezar.",
     project_list_count: "{count} proyecto{s}",
@@ -1042,7 +1206,6 @@ const translations = {
     project_list_col_version: "Versión",
     project_list_col_tags: "Tags",
 
-    // ── Projects – delete dialog ───────────────────────────────────────────────
     project_delete_title: "¿Eliminar proyecto?",
     project_delete_body: "{name} se eliminará de VRC Studio.",
     project_delete_files_label: "También eliminar archivos del disco",
@@ -1053,7 +1216,6 @@ const translations = {
     project_delete_confirm_files: "Eliminar proyecto y archivos",
     project_deleting: "Eliminando…",
 
-    // ── Projects – scan wizard ─────────────────────────────────────────────────
     scan_projects_title: "Buscar proyectos",
     scan_projects_step1: "Configurar",
     scan_projects_step2: "Resultados",
@@ -1070,8 +1232,12 @@ const translations = {
     scan_projects_done: "¡{count} proyecto{s} importado{s}!",
     scan_projects_rename_hint: "Clic para renombrar",
     scan_projects_vcs_hint: "Inicializar repositorio Git",
+    scan_projects_clear: "Limpiar selección",
+    scan_projects_imported: "Ya importado",
+    scan_projects_selected_count: "{selected} de {importable} seleccionados",
+    scan_projects_no_results: "No se encontraron proyectos Unity en el directorio seleccionado.",
+    scan_projects_no_selection: "No hay proyectos seleccionados",
 
-    // ── Projects – detail modal ────────────────────────────────────────────────
     project_detail_badge_unity: "Versión Unity",
     project_detail_badge_base_id: "Base ID",
     project_detail_badge_local_packages: "Paquetes locales",
@@ -1081,8 +1247,19 @@ const translations = {
     project_detail_compress: "Comprimir",
     project_detail_decompress: "Descomprimir",
     project_detail_delete: "Eliminar",
+    project_detail_tab_overview: "Resumen",
+    project_detail_tab_files: "Archivos",
+    project_detail_tab_packages: "Paquetes",
+    project_detail_tab_git: "Git",
+    project_detail_section_details: "Detalles",
+    project_detail_badge_type: "Tipo de proyecto",
+    project_detail_badge_shader: "Shader",
+    project_detail_badge_vcs: "Control de versiones",
+    project_detail_hint_tabs: "Abre la pestaña Archivos para explorar el directorio del proyecto, la pestaña Paquetes para gestionar paquetes VPM o la pestaña Git para commits y ramas.",
+    project_detail_unity_missing: "Unity {version} no se detectó automáticamente. Especifica la ruta al ejecutable de Unity manualmente.",
+    project_detail_logs_hint: "Los logs de detección de Unity están disponibles en la pestaña Logs.",
+    project_detail_open_workspace: "Abrir panel de trabajo",
 
-    // ── Projects – packages tab ────────────────────────────────────────────────
     packages_tab_installed: "Instalados",
     packages_tab_overview: "Info",
     packages_tab_versions: "Versiones",
@@ -1099,62 +1276,6 @@ const translations = {
     packages_tab_install_retry: "Reintentar",
     packages_tab_install: "Instalar",
     packages_tab_no_source: "No se pudo cargar ninguna fuente VPM",
-
-    // ── Projects – create wizard ───────────────────────────────────────────────
-    create_project_title: "Crear proyecto",
-    create_project_name_label: "Nombre del proyecto",
-    create_project_name_placeholder: "Mi Proyecto Avatar",
-    create_project_name_required: "Nombre requerido",
-    create_project_id_required: "ID requerido",
-    create_project_location_label: "Ubicación",
-    create_project_location_browse: "Examinar…",
-    create_project_unity_label: "Versión de Unity",
-    create_project_sdk_label: "VRChat SDK",
-    create_project_cancel: "Cancelar",
-    create_project_submit: "Crear",
-
-    // ── Projects – creation progress ──────────────────────────────────────────
-    creation_progress_title: "Creando proyecto…",
-    creation_progress_done: "¡Proyecto creado!",
-    creation_progress_error: "Error en la creación",
-    creation_progress_open: "Abrir en Unity",
-    creation_progress_close: "Cerrar",
-
-    // ── Projects – compression popup ──────────────────────────────────────────
-    project_compress_title_compress: "Comprimiendo proyecto…",
-    project_compress_title_decompress: "Descomprimiendo proyecto…",
-    project_compress_title_done_compress: "Proyecto comprimido",
-    project_compress_title_done_decompress: "Proyecto descomprimido",
-    project_compress_restore: "Restaurando el proyecto a su carpeta original",
-
-    scan_projects_clear: "Limpiar selección",
-    scan_projects_imported: "Ya importado",
-    scan_projects_selected_count: "{selected} de {importable} seleccionados",
-    scan_projects_no_results: "No se encontraron proyectos Unity en el directorio seleccionado.",
-    scan_projects_no_selection: "No hay proyectos seleccionados",
-
-    project_card_open: "abierto",
-    project_card_closed: "cerrado",
-    project_card_compressed: "comprimido",
-    project_card_compress: "Comprimir",
-    project_card_decompress: "Descomprimir",
-    project_card_details: "Detalles",
-    project_card_delete: "Eliminar",
-    project_card_decompress_hint: "Descomprime el proyecto primero",
-
-    project_detail_tab_overview: "Resumen",
-    project_detail_tab_files: "Archivos",
-    project_detail_tab_packages: "Paquetes",
-    project_detail_tab_git: "Git",
-    project_detail_section_details: "Detalles",
-    project_detail_badge_type: "Tipo de proyecto",
-    project_detail_badge_shader: "Shader",
-    project_detail_badge_vcs: "Control de versiones",
-    project_detail_hint_tabs: "Abre la pestaña Archivos para explorar el directorio del proyecto, la pestaña Paquetes para gestionar paquetes VPM o la pestaña Git para commits y ramas.",
-    project_detail_unity_missing: "Unity {version} no se detectó automáticamente. Especifica la ruta al ejecutable de Unity manualmente.",
-    project_detail_logs_hint: "Los logs de detección de Unity están disponibles en la pestaña Logs.",
-    project_detail_open_workspace: "Abrir panel de trabajo",
-
     packages_tab_browse: "Catálogo",
     packages_tab_no_packages: "Sin paquetes VPM instalados",
     packages_tab_no_packages_hint: "Cambia a Catálogo para añadir paquetes del registro VRChat.",
@@ -1171,6 +1292,17 @@ const translations = {
     packages_tab_no_search_results: "No se encontraron paquetes para \"{search}\"",
     packages_tab_starting: "Iniciando…",
 
+    create_project_title: "Crear proyecto",
+    create_project_name_label: "Nombre del proyecto",
+    create_project_name_placeholder: "Mi Proyecto Avatar",
+    create_project_name_required: "Nombre requerido",
+    create_project_id_required: "ID requerido",
+    create_project_location_label: "Ubicación",
+    create_project_location_browse: "Examinar…",
+    create_project_unity_label: "Versión de Unity",
+    create_project_sdk_label: "VRChat SDK",
+    create_project_cancel: "Cancelar",
+    create_project_submit: "Crear",
     create_project_scanning_unity: "Buscando instalaciones de Unity…",
     create_project_no_unity: "No se encontró una versión compatible. Instala Unity 2022.3.22f1, 2022.3.6f1 o 2019.4.31f1 desde Unity Hub.",
     create_project_vcs_label: "Control de versiones (Git)",
@@ -1180,10 +1312,29 @@ const translations = {
     create_project_back: "Atrás",
     create_project_skip: "Omitir y crear sin paquetes",
 
+    creation_progress_title: "Creando proyecto…",
+    creation_progress_done: "¡Proyecto creado!",
+    creation_progress_error: "Error en la creación",
+    creation_progress_open: "Abrir en Unity",
+    creation_progress_close: "Cerrar",
+
+    project_compress_title_compress: "Comprimiendo proyecto…",
+    project_compress_title_decompress: "Descomprimiendo proyecto…",
+    project_compress_title_done_compress: "Proyecto comprimido",
+    project_compress_title_done_decompress: "Proyecto descomprimido",
+    project_compress_restore: "Restaurando el proyecto a su carpeta original",
     project_compress_error: "Error de compresión",
     project_compress_saving: "Guardando proyecto como archivo .zip",
 
-    // ── Logs ──────────────────────────────────────────────────────────────────
+    project_card_open: "abierto",
+    project_card_closed: "cerrado",
+    project_card_compressed: "comprimido",
+    project_card_compress: "Comprimir",
+    project_card_decompress: "Descomprimir",
+    project_card_details: "Detalles",
+    project_card_delete: "Eliminar",
+    project_card_decompress_hint: "Descomprime el proyecto primero",
+
     logs_filter_all: "Todos",
     logs_filter_log: "Log",
     logs_filter_info: "Info",
@@ -1198,7 +1349,6 @@ const translations = {
     logs_title: "Logs",
     logs_empty: "Sin logs todavía",
 
-    // ── VCS panel ─────────────────────────────────────────────────────────────
     vcs_loading: "Cargando repositorio…",
     vcs_error: "Error: {error}",
     vcs_refresh: "Actualizar",
@@ -1241,9 +1391,92 @@ const translations = {
     vcs_conflict_theirs_header: "Sus cambios (incoming)",
     vcs_no_content: "(sin contenido)",
     vcs_all_conflicts_resolved_hint: "Todos los conflictos resueltos. Ve a la pestaña Cambios y haz un commit de merge.",
-    // Terminal keys omitted for brevity
 
-    // ── Workspace ─────────────────────────────────────────────────────────────
+    vcs_github_connect: "Conectar con GitHub",
+    vcs_github_step1: "1. Abre {url}",
+    vcs_github_step2: "2. Introduce este código:",
+    vcs_github_waiting: "Esperando autorización…",
+    vcs_github_authenticated: "autenticado",
+    vcs_github_logout: "Cerrar sesión",
+
+    vcs_terminal_welcome: "VRC Studio Shell — {name}",
+    vcs_terminal_intro: "Comandos curados para entornos Unity/VRChat. Escribe 'help' para ver la lista.",
+    vcs_terminal_unknown_cmd: "Comando desconocido: '{cmd}'. Escribe 'help' para ver los disponibles.",
+    vcs_terminal_command_not_allowed: "Comando no permitido: '{cmd}'",
+    vcs_terminal_command_help_hint: "Este entorno solo permite comandos curados. Escribe 'help'.",
+    vcs_terminal_unexpected_error: "Error inesperado: {error}",
+    vcs_terminal_input_placeholder: "Escribe un comando (Tab para autocompletar)…",
+    vcs_terminal_executing: "ejecutando…",
+    vcs_terminal_commands_title: "Comandos",
+    vcs_terminal_group_general: "General",
+    vcs_terminal_group_git: "Git",
+    vcs_terminal_group_proyecto: "Proyecto",
+    vcs_terminal_group_vrchat_sdk: "VRChat SDK",
+    vcs_terminal_cmd_help_desc: "Muestra esta ayuda",
+    vcs_terminal_cmd_clear_desc: "Limpia la terminal",
+    vcs_terminal_cmd_git_status_desc: "Estado del repositorio",
+    vcs_terminal_cmd_git_log_desc: "Historial de commits (últimos 10 por defecto)",
+    vcs_terminal_cmd_git_fetch_desc: "Descarga cambios del remoto sin aplicar",
+    vcs_terminal_cmd_git_diff_desc: "Diferencias de archivos modificados",
+    vcs_terminal_cmd_git_stash_desc: "Guarda cambios en el stash",
+    vcs_terminal_cmd_git_stash_pop_desc: "Recupera el último stash",
+    vcs_terminal_cmd_git_branch_desc: "Lista las ramas",
+    vcs_terminal_cmd_ls_desc: "Lista los archivos del directorio del proyecto",
+    vcs_terminal_cmd_project_info_desc: "Información del proyecto Unity",
+    vcs_terminal_cmd_packages_list_desc: "Paquetes VPM instalados",
+    vcs_terminal_cmd_vrchat_upload_avatar_desc: "Asistente interactivo de subida de avatar",
+    vcs_terminal_cmd_vrchat_upload_world_desc: "Asistente interactivo de subida de mundo",
+    vcs_terminal_cmd_vrchat_status_desc: "Estado de la sesión de VRChat SDK",
+    vcs_terminal_git_branch: "Rama",
+    vcs_terminal_no_remote: "sin remoto",
+    vcs_terminal_staged: "Staged",
+    vcs_terminal_modified: "Modificados",
+    vcs_terminal_untracked: "Sin seguimiento",
+    vcs_terminal_clean: "Árbol de trabajo limpio.",
+    vcs_terminal_no_commits: "Sin commits.",
+    vcs_terminal_no_diff: "Sin diferencias.",
+    vcs_terminal_project_name: "Nombre",
+    vcs_terminal_project_path: "Ruta",
+    vcs_terminal_project_unity: "Unity",
+    vcs_terminal_project_git: "Git",
+    vcs_terminal_enabled: "habilitado",
+    vcs_terminal_disabled: "deshabilitado",
+    vcs_terminal_no_vpm_deps: "Sin dependencias VPM.",
+    vcs_terminal_vrchat_status_hint: "Ejecuta 'vrchat upload avatar' o 'vrchat upload world' para iniciar el asistente.",
+    vcs_terminal_wizard_cancel_hint: "Escribe 'cancel' en cualquier momento para abortar.",
+    vcs_terminal_wizard_username: "Usuario de VRChat",
+    vcs_terminal_wizard_password: "Contraseña (oculta)",
+    vcs_terminal_wizard_username_required: "El usuario no puede estar vacío.",
+    vcs_terminal_wizard_password_required: "La contraseña no puede estar vacía.",
+    vcs_terminal_wizard_auth_progress: "Autenticando como {username}…",
+    vcs_terminal_wizard_auth_success: "✓ Autenticado como {username}",
+    vcs_terminal_wizard_blueprints_available: "Blueprints disponibles (simulado — Unity debe estar abierto con el SDK):",
+    vcs_terminal_wizard_avatar: "Avatar",
+    vcs_terminal_wizard_world: "Mundo",
+    vcs_terminal_wizard_avatar_main: "Mi Avatar Principal",
+    vcs_terminal_wizard_avatar_test: "Avatar de prueba",
+    vcs_terminal_wizard_world_main: "Mi Mundo",
+    vcs_terminal_wizard_new_blueprint: "Crear blueprint nuevo",
+    vcs_terminal_wizard_blueprint_prompt: "Blueprint ID del {type} (o 'nuevo')",
+    vcs_terminal_wizard_blueprint: "Blueprint",
+    vcs_terminal_wizard_blueprint_required: "Debes indicar un blueprint.",
+    vcs_terminal_wizard_new_bp: "(nuevo {type})",
+    vcs_terminal_wizard_confirm: "¿Confirmar subida? [s/N]",
+    vcs_terminal_wizard_upload_progress: "Iniciando proceso de subida…",
+    vcs_terminal_wizard_step_validate: "Validando escena…",
+    vcs_terminal_wizard_step_validate_ok: "Escena válida",
+    vcs_terminal_wizard_step_build: "Compilando {type}…",
+    vcs_terminal_wizard_step_build_ok: "Compilación completada",
+    vcs_terminal_wizard_step_upload: "Subiendo al SDK de VRChat…",
+    vcs_terminal_wizard_step_upload_ok: "Subida completada",
+    vcs_terminal_wizard_done_header: "── ✓ {type} publicado ────────────────",
+    vcs_terminal_wizard_simulated_note: "Nota: flujo simulado — la integración real estará disponible con el SDK Rust.",
+    vcs_terminal_wizard_cancelled: "Subida cancelada.",
+    vcs_terminal_wizard_password_placeholder: "Contraseña (oculta)…",
+    vcs_terminal_wizard_username_placeholder: "Usuario de VRChat",
+    vcs_terminal_wizard_blueprint_placeholder: "Blueprint ID",
+    vcs_terminal_wizard_confirm_placeholder: "s / N",
+
     ws_tab_git: "Git",
     ws_tab_terminal: "Terminal",
     ws_tab_journal: "Diario",
@@ -1289,7 +1522,6 @@ const translations = {
     ws_git_disabled: "Git no está habilitado en este proyecto.",
     ws_git_disabled_hint: "Elimina y vuelve a importar el proyecto con Git activado.",
 
-    // ── Shop components ───────────────────────────────────────────────────────
     shop_card_free: "Gratis",
     shop_card_purchased: "Comprado",
     shop_card_inventory: "Inventario",
@@ -1330,7 +1562,6 @@ const translations = {
     shop_modal_footer_booth_redownload: "Puedes volver a descargar en cualquier momento desde tu inventario.",
     shop_modal_footer_ripper: "El escaneo recorre hasta 8 páginas del hilo buscando enlaces de Mega, GDrive, MediaFire, etc.",
 
-    // ── Package editor (Task 6) ────────────────────────────────────────────────
     pkg_editor_title_new: "Nuevo paquete",
     pkg_editor_title_edit: "Editar paquete",
     pkg_editor_name_label: "Nombre del paquete",
@@ -1367,7 +1598,6 @@ const translations = {
     pkg_asset_selector_no_results: "Sin resultados.",
     pkg_asset_selector_count: "{count} asset{s} seleccionado{s}",
 
-    // ── Inventory detail (Task 7) ──────────────────────────────────────────────
     inventory_detail_tab_overview: "Resumen",
     inventory_detail_tab_files: "Archivos",
     inventory_detail_tab_3d: "Vista previa 3D",
@@ -1402,25 +1632,16 @@ const translations = {
     inventory_detail_not_on_booth: "No está en Booth",
     inventory_detail_booth_fetching: "Obteniendo información de Booth…",
 
-    // ── Scan Drive Wizard extras (Task 7) ─────────────────────────────────────
-    scan_wizard_not_on_booth: "No está en Booth",
-    scan_wizard_avatar_coverage: "Cobertura de avatar",
-    scan_wizard_save_changes: "Guardar cambios",
-    scan_wizard_start_scan: "Iniciar escaneo",
-
-    // ── Error boundary (Task 8) ────────────────────────────────────────────────
     error_boundary_title: "Algo salió mal",
     error_boundary_subtitle: "Ocurrió un error inesperado en esta sección.",
     error_boundary_retry: "Reintentar",
     error_boundary_details: "Detalles del error",
     error_boundary_logs_hint: "Este error también aparece en la pestaña Logs.",
 
-    // ── Splash screen (Task 8) ─────────────────────────────────────────────────
     splash_loading: "Cargando…",
     splash_initializing: "Inicializando base de datos…",
     splash_ready: "Listo",
 
-    // ── Compression section (Task 8) ───────────────────────────────────────────
     compression_section_title: "Compresión",
     compression_section_desc: "Configura cómo se comprimen los assets para ahorrar espacio en disco.",
     compression_section_preset: "Preajuste",
@@ -1440,6 +1661,45 @@ const translations = {
     compression_section_verify_checksum: "Verificar checksum tras escritura",
     compression_section_save: "Guardar",
     compression_section_saved: "¡Guardado!",
+
+    // ── Updates ──────────────────────────────────────────────────────────────
+    updates_channel_title: "Canal de actualizaciones",
+    updates_channel_desc: "Define qué versiones recibes al buscar actualizaciones.",
+    updates_auto_download_label: "Descarga automática",
+    updates_auto_download_desc: "Inicia la descarga al detectar una nueva versión.",
+    updates_check_title: "Comprobar actualizaciones",
+    updates_check_button: "Buscar actualizaciones",
+    updates_checking: "Comprobando…",
+    updates_up_to_date: "VRC Studio está al día en el canal {channel}.",
+    updates_new_version: "Nueva versión disponible: {version}",
+    updates_install_now: "Instalar ahora",
+    updates_installing: "Descargando…",
+    updates_channel_stable_label: "Estable",
+    updates_channel_stable_desc: "Versiones probadas y verificadas.",
+    updates_channel_testing_label: "Testing",
+    updates_channel_testing_desc: "Versiones previas. Pueden ser inestables.",
+    updates_versions_title: "Versiones disponibles",
+    updates_versions_desc: "Instala una versión específica o haz rollback a una anterior.",
+    updates_versions_load: "Cargar lista",
+    updates_versions_reload: "Actualizar",
+    updates_versions_loading: "Cargando…",
+    updates_versions_empty: "No hay versiones publicadas para el canal {channel}.",
+    updates_versions_current: "instalada",
+    updates_versions_install: "Instalar",
+    updates_dialog_title: "VRC Studio {version} disponible",
+    updates_dialog_current: "Actual: {version}",
+    updates_dialog_close: "Cerrar",
+    updates_dialog_later: "Más tarde",
+    updates_dialog_update: "Actualizar ahora",
+
+    nav_tracker: "Tracker",
+    tracker_add: "Añadir al Tracker",
+    tracker_empty: "Aún no hay items trackeados.",
+    logs_subtitle: "Diagnóstico en tiempo real — reemplaza DevTools",
+    logs_no_results: "Sin resultados para el filtro actual.",
+    settings_tab_connections: "Conexiones",
+    settings_tab_appearance:  "Apariencia",
+    settings_tab_storage:     "Almacenamiento",
   },
 
   de: {
@@ -1451,7 +1711,6 @@ const translations = {
     nav_settings: "Einstellungen",
     nav_logs: "Logs",
 
-    // ── Inventory page ───────────────────────────────────────────────────
     inventory_title: "Inventar",
     inventory_scan_drive: "Laufwerk scannen",
     inventory_import_local: "Lokal importieren",
@@ -1464,13 +1723,11 @@ const translations = {
     inventory_active_filters: "Aktive Filter",
     inventory_clear_filters: "Zurücksetzen",
 
-    // ── Folder tree ──────────────────────────────────────────────────────
     folders_title: "Ordner",
     folders_new: "Neuer Ordner",
     folders_placeholder: "Ordnername",
     folders_all: "Alle Einträge",
 
-    // ── Tags sidebar ─────────────────────────────────────────────────────
     tags_title: "Tags",
     tags_all: "Alle Einträge",
     tags_create: "Tag erstellen",
@@ -1479,7 +1736,6 @@ const translations = {
     tags_pin_hint2: "zum Anheften. Klicke",
     tags_pin_hint3: "um alle zu sehen.",
 
-    // ── Context menu ─────────────────────────────────────────────────────
     ctx_view_details: "Details anzeigen",
     ctx_move_folder: "In Ordner verschieben",
     ctx_edit_tags: "Tags bearbeiten",
@@ -1496,7 +1752,6 @@ const translations = {
     ctx_tags_save: "Speichern",
     ctx_tags_placeholder: "Neuer Tag…",
 
-    // ── Item card ────────────────────────────────────────────────────────
     card_compressed: "Komprimiert",
     card_no_preview: "Keine Vorschau",
     card_base: "Basis",
@@ -1504,7 +1759,6 @@ const translations = {
     card_accessory: "Zubehör",
     card_material: "Material",
 
-    // ── Settings ─────────────────────────────────────────────────────────
     settings_title: "Einstellungen",
     settings_subtitle: "App-Konfiguration.",
     settings_integrations: "Integrationen",
@@ -1525,7 +1779,6 @@ const translations = {
     settings_lang_es: "Español",
     settings_lang_de: "Deutsch",
 
-    // ── Import dialog ─────────────────────────────────────────────────────
     import_title: "Lokales Paket importieren",
     import_zip_label: "ZIP / unitypackage Datei",
     import_zip_placeholder: "Klicken, um eine Datei auszuwählen…",
@@ -1543,7 +1796,6 @@ const translations = {
     import_detected_desc: "Diese Datei ist Teil eines Multi-Avatar-Pakets. Erkannte Varianten:",
     import_group_as: "Als einzelnen Eintrag mit Varianten gruppieren",
 
-    // ── Ripper / Booth ───────────────────────────────────────────────────
     ripper_checking: "Prüfe…",
     ripper_connected: "Verbunden",
     ripper_disconnected: "Nicht verbunden",
@@ -1556,14 +1808,12 @@ const translations = {
     booth_connected_count: "Verbunden — {n} gekauftes Element erkannt",
     booth_connect_msg: "Verbinde dein Booth.pm-Konto, um erkaufte Artikel zu erkennen. Ein Browser-Fenster öffnet sich — melde dich dort an und es schließt sich automatisch.",
 
-    // ── Shop Warning ──────────────────────────────────────────────────────
     shop_warning_title: "Wichtiger Hinweis",
     shop_warning_desc: "Der Shop ist eine experimentelle Funktion, die in dieser Version nicht korrekt funktioniert.",
     shop_warning_detail: "Es kann zu unerwartetem Verhalten, Ladefehlern und Download-Problemen kommen. Möchtest du trotzdem fortfahren?",
     shop_warning_cancel: "Abbrechen",
     shop_warning_continue: "Trotzdem fortfahren",
 
-    // ── Packages page ─────────────────────────────────────────────────────
     packages_title: "Pakete",
     packages_subtitle: "{count} benutzerdefiniertes VPM-Paket{e}",
     packages_empty: "Noch keine Pakete",
@@ -1577,7 +1827,6 @@ const translations = {
     packages_build_error: "Fehler beim Erstellen der ZIP: {error}",
     packages_open_folder_error: "Paketordner:\n{path}",
 
-    // ── Projects page ─────────────────────────────────────────────────────
     projects_title: "Projekte",
     projects_subtitle: "{count} Avatar-Projekt{e}",
     projects_empty: "Deine Avatar-Projekte",
@@ -1588,7 +1837,50 @@ const translations = {
     projects_open_unity_error: "Fehler beim Öffnen von Unity: {error}",
     projects_delete_error: "Fehler beim Löschen des Projekts: {error}",
 
-    // ── Shop page ─────────────────────────────────────────────────────────
+    // ── Settings tabs & section headers ────────────────────────────────────
+    settings_tab_general: "Allgemein",
+    settings_tab_packages: "Pakete",
+    settings_tab_integrations: "Integrationen",
+    settings_tab_compression: "Komprimierung",
+    settings_tab_updates: "Updates",
+    settings_tab_debug: "Debug",
+    settings_general_desc: "Sprach- und Beschriftungseinstellungen.",
+    settings_packages_title: "VPM-Pakete",
+    settings_packages_desc: "Verwalte VPM-Repositories für die Paketinstallation.",
+    settings_vpm_sources_label: "VPM-Quellen",
+    settings_vpm_add_url: "Von URL hinzufügen",
+    settings_vpm_import_vcc: "Von alcom / VCC importieren",
+    settings_integrations_title: "Integrationen",
+    settings_integrations_desc: "Mit externen Diensten für Inventar und Downloads verbinden.",
+    settings_riperstore_enable_label: "Riperstore aktivieren",
+    settings_riperstore_enable_desc: "Experimentell — kann sich ohne Vorankündigung ändern.",
+    settings_updates_title: "Updates",
+    settings_updates_desc: "App-Version, Kanal und automatische Downloads verwalten.",
+    settings_debug_title: "Debug",
+    settings_debug_desc: "Diagnosetools und IPC-Bridge-Tests.",
+    settings_group_app: "App",
+    settings_group_connect: "Verbindungen",
+    settings_group_system: "System",
+    settings_source_official: "Offiziell",
+    settings_source_packages: "Pakete verfügbar",
+    settings_source_name: "Quellenname",
+    settings_source_test: "Verbindung testen",
+    settings_source_remove: "Quelle entfernen",
+    settings_preview_title: "Pakete vorschauen",
+    settings_preview_label: "Pakete gefunden",
+    settings_preview_valid: "Gültiges Repository",
+    settings_add_from_url_title: "VPM-Quelle von URL hinzufügen",
+    settings_add_from_url_desc: "Füge eine VPM-Repository-URL ein, um Pakete zu sehen",
+    settings_add_source: "Quelle hinzufügen",
+    settings_import_vcc_title: "Von alcom / VCC importieren",
+    settings_import_vcc_desc: "Importiere vorhandene VPM-Quellen aus dem Creator Companion",
+    settings_import_browse: "settings.json durchsuchen",
+    settings_import_select: "Wähle, welche importiert werden sollen",
+    settings_cancel: "Abbrechen",
+    settings_saved: "Gespeichert!",
+    settings_save: "Speichern",
+    settings_ipc_ok: "IPC-Bridge funktioniert",
+
     shop_title: "Shop",
     shop_search_placeholder: "Assets durchsuchen oder Booth-URL / Artikel-ID einfügen…",
     shop_ripper_disconnected: "Ripper.store nicht verbunden — nur Booth-Ergebnisse.",
@@ -1596,18 +1888,6 @@ const translations = {
     shop_connect_in_settings: "In Einstellungen verbinden",
     shop_reconnect_in_settings: "In Einstellungen neu verbinden",
 
-    // ── Settings – Development ─────────────────────────────────────────────
-    settings_development_title: "Entwicklung",
-    settings_development_beta: "BETA",
-    settings_development_desc: "Experimentelle Einstellungen. Können sich ändern oder in zukünftigen Versionen entfernt werden.",
-    settings_awesome_animations_label: "awesome_animations",
-    settings_awesome_animations_on: "Animationen aktiv — Übergänge, Glühen und Effekte.",
-    settings_awesome_animations_off: "Keine Animationen — sofortige Oberfläche.",
-    settings_awesome_preview_transitions: "Seitenübergänge",
-    settings_awesome_preview_glow: "Glüheffekte",
-    settings_awesome_preview_ripples: "Button-Wellen",
-
-    // ── Compression popup ──────────────────────────────────────────────────
     compression_title_compress: "Komprimiere…",
     compression_title_decompress: "Dekomprimiere…",
     compression_title_compress_done: "Komprimiert!",
@@ -1615,7 +1895,6 @@ const translations = {
     compression_subtitle: "Wende maximale Komprimierung auf Asset an",
     compression_subtitle_decomp: "Stelle Originaldateien wieder her",
 
-    // ── Import dialog / detail ─────────────────────────────────────────────
     import_dialog_open_location: "Ort öffnen",
     import_dialog_view_booth: "Auf Booth ansehen",
     import_dialog_description: "Beschreibung",
@@ -1645,7 +1924,6 @@ const translations = {
     import_dialog_no_images: "Keine Bilder verfügbar",
     import_dialog_image_unavailable: "Bild nicht verfügbar",
 
-    // ── Scan Drive Wizard ──────────────────────────────────────────────────
     scan_wizard_title: "Laufwerk scannen",
     scan_wizard_step1: "Konfigurieren",
     scan_wizard_step2: "Scannen",
@@ -1704,8 +1982,11 @@ const translations = {
     scan_wizard_search_button: "Suchen",
     scan_wizard_search_no_results: "Keine Ergebnisse gefunden.",
     scan_wizard_package_contents: "Paketinhalt",
+    scan_wizard_not_on_booth: "Nicht auf Booth",
+    scan_wizard_avatar_coverage: "Avatar-Abdeckung",
+    scan_wizard_save_changes: "Änderungen speichern",
+    scan_wizard_start_scan: "Scan starten",
 
-    // ── File viewer ────────────────────────────────────────────────────────
     file_viewer_empty_folder: "Leerer Ordner",
     file_viewer_tree: "Baum",
     file_viewer_flat: "Flach",
@@ -1716,7 +1997,6 @@ const translations = {
     file_viewer_no_models: "Keine 3D-Modelle in diesem Paket gefunden",
     file_viewer_compatible_formats: "Kompatible Formate: .fbx · .vrm · .glb · .gltf · .obj",
 
-    // ── 3D Preview ────────────────────────────────────────────────────────
     preview_3d_loading: "Lade {model}…",
     preview_3d_shader: "Shader",
     preview_3d_outline_hint: "Umrandung + Toon-Shading",
@@ -1736,7 +2016,6 @@ const translations = {
     preview_3d_load_error: "Fehler beim Laden von {type}: {message}",
     preview_3d_image_unavailable: "Bild nicht verfügbar",
 
-    // ── Tag input ──────────────────────────────────────────────────────────
     tag_input_placeholder: "Tag hinzufügen…",
     tag_sidebar_system_tags: "System-Tags",
     tag_sidebar_custom_tags: "Benutzerdefinierte Tags",
@@ -1746,7 +2025,6 @@ const translations = {
     tag_sidebar_all_items: "Alle Einträge",
     tag_sidebar_system: "System",
 
-    // ── Projects – list ───────────────────────────────────────────────────────
     project_list_no_projects: "Noch keine Projekte",
     project_list_no_projects_desc: "Erstelle dein erstes Avatar-Projekt, um zu starten.",
     project_list_count: "{count} Projekt{e}",
@@ -1757,7 +2035,6 @@ const translations = {
     project_list_col_version: "Version",
     project_list_col_tags: "Tags",
 
-    // ── Projects – delete dialog ───────────────────────────────────────────────
     project_delete_title: "Projekt löschen?",
     project_delete_body: "{name} wird aus VRC Studio entfernt.",
     project_delete_files_label: "Dateien auch von der Festplatte löschen",
@@ -1768,7 +2045,6 @@ const translations = {
     project_delete_confirm_files: "Projekt & Dateien löschen",
     project_deleting: "Lösche…",
 
-    // ── Projects – scan wizard ─────────────────────────────────────────────────
     scan_projects_title: "Projekte suchen",
     scan_projects_step1: "Konfigurieren",
     scan_projects_step2: "Ergebnisse",
@@ -1785,8 +2061,12 @@ const translations = {
     scan_projects_done: "{count} Projekt{e} importiert!",
     scan_projects_rename_hint: "Klicken zum Umbenennen",
     scan_projects_vcs_hint: "Git-Repository initialisieren",
+    scan_projects_clear: "Auswahl löschen",
+    scan_projects_imported: "Bereits importiert",
+    scan_projects_selected_count: "{selected} von {importable} ausgewählt",
+    scan_projects_no_results: "Keine Unity-Projekte im ausgewählten Verzeichnis gefunden.",
+    scan_projects_no_selection: "Keine Projekte ausgewählt",
 
-    // ── Projects – detail modal ────────────────────────────────────────────────
     project_detail_badge_unity: "Unity-Version",
     project_detail_badge_base_id: "Basis-ID",
     project_detail_badge_local_packages: "Lokale Pakete",
@@ -1796,8 +2076,19 @@ const translations = {
     project_detail_compress: "Komprimieren",
     project_detail_decompress: "Dekomprimieren",
     project_detail_delete: "Löschen",
+    project_detail_tab_overview: "Übersicht",
+    project_detail_tab_files: "Dateien",
+    project_detail_tab_packages: "Pakete",
+    project_detail_tab_git: "Git",
+    project_detail_section_details: "Details",
+    project_detail_badge_type: "Projekttyp",
+    project_detail_badge_shader: "Shader",
+    project_detail_badge_vcs: "Versionskontrolle",
+    project_detail_hint_tabs: "Öffne den Tab Dateien, um das Projektverzeichnis zu durchsuchen, den Tab Pakete für VPM-Pakete oder den Tab Git für Commits und Branches.",
+    project_detail_unity_missing: "Unity {version} wurde nicht automatisch erkannt. Gib den Pfad zur Unity-Exe manuell ein.",
+    project_detail_logs_hint: "Unity-Erkennungsprotokolle sind im Logs-Tab verfügbar.",
+    project_detail_open_workspace: "Arbeitsbereich öffnen",
 
-    // ── Projects – packages tab ────────────────────────────────────────────────
     packages_tab_installed: "Installiert",
     packages_tab_overview: "Info",
     packages_tab_versions: "Versionen",
@@ -1814,62 +2105,6 @@ const translations = {
     packages_tab_install_retry: "Wiederholen",
     packages_tab_install: "Installieren",
     packages_tab_no_source: "Keine VPM-Quelle geladen",
-
-    // ── Projects – create wizard ───────────────────────────────────────────────
-    create_project_title: "Projekt erstellen",
-    create_project_name_label: "Projektname",
-    create_project_name_placeholder: "Mein Avatar-Projekt",
-    create_project_name_required: "Name erforderlich",
-    create_project_id_required: "ID erforderlich",
-    create_project_location_label: "Speicherort",
-    create_project_location_browse: "Durchsuchen…",
-    create_project_unity_label: "Unity-Version",
-    create_project_sdk_label: "VRChat SDK",
-    create_project_cancel: "Abbrechen",
-    create_project_submit: "Erstellen",
-
-    // ── Projects – creation progress ──────────────────────────────────────────
-    creation_progress_title: "Erstelle Projekt…",
-    creation_progress_done: "Projekt erstellt!",
-    creation_progress_error: "Erstellung fehlgeschlagen",
-    creation_progress_open: "In Unity öffnen",
-    creation_progress_close: "Schließen",
-
-    // ── Projects – compression popup ──────────────────────────────────────────
-    project_compress_title_compress: "Projekt wird komprimiert…",
-    project_compress_title_decompress: "Projekt wird dekomprimiert…",
-    project_compress_title_done_compress: "Projekt komprimiert",
-    project_compress_title_done_decompress: "Projekt dekomprimiert",
-    project_compress_restore: "Projekt wird in den Originalordner wiederhergestellt",
-
-    scan_projects_clear: "Auswahl löschen",
-    scan_projects_imported: "Bereits importiert",
-    scan_projects_selected_count: "{selected} von {importable} ausgewählt",
-    scan_projects_no_results: "Keine Unity-Projekte im ausgewählten Verzeichnis gefunden.",
-    scan_projects_no_selection: "Keine Projekte ausgewählt",
-
-    project_card_open: "offen",
-    project_card_closed: "geschlossen",
-    project_card_compressed: "komprimiert",
-    project_card_compress: "Komprimieren",
-    project_card_decompress: "Dekomprimieren",
-    project_card_details: "Details",
-    project_card_delete: "Löschen",
-    project_card_decompress_hint: "Projekt zuerst dekomprimieren",
-
-    project_detail_tab_overview: "Übersicht",
-    project_detail_tab_files: "Dateien",
-    project_detail_tab_packages: "Pakete",
-    project_detail_tab_git: "Git",
-    project_detail_section_details: "Details",
-    project_detail_badge_type: "Projekttyp",
-    project_detail_badge_shader: "Shader",
-    project_detail_badge_vcs: "Versionskontrolle",
-    project_detail_hint_tabs: "Öffne den Tab Dateien, um das Projektverzeichnis zu durchsuchen, den Tab Pakete für VPM-Pakete oder den Tab Git für Commits und Branches.",
-    project_detail_unity_missing: "Unity {version} wurde nicht automatisch erkannt. Gib den Pfad zur Unity-Exe manuell ein.",
-    project_detail_logs_hint: "Unity-Erkennungsprotokolle sind im Logs-Tab verfügbar.",
-    project_detail_open_workspace: "Arbeitsbereich öffnen",
-
     packages_tab_browse: "Katalog",
     packages_tab_no_packages: "Keine VPM-Pakete installiert",
     packages_tab_no_packages_hint: "Wechsle zum Katalog, um Pakete aus der VRChat-Registrierung hinzuzufügen.",
@@ -1886,6 +2121,17 @@ const translations = {
     packages_tab_no_search_results: "Keine Pakete für \"{search}\" gefunden",
     packages_tab_starting: "Starte…",
 
+    create_project_title: "Projekt erstellen",
+    create_project_name_label: "Projektname",
+    create_project_name_placeholder: "Mein Avatar-Projekt",
+    create_project_name_required: "Name erforderlich",
+    create_project_id_required: "ID erforderlich",
+    create_project_location_label: "Speicherort",
+    create_project_location_browse: "Durchsuchen…",
+    create_project_unity_label: "Unity-Version",
+    create_project_sdk_label: "VRChat SDK",
+    create_project_cancel: "Abbrechen",
+    create_project_submit: "Erstellen",
     create_project_scanning_unity: "Suche nach Unity-Installationen…",
     create_project_no_unity: "Keine kompatible Version gefunden. Installiere Unity 2022.3.22f1, 2022.3.6f1 oder 2019.4.31f1 über Unity Hub.",
     create_project_vcs_label: "Versionskontrolle (Git)",
@@ -1895,10 +2141,29 @@ const translations = {
     create_project_back: "Zurück",
     create_project_skip: "Überspringen und ohne Pakete erstellen",
 
+    creation_progress_title: "Erstelle Projekt…",
+    creation_progress_done: "Projekt erstellt!",
+    creation_progress_error: "Erstellung fehlgeschlagen",
+    creation_progress_open: "In Unity öffnen",
+    creation_progress_close: "Schließen",
+
+    project_compress_title_compress: "Projekt wird komprimiert…",
+    project_compress_title_decompress: "Projekt wird dekomprimiert…",
+    project_compress_title_done_compress: "Projekt komprimiert",
+    project_compress_title_done_decompress: "Projekt dekomprimiert",
+    project_compress_restore: "Projekt wird in den Originalordner wiederhergestellt",
     project_compress_error: "Komprimierungsfehler",
     project_compress_saving: "Projekt als .zip-Datei speichern",
 
-    // ── Logs ──────────────────────────────────────────────────────────────────
+    project_card_open: "offen",
+    project_card_closed: "geschlossen",
+    project_card_compressed: "komprimiert",
+    project_card_compress: "Komprimieren",
+    project_card_decompress: "Dekomprimieren",
+    project_card_details: "Details",
+    project_card_delete: "Löschen",
+    project_card_decompress_hint: "Projekt zuerst dekomprimieren",
+
     logs_filter_all: "Alle",
     logs_filter_log: "Log",
     logs_filter_info: "Info",
@@ -1913,7 +2178,6 @@ const translations = {
     logs_title: "Logs",
     logs_empty: "Noch keine Logs",
 
-    // ── VCS panel ─────────────────────────────────────────────────────────────
     vcs_loading: "Repository wird geladen…",
     vcs_error: "Fehler: {error}",
     vcs_refresh: "Aktualisieren",
@@ -1956,9 +2220,92 @@ const translations = {
     vcs_conflict_theirs_header: "Ihre Änderungen (incoming)",
     vcs_no_content: "(kein Inhalt)",
     vcs_all_conflicts_resolved_hint: "Alle Konflikte gelöst. Gehe zum Tab Änderungen und committe den Merge.",
-    // Terminal keys omitted
 
-    // ── Workspace ─────────────────────────────────────────────────────────────
+    vcs_github_connect: "Mit GitHub verbinden",
+    vcs_github_step1: "1. Öffne {url}",
+    vcs_github_step2: "2. Gib diesen Code ein:",
+    vcs_github_waiting: "Warte auf Autorisierung…",
+    vcs_github_authenticated: "authentifiziert",
+    vcs_github_logout: "Abmelden",
+
+    vcs_terminal_welcome: "VRC Studio Shell — {name}",
+    vcs_terminal_intro: "Kuratierte Befehle für Unity/VRChat-Umgebungen. 'help' für die Liste.",
+    vcs_terminal_unknown_cmd: "Unbekannter Befehl: '{cmd}'. 'help' zeigt verfügbare Befehle.",
+    vcs_terminal_command_not_allowed: "Befehl nicht erlaubt: '{cmd}'",
+    vcs_terminal_command_help_hint: "Diese Umgebung erlaubt nur kuratierte Befehle. 'help' eingeben.",
+    vcs_terminal_unexpected_error: "Unerwarteter Fehler: {error}",
+    vcs_terminal_input_placeholder: "Befehl eingeben (Tab zum Autovervollständigen)…",
+    vcs_terminal_executing: "führe aus…",
+    vcs_terminal_commands_title: "Befehle",
+    vcs_terminal_group_general: "Allgemein",
+    vcs_terminal_group_git: "Git",
+    vcs_terminal_group_proyecto: "Projekt",
+    vcs_terminal_group_vrchat_sdk: "VRChat SDK",
+    vcs_terminal_cmd_help_desc: "Zeigt diese Hilfe",
+    vcs_terminal_cmd_clear_desc: "Terminal leeren",
+    vcs_terminal_cmd_git_status_desc: "Repository-Status",
+    vcs_terminal_cmd_git_log_desc: "Commit-Verlauf (letzte 10)",
+    vcs_terminal_cmd_git_fetch_desc: "Remote-Änderungen herunterladen ohne anzuwenden",
+    vcs_terminal_cmd_git_diff_desc: "Unterschiede geänderter Dateien",
+    vcs_terminal_cmd_git_stash_desc: "Änderungen im Stash speichern",
+    vcs_terminal_cmd_git_stash_pop_desc: "Letzten Stash wiederherstellen",
+    vcs_terminal_cmd_git_branch_desc: "Branches auflisten",
+    vcs_terminal_cmd_ls_desc: "Dateien des Projektverzeichnisses auflisten",
+    vcs_terminal_cmd_project_info_desc: "Unity-Projektinformationen",
+    vcs_terminal_cmd_packages_list_desc: "Installierte VPM-Pakete",
+    vcs_terminal_cmd_vrchat_upload_avatar_desc: "Interaktiver Avatar-Upload-Assistent",
+    vcs_terminal_cmd_vrchat_upload_world_desc: "Interaktiver Welt-Upload-Assistent",
+    vcs_terminal_cmd_vrchat_status_desc: "Status der VRChat SDK-Sitzung",
+    vcs_terminal_git_branch: "Branch",
+    vcs_terminal_no_remote: "kein Remote",
+    vcs_terminal_staged: "Gestaged",
+    vcs_terminal_modified: "Geändert",
+    vcs_terminal_untracked: "Nicht verfolgt",
+    vcs_terminal_clean: "Arbeitsverzeichnis sauber.",
+    vcs_terminal_no_commits: "Keine Commits.",
+    vcs_terminal_no_diff: "Keine Unterschiede.",
+    vcs_terminal_project_name: "Name",
+    vcs_terminal_project_path: "Pfad",
+    vcs_terminal_project_unity: "Unity",
+    vcs_terminal_project_git: "Git",
+    vcs_terminal_enabled: "aktiviert",
+    vcs_terminal_disabled: "deaktiviert",
+    vcs_terminal_no_vpm_deps: "Keine VPM-Abhängigkeiten.",
+    vcs_terminal_vrchat_status_hint: "Führe 'vrchat upload avatar' oder 'vrchat upload world' aus, um den Assistenten zu starten.",
+    vcs_terminal_wizard_cancel_hint: "Mit 'cancel' jederzeit abbrechen.",
+    vcs_terminal_wizard_username: "VRChat-Benutzername",
+    vcs_terminal_wizard_password: "Passwort (versteckt)",
+    vcs_terminal_wizard_username_required: "Benutzername darf nicht leer sein.",
+    vcs_terminal_wizard_password_required: "Passwort darf nicht leer sein.",
+    vcs_terminal_wizard_auth_progress: "Authentifiziere als {username}…",
+    vcs_terminal_wizard_auth_success: "✓ Authentifiziert als {username}",
+    vcs_terminal_wizard_blueprints_available: "Verfügbare Blueprints (simuliert — Unity muss mit SDK geöffnet sein):",
+    vcs_terminal_wizard_avatar: "Avatar",
+    vcs_terminal_wizard_world: "Welt",
+    vcs_terminal_wizard_avatar_main: "Mein Haupt-Avatar",
+    vcs_terminal_wizard_avatar_test: "Test-Avatar",
+    vcs_terminal_wizard_world_main: "Meine Welt",
+    vcs_terminal_wizard_new_blueprint: "Neuen Blueprint erstellen",
+    vcs_terminal_wizard_blueprint_prompt: "Blueprint-ID des {type} (oder 'neu')",
+    vcs_terminal_wizard_blueprint: "Blueprint",
+    vcs_terminal_wizard_blueprint_required: "Blueprint muss angegeben werden.",
+    vcs_terminal_wizard_new_bp: "(neues {type})",
+    vcs_terminal_wizard_confirm: "Upload bestätigen? [j/N]",
+    vcs_terminal_wizard_upload_progress: "Starte Upload-Vorgang…",
+    vcs_terminal_wizard_step_validate: "Szene wird validiert…",
+    vcs_terminal_wizard_step_validate_ok: "Szene gültig",
+    vcs_terminal_wizard_step_build: "Baue {type}…",
+    vcs_terminal_wizard_step_build_ok: "Build abgeschlossen",
+    vcs_terminal_wizard_step_upload: "Lade zum VRChat SDK hoch…",
+    vcs_terminal_wizard_step_upload_ok: "Upload abgeschlossen",
+    vcs_terminal_wizard_done_header: "── ✓ {type} veröffentlicht ────────────────",
+    vcs_terminal_wizard_simulated_note: "Hinweis: simulierter Ablauf — echte Integration wird mit Rust SDK verfügbar sein.",
+    vcs_terminal_wizard_cancelled: "Upload abgebrochen.",
+    vcs_terminal_wizard_password_placeholder: "Passwort (versteckt)…",
+    vcs_terminal_wizard_username_placeholder: "VRChat-Benutzername",
+    vcs_terminal_wizard_blueprint_placeholder: "Blueprint-ID",
+    vcs_terminal_wizard_confirm_placeholder: "j / N",
+
     ws_tab_git: "Git",
     ws_tab_terminal: "Terminal",
     ws_tab_journal: "Tagebuch",
@@ -2004,7 +2351,6 @@ const translations = {
     ws_git_disabled: "Git ist für dieses Projekt nicht aktiviert.",
     ws_git_disabled_hint: "Lösche und importiere das Projekt erneut mit aktiviertem Git.",
 
-    // ── Shop components ───────────────────────────────────────────────────────
     shop_card_free: "Kostenlos",
     shop_card_purchased: "Gekauft",
     shop_card_inventory: "Inventar",
@@ -2045,7 +2391,6 @@ const translations = {
     shop_modal_footer_booth_redownload: "Du kannst jederzeit aus deinem Inventar erneut herunterladen.",
     shop_modal_footer_ripper: "Der Scan durchsucht bis zu 8 Seiten des Threads nach Mega-, GDrive-, MediaFire-Links usw.",
 
-    // ── Package editor (Task 6) ────────────────────────────────────────────────
     pkg_editor_title_new: "Neues Paket",
     pkg_editor_title_edit: "Paket bearbeiten",
     pkg_editor_name_label: "Paketname",
@@ -2082,7 +2427,6 @@ const translations = {
     pkg_asset_selector_no_results: "Keine Ergebnisse.",
     pkg_asset_selector_count: "{count} Asset{s} ausgewählt",
 
-    // ── Inventory detail (Task 7) ──────────────────────────────────────────────
     inventory_detail_tab_overview: "Übersicht",
     inventory_detail_tab_files: "Dateien",
     inventory_detail_tab_3d: "3D-Vorschau",
@@ -2117,25 +2461,16 @@ const translations = {
     inventory_detail_not_on_booth: "Nicht auf Booth",
     inventory_detail_booth_fetching: "Booth-Info wird abgerufen…",
 
-    // ── Scan Drive Wizard extras (Task 7) ─────────────────────────────────────
-    scan_wizard_not_on_booth: "Nicht auf Booth",
-    scan_wizard_avatar_coverage: "Avatar-Abdeckung",
-    scan_wizard_save_changes: "Änderungen speichern",
-    scan_wizard_start_scan: "Scan starten",
-
-    // ── Error boundary (Task 8) ────────────────────────────────────────────────
     error_boundary_title: "Etwas ist schiefgelaufen",
     error_boundary_subtitle: "In diesem Bereich ist ein unerwarteter Fehler aufgetreten.",
     error_boundary_retry: "Wiederholen",
     error_boundary_details: "Fehlerdetails",
     error_boundary_logs_hint: "Dieser Fehler erscheint auch im Logs-Tab.",
 
-    // ── Splash screen (Task 8) ─────────────────────────────────────────────────
     splash_loading: "Lädt…",
     splash_initializing: "Datenbank wird initialisiert…",
     splash_ready: "Bereit",
 
-    // ── Compression section (Task 8) ───────────────────────────────────────────
     compression_section_title: "Komprimierung",
     compression_section_desc: "Konfiguriere, wie Assets komprimiert werden, um Speicherplatz zu sparen.",
     compression_section_preset: "Voreinstellung",
@@ -2155,6 +2490,42 @@ const translations = {
     compression_section_verify_checksum: "Prüfsumme nach Schreiben prüfen",
     compression_section_save: "Speichern",
     compression_section_saved: "Gespeichert!",
+
+    // ── Updates ──────────────────────────────────────────────────────────────
+    updates_channel_title: "Update-Kanal",
+    updates_channel_desc: "Legt fest, welche Versionen du beim Suchen nach Updates erhältst.",
+    updates_auto_download_label: "Automatischer Download",
+    updates_auto_download_desc: "Startet den Download, sobald eine neue Version erkannt wird.",
+    updates_check_title: "Nach Updates suchen",
+    updates_check_button: "Jetzt suchen",
+    updates_checking: "Prüfe…",
+    updates_up_to_date: "VRC Studio ist auf dem {channel}-Kanal aktuell.",
+    updates_new_version: "Neue Version verfügbar: {version}",
+    updates_install_now: "Jetzt installieren",
+    updates_installing: "Lade herunter…",
+    updates_channel_stable_label: "Stabil",
+    updates_channel_stable_desc: "Getestete und verifizierte Releases.",
+    updates_channel_testing_label: "Testing",
+    updates_channel_testing_desc: "Vorab-Versionen. Können instabil sein.",
+    updates_versions_title: "Verfügbare Versionen",
+    updates_versions_desc: "Installiere eine bestimmte Version oder setze auf eine ältere zurück.",
+    updates_versions_load: "Liste laden",
+    updates_versions_reload: "Neu laden",
+    updates_versions_loading: "Lädt…",
+    updates_versions_empty: "Keine Versionen für den {channel}-Kanal veröffentlicht.",
+    updates_versions_current: "installiert",
+    updates_versions_install: "Installieren",
+    updates_dialog_title: "VRC Studio {version} verfügbar",
+    updates_dialog_current: "Aktuell: {version}",
+    updates_dialog_close: "Schließen",
+    updates_dialog_later: "Später",
+    updates_dialog_update: "Jetzt aktualisieren",
+
+    nav_tracker: "Tracker",
+    tracker_add: "Zum Tracker hinzufügen",
+    tracker_empty: "Noch keine Elemente verfolgt.",
+    logs_subtitle: "Echtzeit-Diagnose — ersetzt DevTools",
+    logs_no_results: "Keine Ergebnisse für den aktuellen Filter.",
   },
 } as const;
 

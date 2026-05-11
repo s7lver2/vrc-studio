@@ -3,6 +3,7 @@ use crate::models::{InventoryFolder, InventoryItem, InventorySource};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 use tauri::{Manager, State};
+use std::path::Path;
 use uuid::Uuid;
 
 // ── DB row → model conversion ─────────────────────────────────────────────────
@@ -15,34 +16,49 @@ fn row_to_item(row: &sqlx::sqlite::SqliteRow) -> InventoryItem {
         _ => InventorySource::Local,
     };
 
-    let tags_str: Option<String> = row.try_get("tags").ok();
-    let tags: Vec<String> = tags_str
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
+    let tags_str: String = row.try_get("tags").unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
 
     let is_compressed: i64 = row.try_get("is_compressed").unwrap_or(0);
 
+    let product_images_str: String = row.try_get("product_images")
+        .unwrap_or_else(|_| "[]".to_string());
+    let product_images: Vec<String> = serde_json::from_str(&product_images_str)
+        .unwrap_or_default();
+
+    let custom_images_str: String = row.try_get("custom_images")
+        .unwrap_or_else(|_| "[]".to_string());
+    let custom_images: Vec<String> = serde_json::from_str(&custom_images_str)
+        .unwrap_or_default();
+
     InventoryItem {
-        id: row.get("id"),
-        name: row.get("name"),
-        author: row.get("author"),
+        id:                row.get("id"),
+        name:              row.get("name"),
+        author:            row.try_get("author").ok(),
         source,
-        source_id: row.get("source_id"),
-        local_path: row.get("local_path"),
-        thumbnail_url: row.try_get("thumbnail_url").ok().flatten(),
-        download_date: row.get("download_date"),
-        size_bytes: row.get("size_bytes"),
+        source_id:         row.try_get("source_id").ok(),
+        local_path:        row.get("local_path"),
+        thumbnail_url:     row.try_get("thumbnail_url").ok(),
+        download_date:     row.get("download_date"),
+        size_bytes:        row.try_get("size_bytes").ok(),
         tags,
-        is_compressed: is_compressed != 0,
+        is_compressed:     row.try_get::<i64, _>("is_compressed").map(|v| v != 0).unwrap_or(false),
+        display_name:      row.try_get("display_name").ok(),
+        custom_cover_path: row.try_get("custom_cover_path").ok(),
+        sort_order:        row.try_get("sort_order").ok(),
+        product_images,
+        custom_images,
+        folder_id:         row.try_get("folder_id").ok(),
     }
 }
 
 fn row_to_folder(row: &sqlx::sqlite::SqliteRow) -> InventoryFolder {
     InventoryFolder {
-        id: row.get("id"),
-        name: row.get("name"),
-        parent_id: row.get("parent_id"),
+        id:                row.get("id"),
+        name:              row.get("name"),
+        parent_id:         row.get("parent_id"),
+        color:             row.try_get("color").ok(),
+        custom_image_path: row.try_get("custom_image_path").ok(),
     }
 }
 
@@ -62,10 +78,15 @@ pub async fn list_inventory_items_query(
     pool: &SqlitePool,
 ) -> Result<Vec<InventoryItem>, AppError> {
     let rows = sqlx::query(
-        "SELECT id, name, author, source, source_id, local_path, thumbnail_url,
-                download_date, size_bytes, tags, is_compressed
-         FROM inventory_items
-         ORDER BY download_date DESC",
+        "SELECT i.id, i.name, i.author, i.source, i.source_id, i.local_path, i.thumbnail_url,
+        i.download_date, i.size_bytes, i.tags, i.is_compressed,
+        i.display_name, i.custom_cover_path, i.sort_order,
+        COALESCE(i.product_images, '[]') as product_images,
+        COALESCE(i.custom_images, '[]') as custom_images,
+        fi.folder_id as folder_id
+ FROM inventory_items i
+ LEFT JOIN inventory_folder_items fi ON fi.item_id = i.id
+ ORDER BY COALESCE(i.sort_order, 999999999), i.download_date DESC",
     )
     .fetch_all(pool)
     .await?;
@@ -186,21 +207,30 @@ pub async fn list_inventory_folders(
 pub async fn move_item_to_folder(
     pool: State<'_, SqlitePool>,
     item_id: String,
-    folder_id: String,
+    folder_id: Option<String>,
 ) -> Result<(), AppError> {
-    // Quitar de cualquier carpeta previa
-    sqlx::query("DELETE FROM inventory_folder_items WHERE item_id = ?")
+    if let Some(fid) = &folder_id {
+        // Quitar de cualquier carpeta previa
+        sqlx::query("DELETE FROM inventory_folder_items WHERE item_id = ?")
+            .bind(&item_id)
+            .execute(&*pool)
+            .await?;
+
+        // Insertar en la nueva carpeta
+        sqlx::query(
+            "INSERT INTO inventory_folder_items (folder_id, item_id) VALUES (?, ?)",
+        )
+        .bind(fid)
         .bind(&item_id)
         .execute(&*pool)
         .await?;
-
-    sqlx::query(
-        "INSERT INTO inventory_folder_items (folder_id, item_id) VALUES (?, ?)",
-    )
-    .bind(&folder_id)
-    .bind(&item_id)
-    .execute(&*pool)
-    .await?;
+    } else {
+        // Eliminar de cualquier carpeta (si estaba en alguna)
+        sqlx::query("DELETE FROM inventory_folder_items WHERE item_id = ?")
+            .bind(&item_id)
+            .execute(&*pool)
+            .await?;
+    }
 
     Ok(())
 }
@@ -463,6 +493,42 @@ pub async fn get_item_product_images(
     }
 }
 
+
+/// Walks `dir` (non-recursively into subdirs up to depth 3) searching for
+/// `.unitypackage` files. Each found package is extracted in-place into its
+/// parent directory using `extract_unitypackage_to_dir`, and the original
+/// `.unitypackage` file is kept.
+///
+/// Called after a ZIP is extracted so that bundled unity packages are
+/// automatically unpacked and browseable in the sandbox file picker.
+pub fn extract_unity_packages_in_dir(dir: &std::path::Path) {
+    fn walk(dir: &std::path::Path, depth: u32) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if depth < 3 { walk(&path, depth + 1); }
+            } else {
+                let is_pkg = path.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.eq_ignore_ascii_case("unitypackage"))
+                    .unwrap_or(false);
+                if !is_pkg { continue; }
+                let parent = match path.parent() {
+                    Some(p) => p.to_path_buf(),
+                    None => continue,
+                };
+                // Extract into the same folder the .unitypackage lives in.
+                if let Err(e) = crate::services::downloader::extract_unitypackage_to_dir(&path, &parent) {
+                    eprintln!("[import] failed to extract {:?}: {}", path, e);
+                }
+                // Original .unitypackage is intentionally kept.
+            }
+        }
+    }
+    walk(dir, 0);
+}
+
 // ── Import local package ─────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -483,11 +549,9 @@ pub async fn import_local_package(
     }
 
     let item_id = uuid::Uuid::new_v4().to_string();
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| AppError::External(e.to_string()))?
-        .join("downloads")
+    // Use the user-configured assets root (respects Settings > Storage custom folder).
+    // Falls back to the default app_cache_dir/downloads if not set.
+    let cache_dir = crate::commands::app_settings::get_assets_root(&app)
         .join("local")
         .join(&item_id);
 
@@ -523,7 +587,30 @@ pub async fn import_local_package(
         } else {
             extract_dir.clone()
         };
+
+        // After extracting the ZIP, scan for any .unitypackage files inside and
+        // extract them in-place into their parent directory. The .unitypackage is
+        // kept alongside the extracted contents.
+        extract_unity_packages_in_dir(&final_extract);
+
         final_extract
+    } else if ext.eq_ignore_ascii_case("unitypackage") {
+        let extract_dir = cache_dir.join("extracted");
+        std::fs::create_dir_all(&extract_dir)
+            .map_err(|e| AppError::External(e.to_string()))?;
+        crate::services::downloader::extract_unitypackage_to_dir(&dest, &extract_dir)
+            .map_err(|e| AppError::External(e.to_string()))?;
+
+        // Igual que zip: si hay un único directorio raíz, apuntar directamente a él
+        let entries: Vec<_> = std::fs::read_dir(&extract_dir)
+            .map(|rd| rd.filter_map(|e| e.ok()).collect())
+            .unwrap_or_default();
+        if entries.len() == 1 {
+            let entry_path = entries[0].path();
+            if entry_path.is_dir() { entry_path } else { extract_dir }
+        } else {
+            extract_dir
+        }
     } else {
         dest
     };
@@ -829,4 +916,406 @@ mod tests {
         let items = list_inventory_items_query(&pool).await.unwrap();
         assert_eq!(items[0].tags, vec!["base_model", "vrc"]);
     }
+}
+
+// ── Reimport all assets ───────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize)]
+pub struct ReimportResult {
+    pub item_id: String,
+    pub name:    String,
+    pub status:  String, // "ok" | "skipped" | "error"
+    pub message: String,
+}
+
+/// Busca un .zip o .unitypackage en el directorio dado.
+fn find_archive_in_dir(dir: &Path) -> Option<std::path::PathBuf> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let p = entry.path();
+        if p.is_file() {
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext == "zip" || ext == "unitypackage" {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Extrae `archive` en `extract_dir` y aplica single-dir unwrap.
+/// Devuelve el `final_path` que debería guardarse como local_path.
+fn extract_archive_to(archive: &Path, extract_dir: &Path) -> Result<std::path::PathBuf, String> {
+    let ext = archive.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+
+    if ext == "zip" {
+        std::fs::File::open(archive)
+            .map_err(|e| e.to_string())
+            .and_then(|f| zip::ZipArchive::new(f).map_err(|e| e.to_string()))
+            .and_then(|mut a| a.extract(extract_dir).map_err(|e| e.to_string()))?;
+    } else if ext == "unitypackage" {
+        crate::services::downloader::extract_unitypackage_to_dir(archive, extract_dir)
+            .map_err(|e| e.to_string())?;
+    } else {
+        return Err(format!("unsupported archive format: {ext}"));
+    }
+
+    // Single-dir unwrap: si solo hay un directorio raíz, apuntar a él
+    let entries: Vec<_> = std::fs::read_dir(extract_dir)
+        .map(|rd| rd.filter_map(|e| e.ok()).collect())
+        .unwrap_or_default();
+    if entries.len() == 1 {
+        let entry_path = entries[0].path();
+        if entry_path.is_dir() { return Ok(entry_path); }
+    }
+    Ok(extract_dir.to_path_buf())
+}
+
+#[tauri::command]
+pub async fn reimport_all_assets(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<Vec<ReimportResult>, String> {
+    let rows = sqlx::query("SELECT id, name, local_path FROM inventory_items")
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+
+    for row in rows {
+        let id:    String = row.get("id");
+        let name:  String = row.get("name");
+        let lpath: String = row.get("local_path");
+
+        let lp = Path::new(&lpath);
+
+        // ── Caso A: local_path es un archivo de archivo (.zip / .unitypackage) ──
+        // Esto ocurre cuando el item fue importado antes de que la extracción
+        // de unitypackage estuviera soportada.
+        if lp.is_file() {
+            let ext = lp.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext != "zip" && ext != "unitypackage" {
+                results.push(ReimportResult {
+                    item_id: id, name, status: "skipped".into(),
+                    message: "local_path is a non-archive file".into(),
+                });
+                continue;
+            }
+
+            let extract_dir = match lp.parent() {
+                Some(p) => p.join("extracted"),
+                None    => { results.push(ReimportResult { item_id: id, name, status: "error".into(), message: "cannot determine parent dir".into() }); continue; }
+            };
+
+            // Si ya existe extracted/ de un intento previo, borrarlo
+            if extract_dir.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&extract_dir) {
+                    results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("failed to clear old extracted dir: {e}") });
+                    continue;
+                }
+            }
+            if let Err(e) = std::fs::create_dir_all(&extract_dir) {
+                results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("failed to create extracted dir: {e}") });
+                continue;
+            }
+
+            let archive = lp.to_path_buf();
+            let extract_dir_clone = extract_dir.clone();
+            let extract_result = tokio::task::spawn_blocking(move || {
+                extract_archive_to(&archive, &extract_dir_clone)
+            }).await;
+
+            match extract_result {
+                Ok(Ok(new_path)) => {
+                    // Also extract any .unitypackage files found inside the ZIP.
+                    extract_unity_packages_in_dir(&new_path);
+                    let new_local_path = new_path.to_string_lossy().to_string();
+                    let update = sqlx::query("UPDATE inventory_items SET local_path = ? WHERE id = ?")
+                        .bind(&new_local_path)
+                        .bind(&id)
+                        .execute(&*pool)
+                        .await;
+                    match update {
+                        Ok(_)  => results.push(ReimportResult { item_id: id, name, status: "ok".into(), message: format!("extracted and local_path updated → {new_local_path}") }),
+                        Err(e) => results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("extracted but DB update failed: {e}") }),
+                    }
+                }
+                Ok(Err(e)) => results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("extraction failed: {e}") }),
+                Err(e)     => results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("task panic: {e}") }),
+            }
+            continue;
+        }
+
+        // ── Caso B: local_path es un directorio (ya fue extraído antes) ──
+        if !lp.exists() {
+            results.push(ReimportResult { item_id: id, name, status: "skipped".into(), message: "path does not exist".into() });
+            continue;
+        }
+        if !lp.is_dir() {
+            results.push(ReimportResult { item_id: id, name, status: "skipped".into(), message: "unknown local_path type".into() });
+            continue;
+        }
+
+        // Determinar extracted_root y dónde buscar el archivo fuente
+        let dir_name = lp.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let (extracted_root, cache_dir_opt) = if dir_name == "extracted" {
+            (lp.to_path_buf(), lp.parent().map(|p| p.to_path_buf()))
+        } else {
+            let parent = lp.parent().unwrap_or(lp);
+            let parent_name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if parent_name == "extracted" {
+                (parent.to_path_buf(), parent.parent().map(|p| p.to_path_buf()))
+            } else {
+                results.push(ReimportResult { item_id: id, name, status: "skipped".into(), message: "unknown directory structure".into() });
+                continue;
+            }
+        };
+
+        let archive = match cache_dir_opt.as_deref().and_then(find_archive_in_dir) {
+            Some(a) => a,
+            None    => { results.push(ReimportResult { item_id: id, name, status: "skipped".into(), message: "no source archive found alongside extracted dir".into() }); continue; }
+        };
+
+        // Borrar y recrear extracted_root
+        if let Err(e) = std::fs::remove_dir_all(&extracted_root) {
+            results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("failed to delete extracted dir: {e}") });
+            continue;
+        }
+        if let Err(e) = std::fs::create_dir_all(&extracted_root) {
+            results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("failed to recreate extracted dir: {e}") });
+            continue;
+        }
+
+        let archive_clone   = archive.clone();
+        let exroot_clone    = extracted_root.clone();
+        let extract_result  = tokio::task::spawn_blocking(move || {
+            extract_archive_to(&archive_clone, &exroot_clone)
+        }).await;
+
+        match extract_result {
+            Ok(Ok(resolved_path)) => {
+                // Also extract any .unitypackage files found inside the ZIP.
+                extract_unity_packages_in_dir(&resolved_path);
+                results.push(ReimportResult { item_id: id, name, status: "ok".into(), message: format!("re-extracted from {}", archive.file_name().unwrap_or_default().to_string_lossy()) });
+            }
+            Ok(Err(e)) => results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("extraction failed: {e}") }),
+            Err(e)     => results.push(ReimportResult { item_id: id, name, status: "error".into(), message: format!("task panic: {e}") }),
+        }
+    }
+
+    Ok(results)
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateItemMetadataPayload {
+    pub item_id:      String,
+    pub display_name: Option<String>,
+    pub tags:         Option<Vec<String>>,
+}
+
+#[tauri::command]
+pub async fn update_item_metadata(
+    pool: State<'_, SqlitePool>,
+    payload: UpdateItemMetadataPayload,
+) -> Result<(), AppError> {
+    if let Some(dn) = &payload.display_name {
+        sqlx::query("UPDATE inventory_items SET display_name = ? WHERE id = ?")
+            .bind(dn)
+            .bind(&payload.item_id)
+            .execute(&*pool)
+            .await?;
+    }
+    if let Some(tags) = &payload.tags {
+        let tags_json = serde_json::to_string(tags)
+            .map_err(|e| AppError::External(e.to_string()))?;
+        sqlx::query("UPDATE inventory_items SET tags = ? WHERE id = ?")
+            .bind(&tags_json)
+            .bind(&payload.item_id)
+            .execute(&*pool)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Copia la imagen elegida por el usuario a <app_data>/covers/<item_id>.<ext>
+/// y guarda la ruta resultante en custom_cover_path.
+#[tauri::command]
+pub async fn set_item_custom_cover(
+    pool:       State<'_, SqlitePool>,
+    app_handle: tauri::AppHandle,
+    item_id:    String,
+    source_path: String,
+) -> Result<String, AppError> {
+    let src = std::path::Path::new(&source_path);
+    let ext = src.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png");
+
+    // Directorio de portadas dentro de app data
+    let data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::External(e.to_string()))?;
+    let covers_dir = data_dir.join("covers");
+    std::fs::create_dir_all(&covers_dir)
+        .map_err(|e| AppError::External(e.to_string()))?;
+
+    let dest = covers_dir.join(format!("{}.{}", item_id, ext));
+    std::fs::copy(src, &dest)
+        .map_err(|e| AppError::External(e.to_string()))?;
+
+    let dest_str = dest.to_string_lossy().to_string();
+    sqlx::query("UPDATE inventory_items SET custom_cover_path = ? WHERE id = ?")
+        .bind(&dest_str)
+        .bind(&item_id)
+        .execute(&*pool)
+        .await?;
+
+    Ok(dest_str)
+}
+
+#[tauri::command]
+pub async fn reorder_items(
+    pool:     State<'_, SqlitePool>,
+    item_ids: Vec<String>,
+) -> Result<(), AppError> {
+    for (idx, id) in item_ids.iter().enumerate() {
+        sqlx::query("UPDATE inventory_items SET sort_order = ? WHERE id = ?")
+            .bind(idx as i32)
+            .bind(id)
+            .execute(&*pool)
+            .await?;
+    }
+    Ok(())
+}
+
+// ── Sustituye las funciones problemáticas ──
+
+#[tauri::command]
+pub async fn set_item_custom_images(
+    app_handle: tauri::AppHandle,
+    pool: State<'_, SqlitePool>,
+    item_id: String,
+    source_paths: Vec<String>,
+) -> Result<Vec<String>, AppError> {
+    let data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::External(e.to_string()))?;
+    let covers_dir = data_dir.join("covers");
+    std::fs::create_dir_all(&covers_dir)?;
+
+    let mut saved: Vec<String> = Vec::new();
+    for src in &source_paths {
+        let ext = std::path::Path::new(src)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png");
+        let filename = format!("{}-{}.{}", item_id, uuid::Uuid::new_v4(), ext);
+        let dest = covers_dir.join(&filename);
+        std::fs::copy(src, &dest)?;
+        saved.push(dest.to_string_lossy().to_string());
+    }
+
+    let json = serde_json::to_string(&saved).unwrap_or_else(|_| "[]".to_string());
+    let cover = saved.first().cloned();
+
+    sqlx::query(
+        "UPDATE inventory_items SET custom_images = ?, custom_cover_path = ? WHERE id = ?"
+    )
+    .bind(&json)
+    .bind(&cover)
+    .bind(&item_id)
+    .execute(&*pool)
+    .await?;
+
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn update_folder(
+    app_handle: tauri::AppHandle,
+    pool: State<'_, SqlitePool>,
+    folder_id: String,
+    name: Option<String>,
+    color: Option<String>,
+    image_source_path: Option<String>,
+    clear_image: Option<bool>,
+) -> Result<InventoryFolder, AppError> {
+    let data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::External(e.to_string()))?;
+    let folder_covers_dir = data_dir.join("folder_covers");
+    std::fs::create_dir_all(&folder_covers_dir)?;
+
+    // Si el usuario pidió borrar la imagen, limpiar antes de cualquier otra operación
+    if clear_image.unwrap_or(false) {
+        sqlx::query("UPDATE inventory_folders SET custom_image_path = NULL WHERE id = ?")
+            .bind(&folder_id)
+            .execute(&*pool)
+            .await?;
+    }
+
+    let saved_image: Option<String> = if let Some(src) = &image_source_path {
+        let ext = std::path::Path::new(src)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png");
+        let dest = folder_covers_dir.join(format!("{}.{}", folder_id, ext));
+        std::fs::copy(src, &dest)?;
+        Some(dest.to_string_lossy().to_string())
+    } else {
+        None
+    };
+
+    if let Some(n) = &name {
+        sqlx::query("UPDATE inventory_folders SET name = ? WHERE id = ?")
+            .bind(n)
+            .bind(&folder_id)
+            .execute(&*pool)
+            .await?;
+    }
+    if let Some(c) = &color {
+        sqlx::query("UPDATE inventory_folders SET color = ? WHERE id = ?")
+            .bind(c)
+            .bind(&folder_id)
+            .execute(&*pool)
+            .await?;
+    }
+    if let Some(img) = &saved_image {
+        sqlx::query("UPDATE inventory_folders SET custom_image_path = ? WHERE id = ?")
+            .bind(img)
+            .bind(&folder_id)
+            .execute(&*pool)
+            .await?;
+    }
+
+    let row = sqlx::query("SELECT * FROM inventory_folders WHERE id = ?")
+        .bind(&folder_id)
+        .fetch_one(&*pool)
+        .await?;
+    Ok(row_to_folder(&row))
+}
+
+// ── Nuevo comando para eliminar carpetas ──
+#[tauri::command]
+pub async fn delete_inventory_folder(
+    pool: State<'_, SqlitePool>,
+    folder_id: String,
+) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM inventory_folders WHERE id = ?")
+        .bind(&folder_id)
+        .execute(&*pool)
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_all_folder_assignments(
+    pool: State<'_, SqlitePool>,
+) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM inventory_folder_items")
+        .execute(&*pool)
+        .await?;
+    Ok(())
 }

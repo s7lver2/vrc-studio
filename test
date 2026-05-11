@@ -1,0 +1,25 @@
+cd /tmp/vrcstudio && python3 - << 'EOF'
+with open("src/components/sandbox/SandboxViewer.tsx", "rb") as f:
+    content = f.read()
+
+new_block = b"""        // \xe2\x94\x80\xe2\x94\x80 LoadingManager with URL modifier \xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\r\n        // When an FBX is loaded as a blob, Three.js resolves texture paths\r\n        // as "blob:http://localhost:1420/<filename.ext>" \xe2\x80\x94 remapped here.\r\n        //\r\n        // Three lookup strategies (in order):\r\n        //  1. Exact match (case-insensitive): "Hair.png" \xe2\x86\x92 "Hair.png"\r\n        //  2. Suffix match: "Hair.png" \xe2\x86\x92 "Plum_Hair.png"\r\n        //     Handles FBX exported with short names when disk files have prefixes.\r\n        //  3. Stem match (any extension): "Body.psd" \xe2\x86\x92 "Plum_Body.png"\r\n        //     Handles FBX referencing raw Photoshop .psd sources when only\r\n        //     the baked .png is on disk.\r\n\r\n        // Pre-build a stem\xe2\x86\x92key index for strategy 3.\r\n        // stem = filename without extension, lowercased.\r\n        const stemIndex = new Map<string, string>(); // stem \xe2\x86\x92 blob URL\r\n        for (const [key, blob] of textureBlobMap.entries()) {\r\n          const dotIdx = key.lastIndexOf(".");\r\n          const stem = (dotIdx > 0 ? key.slice(0, dotIdx) : key).toLowerCase();\r\n          if (!stemIndex.has(stem)) stemIndex.set(stem, blob);\r\n        }\r\n\r\n        const manager = new THREE.LoadingManager();\r\n        manager.setURLModifier((url: string) => {\r\n          if (url.startsWith("data:")) return url;\r\n          const filename = url.split(/[/\\\\]/).pop() ?? "";\r\n\r\n          // Only process filenames that look like image files (FBX can\r\n          // reference .psd, .tga, etc. that aren't in TEX_EXT).\r\n          const hasImageExt = /\\.[a-zA-Z]{2,5}$/.test(filename);\r\n          if (!filename || !hasImageExt) return url;\r\n\r\n          const filenameLower = filename.toLowerCase();\r\n\r\n          // Strategy 1 \xe2\x80\x94 exact (case-insensitive)\r\n          const exact = textureBlobMap.get(filename) ?? textureBlobMap.get(filenameLower);\r\n          if (exact) {\r\n            console.log(`[URLModifier] ${filename} \xe2\x86\x92 exact`);\r\n            return exact;\r\n          }\r\n\r\n          // Strategy 2 \xe2\x80\x94 suffix match: find a map key that ends with filenameLower.\r\n          // "hair.png" matches "plum_hair.png".\r\n          for (const [key, blob] of textureBlobMap.entries()) {\r\n            if (key.toLowerCase().endsWith(filenameLower)) {\r\n              console.log(`[URLModifier] ${filename} \xe2\x86\x92 suffix "${key}"`);\r\n              return blob;\r\n            }\r\n          }\r\n\r\n          // Strategy 3 \xe2\x80\x94 stem match ignoring extension.\r\n          // "body.psd" stem="body" matches "Plum_Body.png" stem="plum_body".\r\n          const dotIdx = filenameLower.lastIndexOf(".");\r\n          const stem = dotIdx > 0 ? filenameLower.slice(0, dotIdx) : filenameLower;\r\n\r\n          // 3a: exact stem\r\n          const byStem = stemIndex.get(stem);\r\n          if (byStem) {\r\n            console.log(`[URLModifier] ${filename} \xe2\x86\x92 stem exact "${stem}"`);\r\n            return byStem;\r\n          }\r\n\r\n          // 3b: suffix-of-stem \xe2\x80\x94 "body" matches "plum_body"\r\n          for (const [mapStem, blob] of stemIndex.entries()) {\r\n            if (mapStem.endsWith(stem) || mapStem.endsWith(`_${stem}`)) {\r\n              console.log(`[URLModifier] ${filename} \xe2\x86\x92 stem suffix "${mapStem}"`);\r\n              return blob;\r\n            }\r\n          }\r\n\r\n          console.warn(`[URLModifier] ${filename} \xe2\x80\x94 unresolved (map: ${textureBlobMap.size})`);\r\n          return url;\r\n        });"""
+
+# Find the old block by locating start and end markers
+start_marker = b"        // \xe2\x94\x80\xe2\x94\x80 LoadingManager with URL modifier"
+end_marker = b"        });\r\n\r\n        setLoadLabel"
+
+start_idx = content.find(start_marker)
+end_idx = content.find(end_marker, start_idx)
+
+print(f"start_idx: {start_idx}, end_idx: {end_idx}")
+if start_idx < 0 or end_idx < 0:
+    print("NOT FOUND")
+else:
+    old_block = content[start_idx:end_idx]
+    print(f"Old block length: {len(old_block)}")
+    # Replace
+    new_content = content[:start_idx] + new_block + content[end_idx:]
+    with open("src/components/sandbox/SandboxViewer.tsx", "wb") as f:
+        f.write(new_content)
+    print("DONE")
+EOF

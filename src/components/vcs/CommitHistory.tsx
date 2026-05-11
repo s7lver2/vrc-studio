@@ -1,5 +1,5 @@
 import type { CommitEntry } from "@/types/vcs";
-import { useLocale } from "@/i18n";
+import { useLocale, useT } from "@/i18n";
 
 interface Props {
   entries: CommitEntry[];
@@ -41,6 +41,7 @@ function AuthorAvatar({ author }: { author: string }) {
 
 export function CommitHistory({ entries, onSelect }: Props) {
   const locale = useLocale();
+  const t = useT();
 
   if (entries.length === 0) {
     return (
@@ -50,13 +51,10 @@ export function CommitHistory({ entries, onSelect }: Props) {
           <line x1="12" y1="3" x2="12" y2="9" />
           <line x1="12" y1="15" x2="12" y2="21" />
         </svg>
-        <p className="text-xs">{/* No commits */ useT()("vcs_no_history")}</p>
+        <p className="text-xs">{t("vcs_no_history")}</p>
       </div>
     );
   }
-
-  // Need useT hook at component level; we'll add it
-  const t = useT();
 
   return (
     <div className="flex flex-col">
