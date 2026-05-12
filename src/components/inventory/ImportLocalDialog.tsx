@@ -9,6 +9,8 @@ import { useInventoryStore } from "../../store/inventoryStore";
 import {
   tauriGetBoothProductDetail,
   BoothProductDetail,
+  tauriCheckDuplicateItems,
+  tauriDeleteInventoryItem,
 } from "../../lib/tauri";
 import { useT } from "../../i18n";
 import { GlobalBoothPickerModal, BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
@@ -88,14 +90,15 @@ function extractBoothId(input: string): string | null {
 interface Props {
   onClose: () => void;
   onImported?: (itemId: string) => void;
+  preselectedFile?: string; // añadido
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function ImportLocalDialog({ onClose, onImported }: Props) {
+export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Props) {
   const t = useT();
   const { importLocalPackage } = useInventoryStore();
 
-  const [zipPath, setZipPath] = useState("");
+  const [zipPath, setZipPath] = useState(preselectedFile ?? "");
   const [boothInput, setBoothInput] = useState("");
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
@@ -115,6 +118,20 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
   const [groupVariants, setGroupVariants] = useState(true);
   const [showVariants, setShowVariants] = useState(false);
 
+  // Duplicate detection
+  const [duplicateCheck, setDuplicateCheck] = useState<{ exists: boolean; existing_item_ids: string[] } | null>(null);
+
+  useEffect(() => {
+    if (preselectedFile) {
+      const filename = preselectedFile.split(/[/\\]/).pop() ?? '';
+      const baseName = filename.replace(/\.(zip|unitypackage)$/i, '');
+      if (!name) setName(baseName);
+      // También podrías ejecutar la detección de variantes
+      const detected = detectAvatarVariants(filename);
+      setDetection(detected);
+    }
+  }, [preselectedFile]);
+
   // ── AUTO‑FETCH: cuando el usuario escribe un Booth ID/URL ────────────────────
   useEffect(() => {
     const boothId = extractBoothId(boothInput);
@@ -124,7 +141,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
       setFetchingBooth(true);
       try {
         const detail = await tauriGetBoothProductDetail(boothId);
-        // Solo rellenar si el campo está vacío (no sobreescribir lo que el usuario ya escribió)
         if (!name) setName(detail.name);
         if (!author) setAuthor(detail.author);
         if (!thumbnailUrl && detail.images[0]) setThumbnailUrl(detail.images[0]);
@@ -195,7 +211,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
     if (!name) setName(result.name);
     if (!author) setAuthor(result.author);
     if (!thumbnailUrl && result.thumbnailUrl) setThumbnailUrl(result.thumbnailUrl);
-    // Fetch full detail to get all images
     try {
       const detail = await tauriGetBoothProductDetail(result.boothId);
       setBoothDetail(detail);
@@ -205,8 +220,20 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
     } catch { /* ignore */ }
   };
 
-  // ── Import ───────────────────────────────────────────────────────────────
-  const handleImport = async () => {
+  // ── Duplicate check ─────────────────────────────────────────────────────
+  const checkDuplicates = async () => {
+    if (!name.trim() || !zipPath) return;
+    try {
+      const result = await tauriCheckDuplicateItems(name.trim(), zipPath);
+      setDuplicateCheck(result);
+    } catch (e) {
+      console.error("Duplicate check failed", e);
+      setDuplicateCheck({ exists: false, existing_item_ids: [] });
+    }
+  };
+
+  // ── Import (normal, overwrite=false) ─────────────────────────────────────
+  const handleImport = async (overwrite = false) => {
     if (!zipPath || !name.trim()) return;
     setImporting(true);
     setImportError(null);
@@ -218,11 +245,33 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
         author: author.trim() || undefined,
         thumbnail_url: thumbnailUrl.trim() || boothDetail?.images[0] || undefined,
         booth_id: boothId,
-        // Guardar todas las imágenes de Booth (saltando la primera que ya es thumbnail)
         product_images: boothDetail?.images ?? [],
+        overwrite,   // <-- nuevo parámetro
       });
       setImportedId(newId);
       onImported?.(newId);
+    } catch (e) {
+      setImportError(String(e));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // ── Overwrite handler ────────────────────────────────────────────────────
+  const handleOverwrite = async () => {
+    setImporting(true);
+    setDuplicateCheck(null);
+    try {
+      // 1. Eliminar items duplicados existentes
+      if (duplicateCheck?.existing_item_ids) {
+        await Promise.all(
+          duplicateCheck.existing_item_ids.map((id) =>
+            tauriDeleteInventoryItem(id, "InventoryOnly")
+          )
+        );
+      }
+      // 2. Importar con overwrite = true (el backend también limpiará si es necesario)
+      await handleImport(true);
     } catch (e) {
       setImportError(String(e));
     } finally {
@@ -256,8 +305,70 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
     );
   }
 
+  const handleImportClick = async () => {
+    if (!zipPath || !name.trim()) return;
+    setImportError(null);
+    setDuplicateCheck(null);
+    setImporting(true); // mostramos spinner mientras se verifica
+
+    try {
+      const result = await tauriCheckDuplicateItems(name.trim(), zipPath);
+      if (result.exists) {
+        setDuplicateCheck(result);
+        setImporting(false); // detenemos spinner, esperamos decisión del usuario
+      } else {
+        // No hay duplicados → importar directamente
+        await handleImport(false);
+      }
+    } catch (e) {
+      setImportError(String(e));
+      setImporting(false);
+    }
+  };
+
   return (
   <>
+    {/* ── Duplicate conflict dialog ────────────────────────────────────────── */}
+    {duplicateCheck?.exists && (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-80 flex flex-col gap-4 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-zinc-100">Duplicate found</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                An item with the same name or source file already exists. What would you like to do?
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setDuplicateCheck(null)}
+              className="px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                setDuplicateCheck(null);
+                handleImport(false);   // keep both
+              }}
+              className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition-colors"
+            >
+              Keep both
+            </button>
+            <button
+              onClick={handleOverwrite}
+              className="px-3 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
+            >
+              Overwrite
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Main import dialog ───────────────────────────────────────────────── */}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
@@ -297,7 +408,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
           {/* ── Avatar variant detection panel ── */}
           {detection && (
             <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-amber-950/30 border border-amber-800/40">
-              {/* Collapsible header */}
               <button
                 className="flex items-center gap-2 text-left w-full"
                 onClick={() => setShowVariants((v) => !v)}
@@ -316,7 +426,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
                   : <ChevronDown className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
               </button>
 
-              {/* Variant chips */}
               {showVariants && (
                 <div className="flex flex-wrap gap-1.5">
                   {detection.variants.map((v) => (
@@ -328,16 +437,13 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
                           : "border-amber-700/50 bg-amber-950/40 text-amber-200"
                       }`}
                     >
-                      {v.isMaterials
-                        ? <Layers className="h-2.5 w-2.5" />
-                        : <Users className="h-2.5 w-2.5" />}
+                      {v.isMaterials ? <Layers className="h-2.5 w-2.5" /> : <Users className="h-2.5 w-2.5" />}
                       {v.avatarName}
                     </span>
                   ))}
                 </div>
               )}
 
-              {/* Group toggle */}
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <button
                   type="button"
@@ -346,9 +452,7 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
                   onClick={() => setGroupVariants((g) => !g)}
                   className={`relative w-8 h-4 rounded-full transition-colors ${groupVariants ? "bg-amber-600" : "bg-zinc-700"}`}
                 >
-                  <span
-                    className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${groupVariants ? "translate-x-4" : "translate-x-0.5"}`}
-                  />
+                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${groupVariants ? "translate-x-4" : "translate-x-0.5"}`} />
                 </button>
                 <span className="text-[11px] text-amber-300/80 select-none">
                   {t("import_group_as")}
@@ -377,7 +481,6 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
                   <Search className="absolute right-2 top-2.5 w-3.5 h-3.5 text-violet-400 animate-pulse" />
                 )}
               </div>
-              {/* Buscar en catálogo Booth */}
               <button
                 onClick={() => setShowBoothPicker(true)}
                 title="Buscar en Booth"
@@ -390,9 +493,7 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
                 disabled={!boothInput.trim() || fetchingBooth}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-zinc-700 text-zinc-300 text-xs transition-colors"
               >
-                {fetchingBooth
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : t("import_booth_lookup")}
+                {fetchingBooth ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("import_booth_lookup")}
               </button>
             </div>
 
@@ -476,8 +577,8 @@ export function ImportLocalDialog({ onClose, onImported }: Props) {
             {t("import_cancel")}
           </button>
           <button
-            onClick={handleImport}
-            disabled={!canImport}
+            onClick={handleImportClick}
+            disabled={!canImport || importing}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
             {importing ? (

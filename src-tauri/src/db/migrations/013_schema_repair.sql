@@ -1,0 +1,3 @@
+-- 013_schema_repair.sql
+-- This migration is intentionally empty. Schema repairs for users affected
+-- by the 011/012 swap are handled in Rust before migrations run.

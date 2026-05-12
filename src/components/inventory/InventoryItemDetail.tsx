@@ -194,6 +194,7 @@ function UnityPackageViewer({ path }: { path: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"tree" | "flat">("tree");
+  
 
   useEffect(() => {
     setLoading(true);
@@ -364,7 +365,7 @@ function pathToAssetUrl(p: string): string {
 
 export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
   const t = useT();
-  const { folders, items, updateItemMetadata, setItemCustomImages } = useInventoryStore();
+  const { folders, items, updateItemMetadata, setItemCustomImages, fetchAll } = useInventoryStore();
   const [tab, setTab] = useState<Tab>("overview");
 
   const [boothDetail, setBoothDetail] = useState<BoothProductDetail | null>(null);
@@ -486,6 +487,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
 
       // Siempre llamar: si está vacío, limpia las imágenes custom en la DB
       await setItemCustomImages(item.id, localPaths);
+      await fetchAll();
 
       setIsEditing(false);
     } finally {

@@ -49,20 +49,6 @@ pub fn get_assets_root(app: &AppHandle) -> PathBuf {
     }
 }
 
-/// Tamaño recursivo de un directorio (en bytes). Silencia errores de permisos.
-fn dir_size(path: &Path) -> u64 {
-    if !path.is_dir() {
-        return std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    }
-    let Ok(rd) = std::fs::read_dir(path) else { return 0; };
-    rd.flatten()
-        .map(|e| {
-            let p = e.path();
-            if p.is_dir() { dir_size(&p) } else { std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0) }
-        })
-        .sum()
-}
-
 /// Copia un directorio completo de src a dst (cross-drive safe).
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
@@ -400,4 +386,248 @@ pub async fn clear_all_cache(
     let thumb_freed = clear_thumbnails_cache(app.clone())?;
     let orphan_freed = clear_orphaned_cache(app, pool).await?;
     Ok(thumb_freed + orphan_freed)
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReclaimableFile {
+    pub path: String,
+    pub size_bytes: u64,
+    pub category: String,          // "psd" | "blend" | "unity_library" | "log" | "video" | ...
+    pub description: String,       // Texto legible para el usuario
+    pub source_name: String,       // Nombre del proyecto o item al que pertenece
+    pub can_compress: bool,        // true si la acción recomendada es zip (en lugar de solo borrar)
+    pub is_directory: bool,        // true para Library/, Temp/
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ScanReclaimableOptions {
+    /// Tamaño mínimo en bytes para incluir un archivo (default: 5 MB)
+    pub min_size_bytes: Option<u64>,
+    /// Incluir carpetas de caché Unity (Library/, Temp/)
+    pub include_unity_cache: Option<bool>,
+    /// Incluir archivos PSD/PSB/AI
+    pub include_source_art: Option<bool>,
+    /// Incluir archivos Blender
+    pub include_blender: Option<bool>,
+    /// Incluir logs
+    pub include_logs: Option<bool>,
+    /// Incluir videos
+    pub include_videos: Option<bool>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DeleteReclaimableResult {
+    pub deleted: usize,
+    pub freed_bytes: u64,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn scan_reclaimable_files(
+    search_paths: Vec<String>,
+    options: Option<ScanReclaimableOptions>,
+    db: tauri::State<'_, sqlx::SqlitePool>,
+) -> Result<Vec<ReclaimableFile>, crate::error::AppError> {
+    use sqlx::Row;
+    let opts = options.unwrap_or(ScanReclaimableOptions {
+        min_size_bytes:       Some(5 * 1024 * 1024), // 5 MB
+        include_unity_cache:  Some(true),
+        include_source_art:   Some(true),
+        include_blender:      Some(true),
+        include_logs:         Some(false),
+        include_videos:       Some(true),
+    });
+    let min_size = opts.min_size_bytes.unwrap_or(5 * 1024 * 1024);
+
+    // Extensiones clasificadas
+    let source_art_exts  = ["psd", "psb", "ai"];
+    let blender_exts     = ["blend", "blend1"];
+    let video_exts       = ["mp4", "mov", "avi", "mkv", "webm"];
+    let log_exts         = ["log"];
+    let unity_cache_dirs = ["Library", "Temp"];
+
+    // Cargar nombres de proyectos e items del inventario para display
+    let project_names: std::collections::HashMap<String, String> = {
+        let rows = sqlx::query("SELECT path, name FROM projects")
+            .fetch_all(db.inner()).await.unwrap_or_default();
+        rows.iter().map(|r| {
+            let p: String = r.get("path");
+            let n: String = r.get("name");
+            (p, n)
+        }).collect()
+    };
+
+    let mut results: Vec<ReclaimableFile> = Vec::new();
+
+    for search_root in &search_paths {
+        let root = std::path::PathBuf::from(search_root);
+        if !root.exists() { continue; }
+
+        // Determinar source_name (nombre del proyecto que contiene este path)
+        let source_name = project_names.iter()
+            .find(|(proj_path, _)| root.starts_with(proj_path.as_str()))
+            .map(|(_, name)| name.clone())
+            .unwrap_or_else(|| root.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown")
+                .to_string());
+
+        // Walk recursivo con profundidad máxima 8 para no colgarse
+        scan_dir_recursive(
+            &root, &source_name, 0, 8,
+            min_size,
+            opts.include_unity_cache.unwrap_or(true),
+            opts.include_source_art.unwrap_or(true),
+            opts.include_blender.unwrap_or(true),
+            opts.include_logs.unwrap_or(false),
+            opts.include_videos.unwrap_or(true),
+            &source_art_exts,
+            &blender_exts,
+            &video_exts,
+            &log_exts,
+            &unity_cache_dirs,
+            &mut results,
+        );
+    }
+
+    // Ordenar por tamaño descendente
+    results.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    Ok(results)
+}
+
+fn scan_dir_recursive(
+    dir: &std::path::Path,
+    source_name: &str,
+    depth: u8,
+    max_depth: u8,
+    min_size: u64,
+    unity_cache: bool,
+    source_art: bool,
+    blender: bool,
+    logs: bool,
+    videos: bool,
+    source_art_exts:  &[&str],
+    blender_exts:     &[&str],
+    video_exts:       &[&str],
+    log_exts:         &[&str],
+    unity_cache_dirs: &[&str],
+    out: &mut Vec<ReclaimableFile>,
+) {
+    if depth > max_depth { return; }
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_)  => return,
+    };
+
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        if path.is_dir() {
+            // Carpetas de caché Unity
+            if unity_cache && unity_cache_dirs.contains(&name.as_str()) {
+                let size = dir_size(&path);
+                if size >= min_size {
+                    out.push(ReclaimableFile {
+                        path:         path.to_string_lossy().to_string(),
+                        size_bytes:   size,
+                        category:     "unity_cache".to_string(),
+                        description:  format!("Unity {} folder (regenerable)", name),
+                        source_name:  source_name.to_string(),
+                        can_compress: false,
+                        is_directory: true,
+                    });
+                }
+                continue; // no bajar dentro de Library/ o Temp/
+            }
+            // Bajar recursivo
+            scan_dir_recursive(
+                &path, source_name, depth + 1, max_depth,
+                min_size, unity_cache, source_art, blender, logs, videos,
+                source_art_exts, blender_exts, video_exts, log_exts, unity_cache_dirs, out,
+            );
+        } else {
+            let ext = path.extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            if size < min_size { continue; }
+
+            let (category, description, can_compress) = if source_art && source_art_exts.contains(&ext.as_str()) {
+                ("source_art", format!("{} source file", ext.to_uppercase()), true)
+            } else if blender && blender_exts.contains(&ext.as_str()) {
+                ("blender", "Blender project file".to_string(), true)
+            } else if videos && video_exts.contains(&ext.as_str()) {
+                ("video", "Video reference file".to_string(), true)
+            } else if logs && log_exts.contains(&ext.as_str()) {
+                ("log", "Log file".to_string(), false)
+            } else {
+                continue;
+            };
+
+            out.push(ReclaimableFile {
+                path:        path.to_string_lossy().to_string(),
+                size_bytes:  size,
+                category:    category.to_string(),
+                description,
+                source_name: source_name.to_string(),
+                can_compress,
+                is_directory: false,
+            });
+        }
+    }
+}
+
+fn dir_size(path: &std::path::Path) -> u64 {
+    walkdir::WalkDir::new(path)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
+        .sum()
+}
+
+#[tauri::command]
+pub async fn delete_reclaimable_files(
+    paths: Vec<String>,
+) -> Result<DeleteReclaimableResult, crate::error::AppError> {
+    let mut deleted: usize = 0;
+    let mut freed_bytes: u64 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    for path_str in &paths {
+        let path = std::path::PathBuf::from(path_str);
+        if !path.exists() {
+            errors.push(format!("Not found: {path_str}"));
+            continue;
+        }
+
+        let size = if path.is_dir() {
+            dir_size(&path)
+        } else {
+            std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+        };
+
+        let result = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+
+        match result {
+            Ok(_) => { deleted += 1; freed_bytes += size; }
+            Err(e) => errors.push(format!("{path_str}: {e}")),
+        }
+    }
+
+    Ok(DeleteReclaimableResult { deleted, freed_bytes, errors })
+}
+
+#[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }

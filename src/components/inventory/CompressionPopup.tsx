@@ -59,9 +59,13 @@ export function CompressionPopup({ itemId, itemName, mode, onDone, onError, queu
     }).then((unlisten) => {
       unlistenRef.current = unlisten;
     });
+    const watchdog = setTimeout(() => {
+      if (active) onError("Timeout waiting for compression progress");
+    }, 30_000);
     return () => {
       active = false;
       unlistenRef.current?.();
+      clearTimeout(watchdog);
     };
   }, [itemId, onDone, onError]);
 

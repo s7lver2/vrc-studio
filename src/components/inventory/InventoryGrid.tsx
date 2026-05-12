@@ -1,3 +1,4 @@
+// src/components/inventory/InventoryGrid.tsx
 import {
   DndContext, DragEndEvent, DragOverEvent, DragStartEvent,
   pointerWithin, useSensor, useSensors, PointerSensor,
@@ -7,140 +8,211 @@ import {
   SortableContext, rectSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
 import { Loader2 } from "lucide-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect  } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { InventoryItemCard } from "./InventoryItemCard";
 import { FolderCard, GoUpZone } from "./FolderCard";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { GridContextMenu } from "./GridContextMenu";
 import { useT } from "@/i18n";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 interface InventoryGridProps {
   tagFilter?: string | null;
+  searchQuery?: string;
 }
 
-// Custom collision detection to prioritize folders and root
+// Custom collision detection
 const folderFirstCollision = (args: any) => {
-  const { pointerCoordinates, droppableContainers, active } = args;
+  const { pointerCoordinates } = args;
   if (!pointerCoordinates) return [];
-
   const collisions = pointerWithin(args);
-
-  // Sort: folders first, then items
   const folderCollisions = collisions.filter(
     (c) => c.id.toString().startsWith("folder:") || c.id.toString() === "root"
   );
   const otherCollisions = collisions.filter(
     (c) => !c.id.toString().startsWith("folder:") && c.id.toString() !== "root"
   );
-
   return [...folderCollisions, ...otherCollisions];
 };
 
-export function InventoryGrid({ tagFilter }: InventoryGridProps = {}) {
+export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProps = {}) {
   const t = useT();
   const inventoryItemSize = useAppearanceStore((s) => s.inventoryItemSize);
   const {
-    filteredItems, loading, error, selectedFolderId, selectFolder,
-    folders, moveItem, reorderItems, sortField,
-    selectedItemIds, toggleSelectItem, viewMode,
+    // Store functions and state
+    filteredItems: storeFilteredItems, // function, not array
+    loading,
+    error,
+    selectedFolderId,
+    selectFolder,
+    folders,
+    moveItem,
+    reorderItems,
+    sortField,
+    selectedItemIds,
+    toggleSelectItem,
+    viewMode,
   } = useInventoryStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const [gridMenu, setGridMenu] = useState<{ x: number; y: number } | null>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number>(0);
+  const pendingOrderRef = useRef<string[] | null>(null);
 
-  // PointerSensor con delay de 200ms — "hold to drag"
   const pointerSensor = useSensor(PointerSensor, {
-    activationConstraint: { delay: 200, tolerance: 12 },
+    activationConstraint: { delay: 120, tolerance: 8 },
   });
   const sensors = useSensors(pointerSensor);
 
-  const gridCols = {
-    compact: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7",
-    normal:  "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
-    large:   "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4",
-  }[inventoryItemSize];
+  const debouncedSearch = useDebouncedValue(searchQuery, 200);
+
+  // Get base items from store (already filtered by folder and custom filters inside store)
+  const baseItems = storeFilteredItems();
+
+  // Apply tag filter and search on top of storeFilteredItems
+  const visibleItems = useMemo(() => {
+    let items = baseItems;
+    if (tagFilter) {
+      items = items.filter((i) => i.tags.includes(tagFilter));
+    }
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      items = items.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (i.display_name ?? "").toLowerCase().includes(q) ||
+          (i.author ?? "").toLowerCase().includes(q)
+      );
+    }
+    return items;
+  }, [baseItems, tagFilter, debouncedSearch]);
+
+  // Folders inside current directory
+  const currentFolders = useMemo(() => {
+    return folders.filter((f) => f.parent_id === (selectedFolderId ?? null));
+  }, [folders, selectedFolderId]);
+
+  // Count items inside a folder (optional, can be left as 0)
+  const folderItemCounts = useCallback((folderId: string): number => {
+    // If you need real counts, implement using baseItems or a separate store query
+    return 0;
+  }, []);
+
+  // Custom order for grid sorting (only when sortField === "custom")
+  const displayOrder = useMemo(() => {
+    return localOrder ?? visibleItems.map((i) => i.id);
+  }, [localOrder, visibleItems]);
+
+  // Card size mapping for auto-fill grid
+  const minCardWidths: Record<"compact" | "normal" | "large", number> = {
+    compact: 140,
+    normal: 180,
+    large: 220,
+  };
+  const minCardWidth = minCardWidths[inventoryItemSize];
+
+  const sortedItems = useMemo(() => {
+    return displayOrder
+      .map((id) => visibleItems.find((i) => i.id === id))
+      .filter(Boolean) as typeof visibleItems;
+  }, [displayOrder, visibleItems]);
+
+  // DnD handlers
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      setActiveId(String(event.active.id));
+      if (!localOrder) setLocalOrder(visibleItems.map((i) => i.id));
+    },
+    [visibleItems, localOrder]
+  );
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      if (!localOrder) return;
+      const { active, over } = event;
+      if (!over) return;
+      const overId = String(over.id);
+      if (overId.startsWith("folder:") || overId === "root") return;
+
+      const oldIdx = localOrder.indexOf(String(active.id));
+      const newIdx = localOrder.indexOf(overId);
+      if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
+        const newOrder = arrayMove(localOrder, oldIdx, newIdx);
+        pendingOrderRef.current = newOrder;
+
+        if (!rafRef.current) {
+          rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = 0;
+            if (pendingOrderRef.current) {
+              setLocalOrder(pendingOrderRef.current);
+              pendingOrderRef.current = null;
+            }
+          });
+        }
+      }
+    },
+    [localOrder]
+  );
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      // Cancelar raf pendiente si existe
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+        pendingOrderRef.current = null;
+      }
+
+      const { active, over } = event;
+      setActiveId(null);
+      if (!over) {
+        setLocalOrder(null);
+        return;
+      }
+      const itemId = String(active.id);
+      const targetId = String(over.id);
+      if (targetId.startsWith("folder:")) {
+        const folderId = targetId.replace("folder:", "");
+        await moveItem(itemId, folderId);
+        setLocalOrder(null);
+        return;
+      }
+      if (targetId === "root" && selectedFolderId) {
+        await moveItem(itemId, "__root__");
+        setLocalOrder(null);
+        return;
+      }
+      // ── PERSISTIR ORDEN MANUAL ──
+      if (localOrder) {
+        // Cambiar a orden personalizada para que no se reordene por fecha/nombre
+        useInventoryStore.getState().setSortField("custom");
+        await reorderItems(localOrder);
+      }
+      setLocalOrder(null);
+    },
+    [moveItem, selectedFolderId, localOrder, sortField, reorderItems]
+  );
 
   const handleGridContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement) !== e.currentTarget) return; // solo en fondo vacío
+    if ((e.target as HTMLElement) !== e.currentTarget) return;
     e.preventDefault();
     setGridMenu({ x: e.clientX, y: e.clientY });
   };
 
-  const allItems = filteredItems();
-  const items = tagFilter
-    ? allItems.filter((i) => i.tags.includes(tagFilter))
-    : allItems;
+  // Virtual list for list view
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: visibleItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 72,
+    overscan: 10,
+  });
 
-  // Carpetas a mostrar en el nivel actual
-  const currentFolders = folders.filter(
-    (f) => f.parent_id === (selectedFolderId ?? null)
-  );
-
-  // Contar items por carpeta (placeholder)
-  const folderItemCounts = useCallback((folderId: string): number => {
-    // TODO: implementar conteo real si se necesita
-    return 0;
-  }, []);
-
-  const isDragging = activeId !== null;
-  const activeItem = activeId ? items.find((i) => i.id === activeId) : null;
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(String(event.active.id));
-    if (!localOrder) setLocalOrder(items.map((i) => i.id));
-  };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    if (!localOrder) return;
-    const { active, over } = event;
-    if (!over) return;
-    const overId = String(over.id);
-    if (overId.startsWith("folder:") || overId === "root") return;
-    const oldIdx = localOrder.indexOf(String(active.id));
-    const newIdx = localOrder.indexOf(overId);
-    if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
-      setLocalOrder(arrayMove(localOrder, oldIdx, newIdx));
-    }
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-
-    if (!over) { setLocalOrder(null); return; }
-
-    const itemId  = String(active.id);
-    const targetId = String(over.id);
-
-    // Drop en carpeta
-    if (targetId.startsWith("folder:")) {
-      const folderId = targetId.replace("folder:", "");
-      await moveItem(itemId, folderId);
-      setLocalOrder(null);
-      return;
-    }
-
-    // Drop en "root" (GoUpZone — sacar de carpeta)
-    if (targetId === "root" && selectedFolderId) {
-      await moveItem(itemId, "__root__");   // el backend interpreta "__root__" como sin carpeta
-      setLocalOrder(null);
-      return;
-    }
-
-    // Reorder dentro del mismo grid (sólo si sortField === "custom")
-    if (localOrder && sortField === "custom") {
-      await reorderItems(localOrder);
-    }
-    setLocalOrder(null);
-  };
-
-  const displayOrder = localOrder ?? items.map((i) => i.id);
-  const sortedItems = displayOrder
-    .map((id) => items.find((i) => i.id === id))
-    .filter(Boolean) as typeof items;
-
+  // Loading / error / empty states
   if (loading) {
     return (
       <div className="flex items-center justify-center flex-1 h-48">
@@ -155,13 +227,85 @@ export function InventoryGrid({ tagFilter }: InventoryGridProps = {}) {
       </div>
     );
   }
-  if (items.length === 0 && currentFolders.length === 0) {
+  if (visibleItems.length === 0 && currentFolders.length === 0) {
     return (
       <div className="flex items-center justify-center flex-1 h-48 text-zinc-500 text-sm">
         {t("inventory_no_items")}
       </div>
     );
   }
+
+  // LIST MODE (virtualized, no DnD for items)
+  if (viewMode === "list") {
+    return (
+      <div
+        className="relative flex-1 flex flex-col gap-3"
+        onContextMenu={handleGridContextMenu}
+        ref={gridContainerRef}
+        style={{ willChange: 'transform', contain: 'layout style' }}
+      >
+        {selectedFolderId && <GoUpZone isDragging={false} />}
+        {currentFolders.map((folder) => (
+          <FolderCard
+            key={folder.id}
+            folder={folder}
+            itemCount={folderItemCounts(folder.id)}
+            onOpen={(id) => selectFolder(id)}
+            isDragging={false}
+            viewMode="list"
+          />
+        ))}
+        <div
+          ref={parentRef}
+          className="overflow-y-auto flex-1"
+          style={{ contain: "strict" }}
+        >
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              position: "relative",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const item = visibleItems[virtualRow.index];
+              return (
+                <div
+                  key={item.id}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: virtualRow.start,
+                    left: 0,
+                    right: 0,
+                  }}
+                >
+                  <InventoryItemCard
+                    item={item}
+                    viewMode="list"
+                    isSelected={selectedItemIds.has(item.id)}
+                    onCheckboxToggle={() => toggleSelectItem(item.id)}
+                    isDragging={false}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {gridMenu && (
+          <GridContextMenu
+            x={gridMenu.x}
+            y={gridMenu.y}
+            onClose={() => setGridMenu(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // GRID MODE (full DnD, no virtualization)
+  const isDragging = activeId !== null;
+  const activeItem = activeId ? visibleItems.find((i) => i.id === activeId) : null;
 
   return (
     <DndContext
@@ -171,74 +315,60 @@ export function InventoryGrid({ tagFilter }: InventoryGridProps = {}) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      {/* Contenedor principal con menú contextual */}
       <div
+        ref={gridContainerRef}
         className="relative flex-1 flex flex-col gap-3"
         onContextMenu={handleGridContextMenu}
       >
-        {viewMode === "grid" ? (
-          <div className={`grid ${gridCols} gap-3`}>
-            {/* Zona para sacar de carpeta (solo cuando estamos dentro de una) */}
-            {selectedFolderId && <GoUpZone isDragging={isDragging} />}
-            {currentFolders.map((folder) => (
-              <FolderCard
-                key={folder.id}
-                folder={folder}
-                itemCount={folderItemCounts(folder.id)}
-                onOpen={(id) => selectFolder(id)}
-                isDragging={isDragging}
+        <div
+          className="grid gap-3"
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(${minCardWidth}px, 1fr))`,
+          }}
+        >
+          {selectedFolderId && <GoUpZone isDragging={isDragging} />}
+          {currentFolders.map((folder) => (
+            <FolderCard
+              key={folder.id}
+              folder={folder}
+              itemCount={folderItemCounts(folder.id)}
+              onOpen={(id) => selectFolder(id)}
+              isDragging={isDragging}
+              viewMode="grid"
+            />
+          ))}
+          <SortableContext items={displayOrder} strategy={rectSortingStrategy}>
+            {sortedItems.map((item) => (
+              <InventoryItemCard
+                key={item.id}
+                item={item}
                 viewMode="grid"
+                isSelected={selectedItemIds.has(item.id)}
+                onCheckboxToggle={() => toggleSelectItem(item.id)}
+                isDragging={isDragging && activeId === item.id}
               />
             ))}
-            <SortableContext items={displayOrder} strategy={rectSortingStrategy}>
-              {sortedItems.map((item) => (
-                <InventoryItemCard
-                  key={item.id}
-                  item={item}
-                  viewMode="grid"
-                  isSelected={selectedItemIds.has(item.id)}
-                  onCheckboxToggle={() => toggleSelectItem(item.id)}
-                  isDragging={isDragging && activeId === item.id}
-                />
-              ))}
-            </SortableContext>
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y divide-zinc-800/60">
-            {/* Zona para sacar de carpeta (solo cuando estamos dentro de una) */}
-            {selectedFolderId && <GoUpZone isDragging={isDragging} />}
-            {currentFolders.map((folder) => (
-              <FolderCard
-                key={folder.id}
-                folder={folder}
-                itemCount={folderItemCounts(folder.id)}
-                onOpen={(id) => selectFolder(id)}
-                isDragging={isDragging}
-                viewMode="list"
-              />
-            ))}
-            <SortableContext items={displayOrder} strategy={rectSortingStrategy}>
-              {sortedItems.map((item) => (
-                <InventoryItemCard
-                  key={item.id}
-                  item={item}
-                  viewMode="list"
-                  isSelected={selectedItemIds.has(item.id)}
-                  onCheckboxToggle={() => toggleSelectItem(item.id)}
-                  isDragging={isDragging && activeId === item.id}
-                />
-              ))}
-            </SortableContext>
-          </div>
-        )}
-
-        {/* Drag overlay — previsualización while dragging */}
-        <DragOverlay>
+          </SortableContext>
+        </div>
+        <DragOverlay dropAnimation={{
+          duration: 220,
+          easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
+        }}>
           {activeItem && (
-            <div className={`opacity-80 pointer-events-none ${viewMode === "grid" ? "rotate-2 scale-105" : ""}`}>
+            <div
+              className="pointer-events-none"
+              style={{
+                transform: "rotate(2deg) scale(1.06)",
+                opacity: 0.92,
+                boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
+                borderRadius: "0.5rem",
+                willChange: "transform",
+                transition: "none",
+              }}
+            >
               <InventoryItemCard
                 item={activeItem}
-                viewMode={viewMode}      // Usa el viewMode real
+                viewMode="grid"
                 isSelected={false}
                 onCheckboxToggle={() => {}}
                 isDragging={false}
@@ -246,16 +376,14 @@ export function InventoryGrid({ tagFilter }: InventoryGridProps = {}) {
             </div>
           )}
         </DragOverlay>
+        {gridMenu && (
+          <GridContextMenu
+            x={gridMenu.x}
+            y={gridMenu.y}
+            onClose={() => setGridMenu(null)}
+          />
+        )}
       </div>
-
-      {/* Menú contextual del grid (fuera del contenedor para evitar interferencias) */}
-      {gridMenu && (
-        <GridContextMenu
-          x={gridMenu.x}
-          y={gridMenu.y}
-          onClose={() => setGridMenu(null)}
-        />
-      )}
     </DndContext>
   );
 }

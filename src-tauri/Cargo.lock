@@ -6403,7 +6403,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vrc-studio"
-version = "0.0.3"
+version = "0.0.5"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -6421,6 +6421,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tar",
  "tauri",
@@ -6432,6 +6433,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "urlencoding",
  "uuid",
  "walkdir",

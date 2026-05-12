@@ -1,7 +1,8 @@
+// src/components/inventory/FolderCard.tsx
 import { Folder, FolderOpen, ChevronRight, Palette, Trash2 } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { InventoryFolder } from "@/lib/tauri";
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { FolderCustomizeModal } from "./FolderCustomizeModal";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { toAssetUrl } from "@/lib/utils";
@@ -11,7 +12,7 @@ interface FolderCardProps {
   itemCount: number;
   onOpen: (folderId: string) => void;
   isDragging: boolean;
-  viewMode?: "grid" | "list";   // NUEVO
+  viewMode?: "grid" | "list";
 }
 
 interface GoUpZoneProps {
@@ -20,9 +21,7 @@ interface GoUpZoneProps {
 
 export function GoUpZone({ isDragging }: GoUpZoneProps) {
   const { isOver, setNodeRef } = useDroppable({ id: "root" });
-
   if (!isDragging) return null;
-
   return (
     <div
       ref={setNodeRef}
@@ -41,7 +40,7 @@ export function GoUpZone({ isDragging }: GoUpZoneProps) {
   );
 }
 
-export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "grid" }: FolderCardProps) {
+const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, isDragging, viewMode = "grid" }: FolderCardProps) {
   const { isOver, setNodeRef } = useDroppable({ id: `folder:${folder.id}` });
   const { removeFolder } = useInventoryStore();
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
@@ -57,10 +56,10 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
     return () => document.removeEventListener("mousedown", h);
   }, [ctxMenu]);
 
-  const folderColor  = folder.color ?? "#f59e0b";
+  const folderColor = folder.color ?? "#f59e0b";
   const imageSrc = toAssetUrl(folder.custom_image_path);
 
-  // ── LIST mode ────────────────────────────────────────────────────────────────
+  // LIST mode
   if (viewMode === "list") {
     return (
       <>
@@ -84,7 +83,13 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
         >
           {imageSrc ? (
             <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0">
-              <img src={imageSrc} alt="" className="w-full h-full object-cover" />
+              <img
+                src={imageSrc}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
             </div>
           ) : (
             <div className="w-9 h-9 flex items-center justify-center shrink-0">
@@ -103,7 +108,6 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
           <ChevronRight className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
         </div>
 
-        {/* Context menu — igual que grid mode */}
         {ctxMenu && (
           <div
             ref={menuRef}
@@ -135,7 +139,7 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
     );
   }
 
-  // ── GRID mode (existing) ────────────────────────────────────────────────────
+  // GRID mode
   return (
     <>
       <div
@@ -159,7 +163,13 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
       >
         {imageSrc ? (
           <div className="w-14 h-14 rounded-lg overflow-hidden">
-            <img src={imageSrc} alt="" className="w-full h-full object-cover" />
+            <img
+              src={imageSrc}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="w-full h-full object-cover"
+            />
           </div>
         ) : isOver && isDragging ? (
           <FolderOpen className="h-10 w-10" style={{ color: folderColor }} />
@@ -179,7 +189,6 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
         <ChevronRight className="absolute bottom-2 right-2 h-3 w-3 text-zinc-600" />
       </div>
 
-      {/* Context menu */}
       {ctxMenu && (
         <div
           ref={menuRef}
@@ -209,4 +218,15 @@ export function FolderCard({ folder, itemCount, onOpen, isDragging, viewMode = "
       )}
     </>
   );
-}
+};
+
+export const FolderCard = React.memo(FolderCardInner, (prev, next) => {
+  return (
+    prev.folder.id    === next.folder.id    &&
+    prev.folder.name  === next.folder.name  &&
+    prev.folder.color === next.folder.color &&
+    prev.itemCount    === next.itemCount     &&
+    prev.isDragging   === next.isDragging   &&
+    prev.viewMode     === next.viewMode
+  );
+});

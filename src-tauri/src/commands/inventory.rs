@@ -1319,3 +1319,160 @@ pub async fn reset_all_folder_assignments(
         .await?;
     Ok(())
 }
+
+// ── Backup & Restore ────────────────────────────────────────────────────────
+
+use serde_json::Value;
+
+#[tauri::command]
+pub async fn export_database_data(
+    pool: State<'_, SqlitePool>,
+) -> Result<String, AppError> {
+    let mut data = serde_json::Map::new();
+
+    // inventory_items
+    let rows = sqlx::query("SELECT * FROM inventory_items")
+        .fetch_all(&*pool).await?;
+    let items: Vec<Value> = rows.iter().map(|r| {
+        let mut map = serde_json::Map::new();
+        for col in ["id","name","author","source","source_id","local_path","thumbnail_url","download_date","size_bytes","tags","is_compressed","display_name","custom_cover_path","sort_order","product_images","custom_images"] {
+            let val: Option<String> = r.try_get(col).ok().flatten();
+            map.insert(col.into(), serde_json::to_value(val).unwrap_or(Value::Null));
+        }
+        Value::Object(map)
+    }).collect();
+    data.insert("inventory_items".into(), Value::Array(items));
+
+    // inventory_folders
+    let rows = sqlx::query("SELECT * FROM inventory_folders")
+        .fetch_all(&*pool).await?;
+    let folders: Vec<Value> = rows.iter().map(|r| {
+        let mut map = serde_json::Map::new();
+        for col in ["id","name","parent_id","color","custom_image_path"] {
+            let val: Option<String> = r.try_get(col).ok().flatten();
+            map.insert(col.into(), serde_json::to_value(val).unwrap_or(Value::Null));
+        }
+        Value::Object(map)
+    }).collect();
+    data.insert("inventory_folders".into(), Value::Array(folders));
+
+    // inventory_folder_items
+    let rows = sqlx::query("SELECT folder_id, item_id FROM inventory_folder_items")
+        .fetch_all(&*pool).await?;
+    let folder_items: Vec<Value> = rows.iter().map(|r| {
+        let mut map = serde_json::Map::new();
+        let fid: String = r.get("folder_id");
+        let iid: String = r.get("item_id");
+        map.insert("folder_id".into(), Value::String(fid));
+        map.insert("item_id".into(), Value::String(iid));
+        Value::Object(map)
+    }).collect();
+    data.insert("inventory_folder_items".into(), Value::Array(folder_items));
+
+    Ok(serde_json::to_string_pretty(&Value::Object(data))
+        .map_err(|e| AppError::External(e.to_string()))?)
+}
+
+#[tauri::command]
+pub async fn import_database_data(
+    pool: State<'_, SqlitePool>,
+    json: String,
+) -> Result<(), AppError> {
+    let data: Value = serde_json::from_str(&json)
+        .map_err(|e| AppError::External(e.to_string()))?;
+    let obj = data.as_object()
+        .ok_or(AppError::External("invalid JSON".into()))?;
+
+    // Clear tables (respect FK)
+    sqlx::query("DELETE FROM inventory_folder_items").execute(&*pool).await?;
+    sqlx::query("DELETE FROM inventory_items").execute(&*pool).await?;
+    sqlx::query("DELETE FROM inventory_folders").execute(&*pool).await?;
+
+    // Insert folders first
+    if let Some(arr) = obj.get("inventory_folders").and_then(|v| v.as_array()) {
+        for v in arr {
+            let o = v.as_object().ok_or(AppError::External("invalid folder".into()))?;
+            let id = o["id"].as_str().unwrap_or("");
+            let name = o["name"].as_str().unwrap_or("");
+            let parent_id = o["parent_id"].as_str().map(|s| s.to_string());
+            let color = o["color"].as_str().map(|s| s.to_string());
+            let custom_image_path = o["custom_image_path"].as_str().map(|s| s.to_string());
+            sqlx::query(
+                "INSERT INTO inventory_folders (id, name, parent_id, color, custom_image_path) VALUES (?,?,?,?,?)"
+            ).bind(id).bind(name).bind(parent_id).bind(color).bind(custom_image_path)
+            .execute(&*pool).await?;
+        }
+    }
+
+    // Insert items
+    if let Some(arr) = obj.get("inventory_items").and_then(|v| v.as_array()) {
+        for v in arr {
+            let o = v.as_object().ok_or(AppError::External("invalid item".into()))?;
+            let id = o["id"].as_str().unwrap_or("");
+            let name = o["name"].as_str().unwrap_or("");
+            let author = o["author"].as_str().map(|s| s.to_string());
+            let source = o["source"].as_str().unwrap_or("local");
+            let source_id = o["source_id"].as_str().map(|s| s.to_string());
+            let local_path = o["local_path"].as_str().unwrap_or("");
+            let thumbnail_url = o["thumbnail_url"].as_str().map(|s| s.to_string());
+            let download_date = o["download_date"].as_str().unwrap_or("");
+            let size_bytes: Option<i64> = o["size_bytes"].as_i64();
+            let tags = o["tags"].as_str().unwrap_or("[]");
+            let is_compressed = o["is_compressed"].as_i64().unwrap_or(0);
+            let display_name = o["display_name"].as_str().map(|s| s.to_string());
+            let custom_cover_path = o["custom_cover_path"].as_str().map(|s| s.to_string());
+            let sort_order: Option<i64> = o["sort_order"].as_i64();
+            let product_images = o["product_images"].as_str().unwrap_or("[]");
+            let custom_images = o["custom_images"].as_str().unwrap_or("[]");
+
+            sqlx::query(
+                "INSERT INTO inventory_items (id, name, author, source, source_id, local_path, thumbnail_url, download_date, size_bytes, tags, is_compressed, display_name, custom_cover_path, sort_order, product_images, custom_images) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            ).bind(id).bind(name).bind(author).bind(source).bind(source_id).bind(local_path).bind(thumbnail_url).bind(download_date).bind(size_bytes).bind(tags).bind(is_compressed).bind(display_name).bind(custom_cover_path).bind(sort_order).bind(product_images).bind(custom_images)
+            .execute(&*pool).await?;
+        }
+    }
+
+    // Insert folder items
+    if let Some(arr) = obj.get("inventory_folder_items").and_then(|v| v.as_array()) {
+        for v in arr {
+            let o = v.as_object().ok_or(AppError::External("invalid folder_item".into()))?;
+            let folder_id = o["folder_id"].as_str().unwrap_or("");
+            let item_id = o["item_id"].as_str().unwrap_or("");
+            sqlx::query("INSERT INTO inventory_folder_items (folder_id, item_id) VALUES (?,?)")
+                .bind(folder_id).bind(item_id)
+                .execute(&*pool).await?;
+        }
+    }
+
+    Ok(())
+}
+
+// ── Duplicate detection ────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize)]
+pub struct CheckDuplicateResult {
+    pub exists: bool,
+    pub existing_item_ids: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn check_duplicate_items(
+    pool: State<'_, SqlitePool>,
+    name: String,
+    zip_path: Option<String>,
+) -> Result<CheckDuplicateResult, AppError> {
+    let mut ids: Vec<String> = vec![];
+    if let Some(ref zip) = zip_path {
+        let rows = sqlx::query("SELECT id FROM inventory_items WHERE name = ? OR local_path LIKE ?")
+            .bind(&name)
+            .bind(format!("%{}%", zip))
+            .fetch_all(&*pool).await?;
+        ids = rows.iter().map(|r| r.get("id")).collect();
+    } else {
+        let rows = sqlx::query("SELECT id FROM inventory_items WHERE name = ?")
+            .bind(&name)
+            .fetch_all(&*pool).await?;
+        ids = rows.iter().map(|r| r.get("id")).collect();
+    }
+    Ok(CheckDuplicateResult { exists: !ids.is_empty(), existing_item_ids: ids })
+}

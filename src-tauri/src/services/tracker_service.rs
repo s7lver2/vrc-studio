@@ -26,18 +26,29 @@ pub fn start_polling(app: AppHandle, db: SqlitePool) {
 }
 
 async fn run_checks(app: &AppHandle, db: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
+    run_checks_now(app, db, None).await
+}
+
+pub async fn run_checks_now(
+    app: &AppHandle,
+    db: &SqlitePool,
+    filter_id: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     use sqlx::Row;
     let now = Utc::now();
     let now_str = now.to_rfc3339();
 
-    // Cargar items activos cuyo next check ya pasó
-    let rows = sqlx::query(
-        "SELECT * FROM tracker_items WHERE is_active=1"
-    )
-    .fetch_all(db)
-    .await?;
+    let rows = if let Some(ref id) = filter_id {
+        sqlx::query("SELECT * FROM tracker_items WHERE is_active=1 AND id=?")
+            .bind(id)
+            .fetch_all(db)
+            .await?
+    } else {
+        sqlx::query("SELECT * FROM tracker_items WHERE is_active=1")
+            .fetch_all(db)
+            .await?
+    };
 
-    // Cliente HTTP reutilizable para todas las llamadas a Booth
     let client = reqwest::Client::builder()
         .user_agent("VRC-Studio/1.0")
         .build()?;
@@ -45,29 +56,13 @@ async fn run_checks(app: &AppHandle, db: &SqlitePool) -> Result<(), Box<dyn std:
     for row in &rows {
         let id: String = row.get("id");
         let kind: String = row.get("kind");
-        let interval_min: i64 = row.get("check_interval_minutes");
-        let last_checked: Option<String> = row.get("last_checked_at");
-
-        // Comprobar si ya toca
-        let should_check = match &last_checked {
-            None => true,
-            Some(ts) => {
-                let last = chrono::DateTime::parse_from_rfc3339(ts)
-                    .map(|d| d.with_timezone(&Utc))
-                    .unwrap_or(Utc::now() - chrono::Duration::days(1));
-                now.signed_duration_since(last).num_minutes() >= interval_min
-            }
-        };
-
-        if !should_check { continue; }
 
         let events_created = match kind.as_str() {
-            "item" => check_item(&client, &row, db).await.unwrap_or_default(),
-            "author" => check_author(&client, &row, db).await.unwrap_or_default(),
+            "item"   => check_item(&client, row, db).await.unwrap_or_default(),
+            "author" => check_author(&client, row, db).await.unwrap_or_default(),
             _ => 0,
         };
 
-        // Actualizar last_checked_at
         sqlx::query("UPDATE tracker_items SET last_checked_at=? WHERE id=?")
             .bind(&now_str)
             .bind(&id)
@@ -75,11 +70,8 @@ async fn run_checks(app: &AppHandle, db: &SqlitePool) -> Result<(), Box<dyn std:
             .await?;
 
         if events_created > 0 {
-            // Notificar al frontend
-            let _ = app.emit(EVENT_TRACKER_UPDATE, json!({ "tracker_item_id": id }));
-
-            // Notificación de Windows via tauri-plugin-notification
-            send_os_notification(app, &row);
+            let _ = app.emit(EVENT_TRACKER_UPDATE, serde_json::json!({ "tracker_item_id": id }));
+            send_os_notification(app, row);
         }
     }
     Ok(())
@@ -103,25 +95,37 @@ async fn check_item(
         None => return Ok(0),
     };
 
+    // Obtener detalle; si falla, se propaga el error (que es Box<dyn Error>)
     let detail = booth::fetch_product_detail(client, &bid).await?;
     let mut created = 0u32;
     let now = Utc::now().to_rfc3339();
 
-    // Comprobar cambio de precio
     if track_price != 0 {
-        if let Some(ref prev_price) = last_price {
-            if *prev_price != detail.price_display {
-                let payload = json!({
-                    "old_price": prev_price,
-                    "new_price": detail.price_display,
+        let price = detail.price_display.clone();
+
+        match &last_price {
+            None => {
+                let payload = serde_json::json!({
+                    "new_price": &price,
+                    "is_initial": true,
                 });
                 insert_event(db, &tracker_id, "price_change", &payload.to_string(), &now).await?;
                 created += 1;
             }
+            Some(prev) => {
+                if *prev != price {
+                    let payload = serde_json::json!({
+                        "old_price": prev,
+                        "new_price": &price,
+                    });
+                    insert_event(db, &tracker_id, "price_change", &payload.to_string(), &now).await?;
+                    created += 1;
+                }
+            }
         }
-        // Actualizar precio conocido
-        sqlx::query("UPDATE tracker_items SET last_known_price=? WHERE id=?")
-            .bind(&detail.price_display)
+
+        sqlx::query("UPDATE tracker_items SET last_known_price = ? WHERE id = ?")
+            .bind(&price)
             .bind(&tracker_id)
             .execute(db)
             .await?;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Plus, AlertCircle } from "lucide-react";
+import { Bell, Plus, AlertCircle, RefreshCw  } from "lucide-react";
 import { useTrackerStore } from "@/store/trackerStore";
 import { TrackerItemCard } from "@/components/tracker/TrackerItemCard";
 import { TrackerDetailModal } from "@/components/tracker/TrackerDetailModal";
@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { TrackerItem } from "@/lib/tauri";
 
 export default function TrackerPage() {
-  const { items, events, unreadCount, load, loadEvents, markRead } = useTrackerStore();
+  const { items, events, unreadCount, load, loadEvents, markRead, runNow, scanning } = useTrackerStore();
   const [showAdd, setShowAdd] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "items" | "authors">("all");
   const [selectedItem, setSelectedItem] = useState<TrackerItem | null>(null);
@@ -54,6 +54,21 @@ export default function TrackerPage() {
               Mark all read
             </button>
           )}
+          <button
+            onClick={async () => {
+              try {
+                await runNow();
+              } catch (e) {
+                console.error("Scan all failed:", e)
+                }
+            }}
+            disabled={scanning}
+            className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50"
+            title="Scan all tracked items now"
+          >
+            <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} />
+            {scanning ? "Scanning…" : "Scan All"}
+          </button>
           <button
             onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"

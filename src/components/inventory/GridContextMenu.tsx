@@ -39,7 +39,7 @@ export function GridContextMenu({ x, y, onClose }: Props) {
       await addFolder(val, selectedFolderId ?? undefined);
     } else if (mode === "tag") {
       // Añadir al tagStore local (persistencia en siguiente PR)
-      useTagStore.getState().addUserTag(val);
+      useTagStore.getState().addCustomTag(val);
     }
     onClose();
   };

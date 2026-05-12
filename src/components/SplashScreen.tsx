@@ -1,196 +1,218 @@
 /**
- * SplashScreen — Initial loading screen for VRC Studio.
+ * SplashScreen — Rediseño coherente con la estética de VRC Studio.
+ * Logo con cuadrado rojo + texto escalonado + barra de progreso.
+ * Sin partículas de colores. Sin formas aleatorias.
  */
 
 import { useEffect, useState, useRef } from "react";
-import { useT } from "@/i18n";
 
 interface Props {
   onDone: () => void;
 }
 
-const SHAPE_FRAMES = [
-  "M 20 20 L 80 20 L 80 80 L 20 80 Z",
-  "M 50 10 L 88 37 L 73 80 L 27 80 L 12 37 Z",
-  "M 50 12 L 90 82 L 10 82 Z",
-  "M 50 10 L 90 50 L 50 90 L 10 50 Z",
-  "M 50 10 L 83 30 L 83 70 L 50 90 L 17 70 L 17 30 Z",
-  "M 50 10 L 61 35 L 88 35 L 67 54 L 74 80 L 50 65 L 26 80 L 33 54 L 12 35 L 39 35 Z",
-  "M 20 20 L 80 20 L 80 80 L 20 80 Z",
-];
-
-interface Particle {
-  x: number; y: number;
-  vx: number; vy: number;
-  size: number;
-  opacity: number;
-  color: string;
-}
-
-const PARTICLE_COLORS = [
-  "#ef4444", "#f97316", "#eab308",
-  "#22c55e", "#3b82f6", "#a855f7",
-  "#ec4899", "#ffffff",
-];
-
 export function SplashScreen({ onDone }: Props) {
-  const t = useT();
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
-  const [shapeIdx, setShapeIdx] = useState(0);
-  const [morphProgress, setMorphProgress] = useState(0);
-  const [dotCount, setDotCount] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [barWidth, setBarWidth] = useState(0);
+  const barRafRef = useRef<number>(0);
+  const barStartRef = useRef<number>(0);
+  const BAR_DURATION = 1800; // ms para llenar la barra
 
-  // Particle animation
+  // Fases
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
-    const W = canvas.width = window.innerWidth;
-    const H = canvas.height = window.innerHeight;
-
-    const particles: Particle[] = Array.from({ length: 60 }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      size: Math.random() * 2 + 0.5,
-      opacity: Math.random() * 0.4 + 0.1,
-      color: PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)],
-    }));
-
-    let running = true;
-    const loop = () => {
-      if (!running) return;
-      ctx.clearRect(0, 0, W, H);
-      for (const p of particles) {
-        p.x += p.vx; p.y += p.vy;
-        if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
-        if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.opacity;
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      requestAnimationFrame(loop);
-    };
-    loop();
-    return () => { running = false; };
-  }, []);
-
-  // Phase timer
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase("show"), 100);
-    const t2 = setTimeout(() => setPhase("exit"), 2400);
-    const t3 = setTimeout(onDone, 2900);
+    const t1 = setTimeout(() => setPhase("show"), 80);
+    const t2 = setTimeout(() => setPhase("exit"), 2300);
+    const t3 = setTimeout(onDone, 2800);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [onDone]);
 
-  // Loading dots
+  // Barra de progreso animada con rAF (más suave que CSS transition)
   useEffect(() => {
-    const iv = setInterval(() => setDotCount((d) => (d + 1) % 4), 400);
-    return () => clearInterval(iv);
-  }, []);
+    if (phase !== "show") return;
+    barStartRef.current = performance.now();
 
-  // Shape morphing
-  useEffect(() => {
-    let frame: number;
-    let start: number | null = null;
-    const DURATION = 600;
-    const PAUSE = 200;
-    let pausing = false;
-    let pauseStart = 0;
-
-    const tick = (ts: number) => {
-      if (!start) start = ts;
-      if (pausing) {
-        if (ts - pauseStart > PAUSE) {
-          pausing = false;
-          start = ts;
-        }
-      } else {
-        const p = Math.min((ts - start) / DURATION, 1);
-        setMorphProgress(p);
-        if (p >= 1) {
-          setShapeIdx((i) => (i + 1) % (SHAPE_FRAMES.length - 1));
-          pausing = true;
-          pauseStart = ts;
-        }
+    const tick = (now: number) => {
+      const elapsed = now - barStartRef.current;
+      // Ease-out cubic: rápida al inicio, desacelera al final
+      const t = Math.min(elapsed / BAR_DURATION, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setBarWidth(eased * 100);
+      if (t < 1) {
+        barRafRef.current = requestAnimationFrame(tick);
       }
-      frame = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, []);
+    barRafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(barRafRef.current);
+  }, [phase]);
 
-  const isVisible = phase !== "enter";
-  const isExiting = phase === "exit";
+  const visible = phase !== "enter";
+  const exiting = phase === "exit";
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none"
       style={{
         background: "hsl(222 14% 8%)",
-        opacity: isExiting ? 0 : 1,
-        transition: isExiting ? "opacity 0.5s ease-in" : "opacity 0.3s ease-out",
-        pointerEvents: isExiting ? "none" : "all",
+        opacity: exiting ? 0 : 1,
+        transition: exiting ? "opacity 0.5s ease-in" : "opacity 0.25s ease-out",
+        pointerEvents: exiting ? "none" : "all",
       }}
     >
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ opacity: 0.6 }} />
+      {/* Dot grid background */}
+      <svg
+        className="absolute inset-0 w-full h-full"
+        style={{ opacity: 0.25 }}
+        aria-hidden="true"
+      >
+        <defs>
+          <pattern id="splashDots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="1" fill="#3f3f46" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#splashDots)" />
+      </svg>
 
-      <div className="absolute inset-0" style={{ background: "radial-gradient(circle at 50% 50%, rgba(239,68,68,0.08) 0%, transparent 60%)", transform: `scale(${isVisible ? 1 : 0.6})`, transition: "transform 0.8s cubic-bezier(0.34,1.56,0.64,1)" }} />
+      {/* Glow radial detrás del logo */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          width: 400,
+          height: 400,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(220,38,38,0.12) 0%, transparent 70%)",
+          transform: `scale(${visible ? 1 : 0.4})`,
+          transition: "transform 0.9s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      />
 
-      <div className="relative flex flex-col items-center gap-8" style={{ opacity: isVisible ? 1 : 0, transform: isVisible ? "translateY(0)" : "translateY(24px)", transition: "opacity 0.5s ease-out, transform 0.6s cubic-bezier(0.34,1.56,0.64,1)" }}>
-        <div className="relative">
-          <div className="absolute inset-[-12px] rounded-full" style={{ background: "radial-gradient(circle, rgba(239,68,68,0.15) 0%, transparent 70%)", animation: "pulse 2s ease-in-out infinite" }} />
-          <svg width="96" height="96" viewBox="0 0 100 100" style={{ filter: "drop-shadow(0 0 16px rgba(239,68,68,0.5))" }}>
-            <defs>
-              <linearGradient id="shapeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ef4444" />
-                <stop offset="50%" stopColor="#f97316" />
-                <stop offset="100%" stopColor="#eab308" />
-              </linearGradient>
-            </defs>
-            <path d={SHAPE_FRAMES[shapeIdx]} fill="none" stroke="url(#shapeGrad)" strokeWidth="6" opacity="0.3" style={{ filter: "blur(4px)" }} />
-            <path d={SHAPE_FRAMES[shapeIdx]} fill="url(#shapeGrad)" opacity="0.15" />
-            <path d={SHAPE_FRAMES[shapeIdx]} fill="none" stroke="url(#shapeGrad)" strokeWidth="2.5" strokeLinejoin="round" opacity="0.9" />
-          </svg>
+      {/* Contenedor principal */}
+      <div
+        className="relative flex flex-col items-center gap-8"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(20px)",
+          transition: "opacity 0.45s ease-out, transform 0.55s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        {/* Logo: cuadrado rojo + texto */}
+        <div className="flex items-center gap-4">
+          {/* El cuadrado rojo — igual que el de la sidebar */}
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 10,
+              background: "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)",
+              boxShadow: "0 0 32px rgba(220,38,38,0.45), 0 0 8px rgba(220,38,38,0.3)",
+              transform: visible ? "scale(1) rotate(0deg)" : "scale(0.5) rotate(-12deg)",
+              transition: "transform 0.6s cubic-bezier(0.34,1.56,0.64,1)",
+              flexShrink: 0,
+            }}
+          />
+
+          {/* Texto del logo */}
+          <div className="flex flex-col gap-0.5" style={{ overflow: "hidden" }}>
+            {/* "VRC" */}
+            <div
+              style={{
+                transform: visible ? "translateX(0)" : "translateX(-24px)",
+                opacity: visible ? 1 : 0,
+                transition: "transform 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.05s, opacity 0.4s ease-out 0.05s",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 32,
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  lineHeight: 1,
+                  background: "linear-gradient(135deg, #f4f4f5 0%, #a1a1aa 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  fontFamily: "system-ui, -apple-system, sans-serif",
+                }}
+              >
+                VRC
+              </span>
+            </div>
+
+            {/* "Studio" */}
+            <div
+              style={{
+                transform: visible ? "translateX(0)" : "translateX(-24px)",
+                opacity: visible ? 1 : 0,
+                transition: "transform 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.13s, opacity 0.4s ease-out 0.13s",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 32,
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  lineHeight: 1,
+                  background: "linear-gradient(135deg, #ef4444 0%, #f87171 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  fontFamily: "system-ui, -apple-system, sans-serif",
+                }}
+              >
+                Studio
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold tracking-tight" style={{ background: "linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em" }}>
-              VRC
-            </span>
-            <span className="text-3xl font-bold tracking-tight" style={{ background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing: "-0.02em" }}>
-              {" "}Studio
-            </span>
-          </div>
-          <p className="text-xs text-zinc-500 tracking-[0.3em] uppercase">Avatar Asset Manager</p>
-        </div>
-
-        <div className="flex flex-col items-center gap-2">
-          <div className="w-48 h-px bg-zinc-800 rounded-full overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: "40%", background: "linear-gradient(90deg, transparent, #ef4444, transparent)", animation: "shimmerLoad 1.2s ease-in-out infinite" }} />
-          </div>
-          <p className="text-[10px] text-zinc-500 tracking-wider">
-            {t("splash_loading")}{".".repeat(dotCount)}
+        {/* Subtítulo */}
+        <div
+          style={{
+            opacity: visible ? 1 : 0,
+            transform: visible ? "translateY(0)" : "translateY(6px)",
+            transition: "opacity 0.5s ease-out 0.22s, transform 0.5s ease-out 0.22s",
+          }}
+        >
+          <p
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.3em",
+              textTransform: "uppercase",
+              color: "#52525b",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+            }}
+          >
+            Avatar Asset Manager
           </p>
         </div>
-      </div>
 
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.6; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.05); }
-        }
-        @keyframes shimmerLoad {
-          0% { transform: translateX(-200%); }
-          100% { transform: translateX(400%); }
-        }
-      `}</style>
+        {/* Barra de progreso */}
+        <div
+          style={{
+            opacity: visible ? 1 : 0,
+            transition: "opacity 0.4s ease-out 0.3s",
+          }}
+        >
+          <div
+            style={{
+              width: 200,
+              height: 2,
+              borderRadius: 99,
+              background: "#27272a",
+              overflow: "hidden",
+              position: "relative",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${barWidth}%`,
+                borderRadius: 99,
+                background: "linear-gradient(90deg, #dc2626, #ef4444)",
+                boxShadow: "0 0 8px rgba(220,38,38,0.6)",
+                transition: "none", // rAF lo maneja, no CSS
+              }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

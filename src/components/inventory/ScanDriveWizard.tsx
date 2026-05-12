@@ -10,9 +10,9 @@ import {
   CheckCircle2, AlertTriangle, MoreHorizontal, Copy, Trash2,
   Layers, SkipForward, Pencil, Check, Plus, Tag, Image,
   FileText, Globe, RefreshCw, ChevronDown, ChevronUp,
-  TerminalSquare, Package, Upload,
+  TerminalSquare, Package, Upload, Store
 } from "lucide-react";
-import { tauriGetBoothProductDetail, tauriSearchShop, tauriImportLocalPackage, tauriSetItemProductImages, ShopProduct } from "../../lib/tauri";
+import { tauriGetBoothProductDetail, tauriSearchShop, tauriImportLocalPackage, tauriSetItemProductImages, ShopProduct, tauriCheckDuplicateItems, tauriDeleteInventoryItem, } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { GlobalBoothPickerModal, type BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
 import { TagInput } from "./TagInput";
@@ -44,6 +44,7 @@ interface ScannedItem extends DetectedFile {
   boothUrl?: string;
   boothFound?: boolean;
   productImages?: string[];
+  boothSuggestions?: ShopProduct[];
 }
 
 type ConflictResolution = "keep_copy" | "delete" | "combine" | "ignore";
@@ -131,10 +132,42 @@ function cleanDisplayName(fileName: string): string {
     .trim();
 }
 
+// ── Helpers para construir queries de búsqueda desde nombre de archivo ────────
+
+function buildBoothSearchQueries(fileName: string): string[] {
+  const base = fileName.replace(/\.(zip|unitypackage|fbx|vrm|glb)$/i, "");
+  const queries: string[] = [];
+
+  // 1. Nombre limpio completo: "SomeName_Karin_v1.2" → "SomeName Karin"
+  const clean = base
+    .replace(/(?:^|[^0-9])(\d{6,8})(?:[^0-9]|$)/g, " ")  // quitar IDs numéricos
+    .replace(/_v[\d.]+$/i, "")                              // quitar versión final
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (clean.length >= 3) queries.push(clean);
+
+  // 2. Solo las primeras 2-3 palabras (el nombre del producto sin el avatar base)
+  const words = clean.split(" ").filter(Boolean);
+  if (words.length >= 3) {
+    queries.push(words.slice(0, 2).join(" "));
+  }
+
+  // 3. Si hay un guion bajo separador reconocible, usar solo la primera parte
+  const underParts = base.split("_").filter(Boolean);
+  if (underParts.length >= 2 && underParts[0].length >= 3) {
+    const firstPart = underParts[0];
+    if (!queries.includes(firstPart)) queries.push(firstPart);
+  }
+
+  return [...new Set(queries)].filter((q) => q.length >= 3).slice(0, 2);
+}
+
 async function realAnalyze(file: DetectedFile): Promise<Partial<ScannedItem>> {
   const displayName = cleanDisplayName(file.fileName) || file.fileName;
   const boothId = extractBoothId(file.fileName);
 
+  // ── Camino 1: ID numérico en el nombre de archivo ─────────────────────────
   if (boothId) {
     try {
       const detail = await tauriGetBoothProductDetail(boothId);
@@ -148,6 +181,7 @@ async function realAnalyze(file: DetectedFile): Promise<Partial<ScannedItem>> {
         productImages: detail.images ?? [],
         description: detail.description || undefined,
         boothFound: true,
+        boothSuggestions: [],
         detectedAvatars: [],
         allAvatars: [],
         tags: [],
@@ -155,10 +189,34 @@ async function realAnalyze(file: DetectedFile): Promise<Partial<ScannedItem>> {
     } catch { /* not found on Booth, fall through */ }
   }
 
+  // ── Camino 2: búsqueda por nombre — obtener top 2 sugerencias ─────────────
+  const queries = buildBoothSearchQueries(file.fileName);
+  let suggestions: ShopProduct[] = [];
+
+  for (const q of queries) {
+    if (suggestions.length >= 2) break;
+    try {
+      const results = await tauriSearchShop(q, 1);
+      const boothResults = results
+        .filter((p) => p.source === "booth")
+        .slice(0, 2 - suggestions.length);
+      suggestions = [...suggestions, ...boothResults];
+    } catch { /* search failed, skip */ }
+  }
+
+  // Deduplicar por source_id
+  const seen = new Set<string>();
+  suggestions = suggestions.filter((p) => {
+    if (seen.has(p.source_id)) return false;
+    seen.add(p.source_id);
+    return true;
+  }).slice(0, 2);
+
   return {
     phase: "done",
     name: displayName,
     boothFound: false,
+    boothSuggestions: suggestions,
     thumbnailUrl: undefined,
     detectedAvatars: [],
     allAvatars: [],
@@ -314,6 +372,27 @@ function ItemEditPopup({
   const [thumbnailUrl, setThumbnailUrl] = useState(item.customThumbnailUrl ?? "");
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(item.customThumbnailUrl || item.thumbnailUrl || null);
   const [thumbnailLoading, setThumbnailLoading] = useState(false);
+  const [detailImages, setDetailImages] = useState<string[]>(item.productImages ?? []);
+  const [fetchingImages, setFetchingImages] = useState(false);
+
+  const fetchAndApplyBoothDetail = async (id: string) => {
+    if (!id.trim()) return;
+    setFetchingImages(true);
+    try {
+      const detail = await tauriGetBoothProductDetail(id.trim());
+      if (detail.name && !name) setName(detail.name);
+      if (detail.author && !author) setAuthor(detail.author);
+      if (detail.images?.[0]) {
+        setThumbnailUrl(detail.images[0]);
+        setThumbnailPreview(detail.images[0]);
+      }
+      setDetailImages(detail.images ?? []);
+    } catch {
+      // not found — keep existing data
+    } finally {
+      setFetchingImages(false);
+    }
+  };
 
   const pickLocalThumbnail = async () => {
     try {
@@ -346,200 +425,433 @@ function ItemEditPopup({
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-900 z-10">
-          <div className="flex items-center gap-2">
-            <Pencil className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-semibold text-zinc-100">{t("scan_wizard_edit_title")}</h3>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <div
+          className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* ── Header ── */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-900 z-10">
+            <div className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-zinc-400" />
+              <h3 className="text-sm font-semibold text-zinc-100">
+                {t("scan_wizard_edit_title")}
+              </h3>
+            </div>
+            <button
+              onClick={onClose}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
-        <div className="px-5 py-4 flex flex-col gap-4">
-          <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/50 rounded-lg px-3 py-2">
-            <Package className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate font-mono">{item.fileName}</span>
-            <ExtBadge ext={item.ext} />
-          </div>
+          {/* ── Cuerpo ── */}
+          <div className="px-5 py-4 flex flex-col gap-4">
+            {/* Archivo */}
+            <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/50 rounded-lg px-3 py-2">
+              <Package className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate font-mono">{item.fileName}</span>
+              <ExtBadge ext={item.ext} />
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
-              <Image className="h-3 w-3" /> {t("scan_wizard_edit_thumbnail_label")}
-            </label>
-            <div className="flex gap-3 items-start">
-              <div className="shrink-0 w-20 h-20 rounded-xl bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
-                {thumbnailLoading ? (
-                  <Loader2 className="h-5 w-5 text-zinc-600 animate-spin" />
-                ) : thumbnailPreview ? (
-                  <img src={thumbnailPreview} alt="" className="w-full h-full object-cover" onError={() => setThumbnailPreview(null)} />
-                ) : (
-                  <Package className="h-6 w-6 text-zinc-600" />
-                )}
-              </div>
-              <div className="flex-1 flex flex-col gap-1.5">
-                <input
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-red-500 transition-colors"
-                  placeholder="Paste image URL…"
-                  value={thumbnailUrl}
-                  onChange={(e) => { setThumbnailUrl(e.target.value); setThumbnailPreview(e.target.value || null); }}
-                />
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={pickLocalThumbnail}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
-                  >
-                    <Upload className="h-3 w-3" /> {t("scan_wizard_edit_pick_file")}
-                  </button>
-                  {thumbnailPreview && (
+            {/* ── Thumbnail ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
+                <Image className="h-3 w-3" /> {t("scan_wizard_edit_thumbnail_label")}
+              </label>
+              <div className="flex gap-3 items-start">
+                {/* Previsualización */}
+                <div className="shrink-0 w-20 h-20 rounded-xl bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
+                  {thumbnailLoading ? (
+                    <Loader2 className="h-5 w-5 text-zinc-600 animate-spin" />
+                  ) : thumbnailPreview ? (
+                    <img
+                      src={thumbnailPreview}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onError={() => setThumbnailPreview(null)}
+                    />
+                  ) : (
+                    <Package className="h-6 w-6 text-zinc-600" />
+                  )}
+                </div>
+                {/* Input + acciones */}
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <input
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-red-500 transition-colors"
+                    placeholder="Paste image URL…"
+                    value={thumbnailUrl}
+                    onChange={(e) => {
+                      setThumbnailUrl(e.target.value);
+                      setThumbnailPreview(e.target.value || null);
+                    }}
+                  />
+                  <div className="flex gap-1.5">
                     <button
-                      onClick={() => { setThumbnailUrl(""); setThumbnailPreview(null); }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-900/40 border border-zinc-700 hover:border-red-700/50 text-zinc-500 hover:text-red-400 text-xs transition-colors"
+                      onClick={pickLocalThumbnail}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
                     >
-                      <X className="h-3 w-3" /> {t("scan_wizard_edit_clear")}
+                      <Upload className="h-3 w-3" /> {t("scan_wizard_edit_pick_file")}
+                    </button>
+                    {thumbnailPreview && (
+                      <button
+                        onClick={() => {
+                          setThumbnailUrl("");
+                          setThumbnailPreview(null);
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-900/40 border border-zinc-700 hover:border-red-700/50 text-zinc-500 hover:text-red-400 text-xs transition-colors"
+                      >
+                        <X className="h-3 w-3" /> {t("scan_wizard_edit_clear")}
+                      </button>
+                    )}
+                  </div>
+                  {item.thumbnailUrl && thumbnailUrl !== item.thumbnailUrl && (
+                    <button
+                      onClick={() => {
+                        setThumbnailUrl(item.thumbnailUrl!);
+                        setThumbnailPreview(item.thumbnailUrl!);
+                      }}
+                      className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                    >
+                      {t("scan_wizard_edit_restore_booth")}
                     </button>
                   )}
                 </div>
-                {item.thumbnailUrl && thumbnailUrl !== item.thumbnailUrl && (
-                  <button
-                    onClick={() => { setThumbnailUrl(item.thumbnailUrl!); setThumbnailPreview(item.thumbnailUrl!); }}
-                    className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
-                  >
-                    {t("scan_wizard_edit_restore_booth")}
-                  </button>
+              </div>
+
+              {/* ── Galería de imágenes del producto ── */}
+              {detailImages.length > 1 && (
+                <div className="flex flex-col gap-1.5 mt-3">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">
+                    Product images ({detailImages.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailImages.map((url, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setThumbnailUrl(url);
+                          setThumbnailPreview(url);
+                        }}
+                        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
+                          thumbnailUrl === url
+                            ? "border-red-500"
+                            : "border-zinc-700 hover:border-zinc-500"
+                        }`}
+                        title="Use as thumbnail"
+                      >
+                        <img
+                          src={url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Nombre ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-400 font-medium">
+                {t("scan_wizard_edit_name")}
+              </label>
+              <input
+                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+
+            {/* ── Autor ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-400 font-medium">
+                {t("scan_wizard_edit_author")}
+              </label>
+              <input
+                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+              />
+            </div>
+
+            {/* ── Sugerencias de Booth ── */}
+            {!item.boothFound &&
+              item.boothSuggestions &&
+              item.boothSuggestions.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
+                    <Store className="h-3 w-3 text-pink-400" />
+                    <span>Possible Booth matches</span>
+                    <span className="text-[9px] text-zinc-600 font-normal">
+                      — click to apply
+                    </span>
+                  </label>
+                  <div className="flex flex-col gap-1.5">
+                    {item.boothSuggestions.map((product) => (
+                      <button
+                        key={product.source_id}
+                        type="button"
+                        onClick={() => {
+                          setBoothId(product.source_id);
+                          fetchAndApplyBoothDetail(product.source_id);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl border border-zinc-700/60 bg-zinc-800/40 hover:border-pink-600/50 hover:bg-pink-950/20 transition-all text-left group"
+                      >
+                        {product.thumbnail_url ? (
+                          <img
+                            src={product.thumbnail_url}
+                            alt=""
+                            className="w-10 h-10 rounded-lg object-cover border border-zinc-700 shrink-0"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 shrink-0 flex items-center justify-center">
+                            <Package className="h-4 w-4 text-zinc-600" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">
+                            {product.name}
+                          </p>
+                          <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                            {product.author}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[9px] text-pink-400 bg-pink-900/30 px-1.5 py-px rounded-full border border-pink-700/40 font-mono">
+                              #{product.source_id}
+                            </span>
+                            {product.price_display && (
+                              <span className="text-[9px] text-zinc-600">
+                                {product.price_display}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 text-zinc-600 group-hover:text-pink-400 transition-colors shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {/* ── Booth ID ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
+                <Globe className="h-3 w-3" /> {t("scan_wizard_edit_booth_id")}
+                {!item.boothFound && (
+                  <span className="text-[10px] text-amber-400 bg-amber-900/30 px-1.5 py-px rounded-full border border-amber-700/50">
+                    {t("scan_wizard_edit_booth_not_found")}
+                  </span>
                 )}
+              </label>
+              <div className="flex gap-1.5">
+                <input
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors font-mono"
+                  placeholder="e.g. 6082686"
+                  value={boothId}
+                  onChange={(e) => setBoothId(e.target.value)}
+                />
+                <button
+                  title={t("scan_wizard_edit_booth_manual_lookup")}
+                  disabled={!boothId.trim() || fetchingImages}
+                  onClick={() => fetchAndApplyBoothDetail(boothId)}
+                  className="px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-40"
+                >
+                  {fetchingImages ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                <button
+                  title={t("scan_wizard_edit_search_booth")}
+                  onClick={() => setShowBoothSearch(true)}
+                  className="px-2.5 py-2 rounded-lg bg-pink-900/40 hover:bg-pink-900/60 border border-pink-700/50 text-pink-400 hover:text-pink-200 transition-colors text-xs font-medium flex items-center gap-1"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {boothId && (
+                <a
+                  href={`https://booth.pm/en/items/${boothId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-pink-500 hover:text-pink-300 transition-colors"
+                >
+                  booth.pm/en/items/{boothId} ↗
+                </a>
+              )}
+            </div>
+
+            {/* ── Avatares ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-400 font-medium">
+                {t("scan_wizard_edit_avatar_label")}
+              </label>
+              <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+                {avatars.map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => setAvatars(avatars.filter((x) => x !== a))}
+                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 text-green-300 border border-green-700/50 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700/50 transition-colors group"
+                  >
+                    {a}{" "}
+                    <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
+                  </button>
+                ))}
+                {item.allAvatars
+                  ?.filter((a) => !avatars.includes(a))
+                  .map((a) => (
+                    <button
+                      key={a}
+                      onClick={() => setAvatars([...avatars, a])}
+                      className="text-[10px] px-2 py-0.5 rounded-full text-zinc-500 border border-dashed border-zinc-700 hover:border-zinc-500 hover:text-zinc-300 transition-colors"
+                    >
+                      + {a}
+                    </button>
+                  ))}
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-red-500 transition-colors"
+                  placeholder={t("scan_wizard_edit_add_avatar")}
+                  value={newAvatar}
+                  onChange={(e) => setNewAvatar(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addAvatar()}
+                />
+                <button
+                  onClick={addAvatar}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium">{t("scan_wizard_edit_name")}</label>
-            <input className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors"
-              value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium">{t("scan_wizard_edit_author")}</label>
-            <input className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors"
-              value={author} onChange={(e) => setAuthor(e.target.value)} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
-              <Globe className="h-3 w-3" /> {t("scan_wizard_edit_booth_id")}
-              {!item.boothFound && (
-                <span className="text-[10px] text-amber-400 bg-amber-900/30 px-1.5 py-px rounded-full border border-amber-700/50">
-                  {t("scan_wizard_edit_booth_not_found")}
-                </span>
-              )}
-            </label>
-            <div className="flex gap-1.5">
-              <input className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors font-mono"
-                placeholder="e.g. 6082686"
-                value={boothId} onChange={(e) => setBoothId(e.target.value)} />
-              <button
-                title={t("scan_wizard_edit_booth_manual_lookup")}
-                disabled={!boothId.trim() || lookingUpBooth}
-                onClick={async () => {
-                  if (!boothId.trim()) return;
-                  setLookingUpBooth(true);
-                  try {
-                    const detail = await tauriGetBoothProductDetail(boothId.trim());
-                    if (detail.name) setName(detail.name);
-                    if (detail.author) setAuthor(detail.author);
-                    if (detail.images?.[0] && !thumbnailUrl) {
-                      setThumbnailUrl(detail.images[0]);
-                      setThumbnailPreview(detail.images[0]);
-                    }
-                  } catch { /* not found */ }
-                  setLookingUpBooth(false);
-                }}
-                className="px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-40"
-              >
-                {lookingUpBooth ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                title={t("scan_wizard_edit_search_booth")}
-                onClick={() => setShowBoothSearch(true)}
-                className="px-2.5 py-2 rounded-lg bg-pink-900/40 hover:bg-pink-900/60 border border-pink-700/50 text-pink-400 hover:text-pink-200 transition-colors text-xs font-medium flex items-center gap-1"
-              >
-                <Search className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            {boothId && (
-              <a href={`https://booth.pm/en/items/${boothId}`} target="_blank" rel="noreferrer" className="text-[10px] text-pink-500 hover:text-pink-300 transition-colors">
-                booth.pm/en/items/{boothId} ↗
-              </a>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium">{t("scan_wizard_edit_avatar_label")}</label>
-            <div className="flex flex-wrap gap-1.5 min-h-[28px]">
-              {avatars.map((a) => (
-                <button key={a} onClick={() => setAvatars(avatars.filter((x) => x !== a))}
-                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 text-green-300 border border-green-700/50 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700/50 transition-colors group">
-                  {a} <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
-                </button>
-              ))}
-              {item.allAvatars?.filter((a) => !avatars.includes(a)).map((a) => (
-                <button key={a} onClick={() => setAvatars([...avatars, a])}
-                  className="text-[10px] px-2 py-0.5 rounded-full text-zinc-500 border border-dashed border-zinc-700 hover:border-zinc-500 hover:text-zinc-300 transition-colors">
-                  + {a}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-red-500 transition-colors"
-                placeholder={t("scan_wizard_edit_add_avatar")}
-                value={newAvatar}
-                onChange={(e) => setNewAvatar(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addAvatar()}
+            {/* ── Tags ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-400 font-medium flex items-center gap-1">
+                <Tag className="h-3 w-3" /> {t("scan_wizard_edit_tags")}
+              </label>
+              <TagInput
+                tags={tags}
+                onChange={setTags}
+                placeholder={t("scan_wizard_edit_add_tag")}
               />
-              <button onClick={addAvatar} className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors">
-                <Plus className="h-3 w-3" />
-              </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium flex items-center gap-1"><Tag className="h-3 w-3" /> {t("scan_wizard_edit_tags")}</label>
-            <TagInput tags={tags} onChange={setTags} placeholder={t("scan_wizard_edit_add_tag")} />
+          {/* ── Footer ── */}
+          <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-800 sticky bottom-0 bg-zinc-900">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            >
+              {t("scan_wizard_cancel")}
+            </button>
+            <button
+              onClick={() => {
+                onSave({
+                  name,
+                  author,
+                  boothId: boothId || undefined,
+                  detectedAvatars: avatars,
+                  tags,
+                  customThumbnailUrl: thumbnailUrl || undefined,
+                  productImages: detailImages,           // <-- guardamos las imágenes de producto
+                });
+                onClose();
+              }}
+              className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors"
+            >
+              {t("scan_wizard_save_changes")}
+            </button>
           </div>
         </div>
+      </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-800 sticky bottom-0 bg-zinc-900">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors">
-            {t("scan_wizard_cancel")}
+      {/* ── Popup de búsqueda en Booth ── */}
+      {showBoothSearch && (
+        <BoothSearchPopup
+          onClose={() => setShowBoothSearch(false)}
+          onSelect={(product) => {
+            setBoothId(product.source_id);
+            if (product.name) setName(product.name);
+            if (product.author) setAuthor(product.author);
+            if (product.thumbnail_url && !thumbnailUrl) {
+              setThumbnailUrl(product.thumbnail_url);
+              setThumbnailPreview(product.thumbnail_url);
+            }
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function DuplicateBatchDialog({
+  duplicates,
+  onSkipAll,
+  onOverwriteAll,
+  onCancel,
+}: {
+  duplicates: { name: string; existingIds: string[] }[];
+  onSkipAll: () => void;
+  onOverwriteAll: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-zinc-100">Duplicates detected</p>
+            <p className="text-xs text-zinc-400 mt-1">
+              {duplicates.length} item(s) already exist in your inventory. How would you like to proceed?
+            </p>
+            <ul className="mt-2 text-xs text-zinc-500 list-disc list-inside">
+              {duplicates.slice(0, 5).map((d, i) => (
+                <li key={i} className="truncate">{d.name}</li>
+              ))}
+              {duplicates.length > 5 && <li>...and {duplicates.length - 5} more</li>}
+            </ul>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"
+          >
+            Cancel
           </button>
-          <button onClick={() => {
-            onSave({ name, author, boothId: boothId || undefined, detectedAvatars: avatars, tags, customThumbnailUrl: thumbnailUrl || undefined });
-            onClose();
-          }} className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors">
-            {t("scan_wizard_save_changes")}
+          <button
+            onClick={onSkipAll}
+            className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition-colors"
+          >
+            Skip duplicates
+          </button>
+          <button
+            onClick={onOverwriteAll}
+            className="px-3 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-500 transition-colors"
+          >
+            Overwrite all
           </button>
         </div>
       </div>
     </div>
-
-    {showBoothSearch && (
-      <BoothSearchPopup
-        onClose={() => setShowBoothSearch(false)}
-        onSelect={(product) => {
-          setBoothId(product.source_id);
-          if (product.name) setName(product.name);
-          if (product.author) setAuthor(product.author);
-          if (product.thumbnail_url && !thumbnailUrl) {
-            setThumbnailUrl(product.thumbnail_url);
-            setThumbnailPreview(product.thumbnail_url);
-          }
-        }}
-      />
-    )}
-    </>
   );
 }
 
@@ -609,7 +921,7 @@ function ConflictPopup({
 
 // ── Scanned Item Row ──────────────────────────────────────────────────────────
 
-function ScannedItemRow({ item, onEdit }: { item: ScannedItem; onEdit: () => void }) {
+function ScannedItemRow({ item, onEdit, onRemove }: { item: ScannedItem; onEdit: () => void; onRemove: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const t = useT();
 
@@ -687,6 +999,13 @@ function ScannedItemRow({ item, onEdit }: { item: ScannedItem; onEdit: () => voi
           <button className="h-6 w-6 flex items-center justify-center rounded hover:bg-zinc-800 text-zinc-600 hover:text-zinc-300 transition-colors" onClick={onEdit} title={t("scan_wizard_edit_title")}>
             <MoreHorizontal className="h-3.5 w-3.5" />
           </button>
+          <button
+            className="h-6 w-6 flex items-center justify-center rounded hover:bg-red-900/30 text-zinc-600 hover:text-red-400 transition-colors"
+            onClick={() => onRemove(item.id)}
+            title="Remove from list"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
@@ -749,6 +1068,8 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const scanAbortRef = useRef(false);
+  const [duplicateBatch, setDuplicateBatch] = useState<{ name: string; existingIds: string[] }[] | null>(null);
+  const [duplicateHandling, setDuplicateHandling] = useState<"skip" | "overwrite" | null>(null);
   const { fetchAll } = useInventoryStore();
 
   const addLog = useCallback((msg: string) => {
@@ -846,28 +1167,70 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
     setItems((prev) => prev.map((it) => it.id === id ? { ...it, ...updates } : it));
   };
 
-  const importAll = async () => {
+  const removeItem = useCallback((id: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== id));
+  }, []);
+
+  const checkAllDuplicates = async (): Promise<{ name: string; existingIds: string[] }[]> => {
+    const readyItems = items.filter((i) => i.phase === "done");
+    const results: { name: string; existingIds: string[] }[] = [];
+
+    for (const item of readyItems) {
+      try {
+        const check = await tauriCheckDuplicateItems(item.name ?? item.fileName, item.filePath);
+        if (check.exists) {
+          results.push({ name: item.name ?? item.fileName, existingIds: check.existing_item_ids });
+        }
+      } catch (e) {
+        addLog(`Duplicate check failed for ${item.fileName}: ${e}`);
+      }
+    }
+    return results;
+  };
+
+  const importAll = async (skipDuplicates: boolean, overwrite: boolean) => {
     const readyItems = items.filter((i) => i.phase === "done");
     if (readyItems.length === 0) return;
+
+    const duplicateNames = skipDuplicates && duplicateBatch
+      ? new Set(duplicateBatch.map(d => d.name))
+      : new Set<string>();
+
     setImportPhase("importing");
     setImportDone(0);
     setImportErrors([]);
+
     const errors: string[] = [];
+
     for (let i = 0; i < readyItems.length; i++) {
       const item = readyItems[i];
+      const itemName = item.name ?? item.fileName;
+
+      if (skipDuplicates && duplicateNames.has(itemName)) {
+        addLog(`⊘ Skipped duplicate: ${itemName}`);
+        setImportDone(i + 1);
+        continue;
+      }
+
       try {
+        if (overwrite) {
+          const existingIds = duplicateBatch?.find(d => d.name === itemName)?.existingIds ?? [];
+          await Promise.all(existingIds.map(id => tauriDeleteInventoryItem(id, "InventoryOnly")));
+        }
+
         const newId = await tauriImportLocalPackage({
           zip_path: item.filePath,
-          name: item.name ?? item.fileName,
+          name: itemName,
           author: item.author ?? undefined,
           thumbnail_url: item.customThumbnailUrl ?? item.thumbnailUrl ?? undefined,
           booth_id: item.boothId ?? undefined,
+          overwrite,
         });
-        // Guardar todas las imágenes de producto de Booth
+
         if (item.productImages && item.productImages.length > 0) {
           await tauriSetItemProductImages(newId, item.productImages).catch(() => {});
         }
-        addLog(`✓ Imported: ${item.name ?? item.fileName}`);
+        addLog(`✓ Imported: ${itemName}`);
       } catch (e: any) {
         const msg = `✗ Failed: ${item.fileName} — ${e?.message ?? String(e)}`;
         errors.push(msg);
@@ -875,10 +1238,24 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
       }
       setImportDone(i + 1);
     }
+
     setImportErrors(errors);
     setImportPhase(errors.length > 0 ? "error" : "done");
     await fetchAll();
     onComplete?.(readyItems.length - errors.length);
+    setDuplicateBatch(null);
+    setDuplicateHandling(null);
+  };
+
+  const handleImport = async () => {
+    setImportPhase("importing"); // provisional, para mostrar spinner
+    const dups = await checkAllDuplicates();
+    if (dups.length > 0) {
+      setImportPhase("idle");   // resetear, esperamos decisión del usuario
+      setDuplicateBatch(dups);
+    } else {
+      await importAll(false, false);
+    }
   };
 
   const doneCount = items.filter((i) => i.phase === "done").length;
@@ -1047,7 +1424,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                   ))
                 )}
                 {items.map((item) => (
-                  <ScannedItemRow key={item.id} item={item} onEdit={() => setEditItem(item)} />
+                  <ScannedItemRow key={item.id} item={item} onEdit={() => setEditItem(item)} onRemove={removeItem} />
                 ))}
               </div>
 
@@ -1096,7 +1473,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                   )}
                 </div>
                 {scanStatus === "done" && importPhase === "idle" && (
-                  <button onClick={importAll} disabled={doneCount === 0} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors">
+                  <button onClick={handleImport} disabled={doneCount === 0} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors">
                     <CheckCircle2 className="h-4 w-4" />
                     {t("scan_wizard_import", { count: doneCount })}
                   </button>
@@ -1143,6 +1520,14 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
           subtitle="Find the Booth listing for this asset"
           onClose={() => setBoothPickerOpen(false)}
           onSelect={handleBoothSelect}
+        />
+      )}
+      {duplicateBatch && (
+        <DuplicateBatchDialog
+          duplicates={duplicateBatch}
+          onCancel={() => { setDuplicateBatch(null); setImportPhase("idle"); }}
+          onSkipAll={() => importAll(true, false)}
+          onOverwriteAll={() => importAll(false, true)}
         />
       )}
     </>

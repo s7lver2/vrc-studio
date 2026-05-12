@@ -5,21 +5,23 @@
  * COMPRESS : items caen en caja abierta → tapa cierra → agujero aparece → caja se hunde
  * DECOMPRESS: agujero abre → caja emerge → tapa abre → items salen
  * ERROR     : grietas sobre la caja
- * DONE      : checkmark verde
+ * DONE      : checkmark verde animado (tick dibujado progresivamente)
+ *
+ * WARNING: THIS IS DEAD CODE, IF YOU READ IT THIS IS DEAD CODE
  */
 
 import { useEffect, useRef } from "react";
 
 // ── Canvas ────────────────────────────────────────────────────────────────────
-const CW = 240;
-const CH = 200;
+const BASE_W = 240;
+const BASE_H = 200;
 
 // ── Geometría de la caja isométrica ──────────────────────────────────────────
-const BX = CW / 2; // centro horizontal
-const BY = 76;     // y del centro de la cara superior
-const IW = 54;     // semiancho x
-const ID = 17;     // semiprofundidad y (cara superior)
-const BH = 44;     // altura de las caras laterales
+const BX = BASE_W / 2; // centro horizontal
+const BY = 76;         // y del centro de la cara superior
+const IW = 54;         // semiancho x
+const ID = 17;         // semiprofundidad y (cara superior)
+const BH = 44;         // altura de las caras laterales
 
 type Pt2 = [number, number];
 const shift = ([x, y]: Pt2, dy: number): Pt2 => [x, y + dy];
@@ -60,8 +62,19 @@ const T_OPENL = 580; // tapa abriéndose (decompress)
 const T_EJECT = 350; // por item saliendo (decompress)
 
 // ── Easing ────────────────────────────────────────────────────────────────────
-const easeOut = (t: number) => 1 - (1 - t) ** 2;
-const easeIn  = (t: number) => t ** 2;
+const easeOutCubic  = (t: number) => 1 - (1 - t) ** 3;
+const easeInCubic   = (t: number) => t ** 3;
+const easeOutBack   = (t: number) => {
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2;
+};
+const easeOutBounce = (t: number) => {
+  if (t < 1 / 2.75) return 7.5625 * t * t;
+  if (t < 2 / 2.75) { t -= 1.5 / 2.75;   return 7.5625 * t * t + 0.75; }
+  if (t < 2.5 / 2.75) { t -= 2.25 / 2.75; return 7.5625 * t * t + 0.9375; }
+  t -= 2.625 / 2.75;
+  return 7.5625 * t * t + 0.984375;
+};
 const c01     = (t: number) => Math.max(0, Math.min(1, t));
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -75,6 +88,14 @@ interface AS {
   phaseStart: number;
   mode:       "compress" | "decompress";
   errPhase:   Phase;
+}
+
+interface Particle {
+  x: number; y: number;
+  vx: number; vy: number;
+  alpha: number;
+  color: string;
+  born: number;
 }
 
 // ── Helper: polígono ──────────────────────────────────────────────────────────
@@ -128,16 +149,26 @@ function drawBox(
     ctx.restore();
   }
 
-  // Cara izquierda
-  poly(ctx, [s(P0.left), s(P0.front), s(P0.bFront), s(P0.bLeft)], "#27272a", "#52525b");
+  // Cara izquierda (más oscura, sombra)
+  poly(ctx, [s(P0.left), s(P0.front), s(P0.bFront), s(P0.bLeft)], "#1a1a1a", "#3f3f46");
 
-  // Cara derecha
-  poly(ctx, [s(P0.right), s(P0.front), s(P0.bFront), s(P0.bRight)], "#3f3f46", "#71717a");
+  // Cara derecha (media luz)
+  poly(ctx, [s(P0.right), s(P0.front), s(P0.bFront), s(P0.bRight)], "#242424", "#3f3f46");
 
   // Tapa: asciende lidT * 34 px cuando está abierta
   const lidDY = dy - lidT * 34;
   const L = (p: Pt2): Pt2 => shift(p, lidDY);
-  poly(ctx, [L(P0.back), L(P0.left), L(P0.front), L(P0.right)], "#52525b", "#a1a1aa", 1.0);
+  poly(ctx, [L(P0.back), L(P0.left), L(P0.front), L(P0.right)], "#303030", "#3f3f46", 1.0);
+
+  // Highlight en la arista superior (brillo)
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(L(P0.back)[0], L(P0.back)[1]);
+  ctx.lineTo(L(P0.right)[0], L(P0.right)[1]);
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
 
   // Grosor visual de la tapa (visible al abrirse)
   if (lidT > 0.04) {
@@ -354,9 +385,48 @@ function tick(s: AS, now: number, extPhase: string): AS {
   }
 }
 
+// ── Partículas ────────────────────────────────────────────────────────────────
+function spawnImpact(color: string, x: number, y: number, now: number): Particle[] {
+  return Array.from({ length: 5 }, () => ({
+    x,
+    y,
+    vx: (Math.random() - 0.5) * 3,
+    vy: -(Math.random() * 2 + 1),
+    alpha: 1,
+    color,
+    born: now,
+  }));
+}
+
+// Dibuja todas las partículas activas (se llama al inicio de render)
+function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle[], now: number) {
+  if (particles.length === 0) return;
+  ctx.save();
+  particles.forEach((p) => {
+    const age = (now - p.born) / 400; // 400ms de vida
+    if (age >= 1) return;
+    ctx.globalAlpha = p.alpha * (1 - age);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(
+      p.x + p.vx * age * 30,
+      p.y + p.vy * age * 30 + age * age * 40,
+      2.5 * (1 - age),
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
-function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
-  ctx.clearRect(0, 0, CW, CH);
+function render(ctx: CanvasRenderingContext2D, s: AS, now: number, particles: Particle[]) {
+  ctx.clearRect(0, 0, BASE_W, BASE_H);
+
+  // Partículas primero (detrás de la caja si fuera necesario, pero en filling quedan bien al frente)
+  drawParticles(ctx, particles, now);
+
   const el = now - s.phaseStart;
 
   switch (s.phase) {
@@ -369,7 +439,7 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
         if (t <= 0) continue;
         if (t < 1) {
           // Cayendo desde arriba
-          const eo = easeOut(t);
+          const eo = easeOutBounce(t);
           const x  = OPEN_X + (i - N / 2 + 0.5) * 5 * t;
           const y  = 12 + (OPEN_Y - 12) * eo;
           drawItem(ctx, ITEM_COLORS[i], x, y, 10 - 4 * t, 1);
@@ -384,9 +454,9 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
 
     case "closing": {
       const t    = c01(el / T_CLOSE);
-      const lidT = easeOut(1 - t); // 1→0: cierra
+      const lidT = easeOutBack(1 - t); // 1→0: cierra con overshoot
       drawBox(ctx, 0, lidT, 1);
-      const fade = 1 - easeIn(t);
+      const fade = 1 - easeInCubic(t);
       for (let i = 0; i < N; i++) {
         const ix = OPEN_X + (i - N / 2 + 0.5) * 14;
         drawItem(ctx, ITEM_COLORS[i], ix, OPEN_Y + 5, 5, 0.32 * fade);
@@ -396,17 +466,17 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
 
     case "hole_open": {
       const t = c01(el / T_HOLE);
-      drawHole(ctx, easeOut(t), now);
+      drawHole(ctx, easeOutCubic(t), now);
       drawBox(ctx, 0, 0, 1);
-      drawHoleFront(ctx, easeOut(t));
+      drawHoleFront(ctx, easeOutCubic(t));
       break;
     }
 
     case "sink": {
       const t    = c01(el / T_SINK);
       // La caja desciende hasta desaparecer por el agujero
-      const dy    = easeIn(t) * (HOLE_RY * 2 + BH + ID + 34);
-      const alpha = t < 0.5 ? 1 : 1 - easeIn((t - 0.5) / 0.5);
+      const dy    = easeInCubic(t) * (HOLE_RY * 2 + BH + ID + 34);
+      const alpha = t < 0.5 ? 1 : 1 - easeInCubic((t - 0.5) / 0.5);
       drawHole(ctx, 1, now);
       drawBox(ctx, dy, 0, alpha);
       drawHoleFront(ctx, 1); // arco frontal encima de la caja
@@ -417,16 +487,16 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
     case "d_hole": {
       // Agujero abre y la caja empieza a asomar desde abajo
       const t = c01(el / T_HOLE);
-      drawHole(ctx, easeOut(t), now);
-      drawBox(ctx, (1 - easeOut(t)) * 58, 0, easeOut(t) * 0.55);
-      drawHoleFront(ctx, easeOut(t));
+      drawHole(ctx, easeOutCubic(t), now);
+      drawBox(ctx, (1 - easeOutCubic(t)) * 58, 0, easeOutCubic(t) * 0.55);
+      drawHoleFront(ctx, easeOutCubic(t));
       break;
     }
 
     case "d_rise": {
       // Caja sube a su posición; el agujero se cierra gradualmente
       const t    = c01(el / T_RISE);
-      const dy   = (1 - easeOut(t)) * 58;
+      const dy   = (1 - easeOutCubic(t)) * 58;
       const holePr = c01(1 - t);
       drawHole(ctx, holePr, now, holePr);
       drawBox(ctx, dy, 0, 1);
@@ -436,7 +506,7 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
 
     case "d_open": {
       const t = c01(el / T_OPENL);
-      drawBox(ctx, 0, easeOut(t), 1);
+      drawBox(ctx, 0, easeOutCubic(t), 1);
       break;
     }
 
@@ -445,7 +515,7 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
       for (let i = 0; i < N; i++) {
         const t = c01((el - i * T_EJECT) / T_EJECT);
         if (t <= 0) continue;
-        const eo = easeOut(t);
+        const eo = easeOutCubic(t);
         const tx = OPEN_X + (i - N / 2 + 0.5) * 32;
         const ty = 18 + i * 6;
         const x  = OPEN_X + (tx - OPEN_X) * eo;
@@ -457,15 +527,65 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
 
     // ── COMUNES ───────────────────────────────────────────────────────────────
     case "done_anim": {
+      const a    = c01(el / 500);
+      const draw = easeOutCubic(a);
+
+      // Fondo circular verde con fade-in
       ctx.save();
-      const a = c01(el / 350);
-      ctx.globalAlpha = a;
+      ctx.globalAlpha = a * 0.15;
       ctx.fillStyle = "#22c55e";
-      ctx.font = `bold ${Math.round(28 + a * 8)}px sans-serif`;
-      ctx.textAlign    = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("✓", CW / 2, CH / 2);
+      ctx.beginPath();
+      ctx.arc(BASE_W / 2, BASE_H / 2, 44 * a, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
+
+      // Círculo borde
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = "#22c55e";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(BASE_W / 2, BASE_H / 2, 28, 0, Math.PI * 2 * a);
+      ctx.stroke();
+      ctx.restore();
+
+      // Tick dibujado progresivamente
+      if (draw > 0.4) {
+        const t2 = c01((draw - 0.4) / 0.6);
+        ctx.save();
+        ctx.strokeStyle = "#22c55e";
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        const cx = BASE_W / 2, cy = BASE_H / 2;
+        const p1: Pt2 = [cx - 12, cy];
+        const p2: Pt2 = [cx - 4,  cy + 8];
+        const p3: Pt2 = [cx + 12, cy - 9];
+
+        // Segmento 1: p1→p2 (primero en dibujarse, hasta t2=0.4)
+        const seg1T = c01(t2 / 0.45);
+        const seg2T = c01((t2 - 0.45) / 0.55);
+
+        ctx.beginPath();
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(
+          p1[0] + (p2[0] - p1[0]) * seg1T,
+          p1[1] + (p2[1] - p1[1]) * seg1T,
+        );
+        ctx.stroke();
+
+        if (seg2T > 0) {
+          ctx.beginPath();
+          ctx.moveTo(p2[0], p2[1]);
+          ctx.lineTo(
+            p2[0] + (p3[0] - p2[0]) * seg2T,
+            p2[1] + (p3[1] - p2[1]) * seg2T,
+          );
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       break;
     }
 
@@ -474,7 +594,7 @@ function render(ctx: CanvasRenderingContext2D, s: AS, now: number) {
       drawBox(ctx, 0, 0.22, 0.45);
       drawCracks(ctx, BX, BY, crT);
       ctx.fillStyle = `rgba(220,38,38,${0.18 * (1 - crT)})`;
-      ctx.fillRect(0, 0, CW, CH);
+      ctx.fillRect(0, 0, BASE_W, BASE_H);
       break;
     }
   }
@@ -491,6 +611,8 @@ export function TetrisAnimation({ phase, mode }: TetrisAnimationProps) {
   const stateRef  = useRef<AS | null>(null);
   const phaseRef  = useRef(phase);
   const rafRef    = useRef<number>(0);
+  const particlesRef = useRef<Particle[]>([]);
+  const landedRef = useRef<Set<number>>(new Set());
 
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
@@ -500,16 +622,52 @@ export function TetrisAnimation({ phase, mode }: TetrisAnimationProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // DPR scaling
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = BASE_W * dpr;
+    canvas.height = BASE_H * dpr;
+    canvas.style.width  = `${BASE_W}px`;
+    canvas.style.height = `${BASE_H}px`;
+    ctx.scale(dpr, dpr);
+
+    // Resetear partículas y estado de aterrizaje al cambiar de modo
+    particlesRef.current = [];
+    landedRef.current = new Set();
+
     const t0 = performance.now();
     stateRef.current = mode === "compress" ? mkCompress(t0) : mkDecompress(t0);
 
     const loop = (now: number) => {
-      if (stateRef.current) {
-        stateRef.current = tick(stateRef.current, now, phaseRef.current);
-        render(ctx, stateRef.current, now);
+      if (!stateRef.current) return;
+
+      // Actualizar máquina de estados
+      stateRef.current = tick(stateRef.current, now, phaseRef.current);
+
+      // Spawn de partículas en fase filling
+      if (stateRef.current.phase === "filling") {
+        const el = now - stateRef.current.phaseStart;
+        for (let i = 0; i < N; i++) {
+          const t = c01((el - i * T_ITEM) / T_ITEM);
+          if (t >= 1 && !landedRef.current.has(i)) {
+            landedRef.current.add(i);
+            // Posición en la que el ítem queda dentro de la caja
+            const ix = OPEN_X + (i - N / 2 + 0.5) * 14;
+            const iy = OPEN_Y + 5;
+            const newParticles = spawnImpact(ITEM_COLORS[i], ix, iy, now);
+            particlesRef.current.push(...newParticles);
+          }
+        }
       }
+
+      // Limpiar partículas viejas
+      particlesRef.current = particlesRef.current.filter(p => (now - p.born) < 400);
+
+      // Renderizar
+      render(ctx, stateRef.current, now, particlesRef.current);
+
       rafRef.current = requestAnimationFrame(loop);
     };
+
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
   }, [mode]);
@@ -517,10 +675,8 @@ export function TetrisAnimation({ phase, mode }: TetrisAnimationProps) {
   return (
     <canvas
       ref={canvasRef}
-      width={CW}
-      height={CH}
       className="select-none"
-      style={{ imageRendering: "pixelated" }}
+      style={{ width: BASE_W, height: BASE_H }}
     />
   );
 }

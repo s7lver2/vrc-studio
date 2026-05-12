@@ -3,6 +3,7 @@
  * Tabs: General · Packages · Integrations · Compression · Updates · Debug
  */
 
+import Logs from "./Logs";
 import React, { useState, useCallback } from "react";
 import {
   Globe, Tags, Save, Check, Beaker,
@@ -11,11 +12,12 @@ import {
   Trash2, ExternalLink, ChevronRight,
   Settings as SettingsIcon, Plug, Bug,
   Archive, Download, Shield, Wifi, Palette,
-  Lock, ShieldAlert, HardDrive, FolderOpen
+  Lock, ShieldAlert, HardDrive, FolderOpen,
+  Terminal, FileText
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CompressionSection } from "@/components/settings/CompressionSection";
-import { tauriPing, tauriFetchVpmIndex, VpmPackage } from "@/lib/tauri";
+import { tauriPing, tauriFetchVpmIndex, VpmPackage, tauriExportDatabase, tauriImportDatabase } from "@/lib/tauri";
 import { useRipperStatus, RipperStatus } from "@/hooks/useRipperStatus";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
 import { useT, useLocale, setLocale, Locale } from "@/i18n";
@@ -91,7 +93,7 @@ function Toggle({
 /** Label de categoría en el sidebar */
 function SidebarGroup({ label }: { label: string }) {
   return (
-    <p className="px-3 pt-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-600 select-none">
+    <p className="px-3 pt-6 pb-1 text-[10px] font-bold uppercase tracking-widest text-zinc-600 select-none">
       {label}
     </p>
   );
@@ -99,7 +101,7 @@ function SidebarGroup({ label }: { label: string }) {
 
 /** Header de sección en el content */
 function SectionHeader({
-  icon: Icon,
+  icon: _Icon, // keep prop for compat but don't render the box
   title,
   description,
 }: {
@@ -108,14 +110,9 @@ function SectionHeader({
   description: string;
 }) {
   return (
-    <div className="flex items-start gap-4 pb-6 border-b border-zinc-800/60 mb-6">
-      <div className="flex-shrink-0 p-2.5 rounded-xl bg-zinc-800 border border-zinc-700/50">
-        <Icon className="h-5 w-5 text-zinc-300" />
-      </div>
-      <div>
-        <h1 className="text-base font-semibold text-zinc-100">{title}</h1>
-        <p className="text-sm text-zinc-500 mt-0.5 leading-relaxed">{description}</p>
-      </div>
+    <div className="mb-7">
+      <h2 className="text-lg font-semibold tracking-tight text-zinc-100 mb-1">{title}</h2>
+      <p className="text-sm text-zinc-500 leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -128,6 +125,26 @@ interface VpmSource {
   url: string;
   packageCount?: number;
   isOfficial?: boolean;
+}
+
+function SettingsField({
+  name,
+  desc,
+  children,
+}: {
+  name: string;
+  desc: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-4 py-3.5 border-b border-zinc-800/60 last:border-0">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-zinc-100">{name}</div>
+        <div className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{desc}</div>
+      </div>
+      <div className="flex-shrink-0 w-44">{children}</div>
+    </div>
+  );
 }
 
 const OFFICIAL_SOURCE: VpmSource = {
@@ -525,15 +542,14 @@ function GeneralSection() {
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
             <Globe className="h-3.5 w-3.5" /> {t("settings_language")}
           </p>
-          <SettingsCard>
-            <CardRow last>
-              <p className="text-xs text-zinc-500 mb-3">{t("settings_language_desc")}</p>
-              <div className="flex gap-2 flex-wrap">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
+            <SettingsField name={t("settings_language")} desc={t("settings_language_desc")}>
+              <div className="flex gap-2 flex-wrap justify-end">
                 {LOCALE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value} onClick={() => setLocale(opt.value)}
                     className={cn(
-                      "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
+                      "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all",
                       locale === opt.value
                         ? "border-violet-500/60 bg-violet-600/15 text-violet-300 font-medium"
                         : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
@@ -541,12 +557,12 @@ function GeneralSection() {
                   >
                     <span className="text-base">{opt.flag}</span>
                     {opt.label}
-                    {locale === opt.value && <Check className="h-3.5 w-3.5 text-violet-400" />}
+                    {locale === opt.value && <Check className="h-3 w-3 text-violet-400" />}
                   </button>
                 ))}
               </div>
-            </CardRow>
-          </SettingsCard>
+            </SettingsField>
+          </div>
         </div>
 
         {/* Behavior labels */}
@@ -554,28 +570,19 @@ function GeneralSection() {
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
             <Tags className="h-3.5 w-3.5" /> {t("settings_behavior_labels")}
           </p>
-          <SettingsCard>
-            <CardRow>
-              <p className="text-xs text-zinc-500 leading-relaxed">{t("settings_behavior_desc")}</p>
-            </CardRow>
-            {slots.map(({ slot, labelKey, descKey, color }, idx) => (
-              <CardRow key={slot} last={idx === slots.length - 1}>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <p className={cn("text-xs font-medium", color)}>{t(labelKey)}</p>
-                    <p className="text-[10px] text-zinc-600 mt-0.5">{t(descKey)}</p>
-                  </div>
-                  <input
-                    className="w-36 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500 font-mono transition-colors shrink-0"
-                    value={draft[slot]}
-                    onChange={(e) => setDraft((d) => ({ ...d, [slot]: e.target.value }))}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
-                    spellCheck={false}
-                  />
-                </div>
-              </CardRow>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
+            {slots.map(({ slot, labelKey, descKey }) => (
+              <SettingsField key={slot} name={t(labelKey)} desc={t(descKey)}>
+                <input
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500 font-mono transition-colors"
+                  value={draft[slot]}
+                  onChange={(e) => setDraft((d) => ({ ...d, [slot]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+                  spellCheck={false}
+                />
+              </SettingsField>
             ))}
-          </SettingsCard>
+          </div>
           <button
             onClick={handleSave}
             className={cn(
@@ -606,30 +613,24 @@ function BoothBlock() {
     : status === "unknown" ? t("ripper_checking") : t("ripper_disconnected");
 
   return (
-    <SettingsCard>
-      <CardRow last>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-zinc-100">Booth.pm</p>
-            <p className={cn("text-xs mt-0.5", statusColor)}>{statusText}</p>
-          </div>
-          <div className="flex gap-2 items-center">
-            {status === "connected" && (
-              <>
-                <button onClick={refreshPurchases} disabled={loadingPurchases} className="p-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors disabled:opacity-40">
-                  <RefreshCw className={cn("h-3.5 w-3.5", loadingPurchases && "animate-spin")} />
-                </button>
-                <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>
-              </>
-            )}
-            {(status === "disconnected" || status === "unknown") && (
-              <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>
-            )}
-          </div>
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
+      <SettingsField name="Booth.pm" desc={statusText}>
+        <div className="flex gap-2 justify-end">
+          {status === "connected" && (
+            <>
+              <button onClick={refreshPurchases} disabled={loadingPurchases} className="p-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors disabled:opacity-40">
+                <RefreshCw className={cn("h-3.5 w-3.5", loadingPurchases && "animate-spin")} />
+              </button>
+              <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>
+            </>
+          )}
+          {(status === "disconnected" || status === "unknown") && (
+            <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>
+          )}
         </div>
-        {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2">{t("booth_connect_msg")}</p>}
-      </CardRow>
-    </SettingsCard>
+      </SettingsField>
+      {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2 pb-3">{t("booth_connect_msg")}</p>}
+    </div>
   );
 }
 
@@ -645,23 +646,17 @@ function RipperBlock() {
     unknown: t("ripper_checking"), connected: t("ripper_connected"), disconnected: t("ripper_disconnected"), expired: t("ripper_expired"),
   };
   return (
-    <SettingsCard>
-      <CardRow last>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-zinc-100">Ripper.store</p>
-            <p className={cn("text-xs mt-0.5", statusColor[status])}>{statusLabel[status]}</p>
-          </div>
-          <div className="flex gap-2">
-            {status === "connected"   && <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>}
-            {(status === "disconnected" || status === "unknown") && <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>}
-            {status === "expired"     && <button onClick={reconnect} className="px-3 py-1.5 text-xs rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 transition-colors">{t("ripper_reconnect")}</button>}
-          </div>
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
+      <SettingsField name="Ripper.store" desc={statusLabel[status]}>
+        <div className="flex gap-2 justify-end">
+          {status === "connected"   && <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>}
+          {(status === "disconnected" || status === "unknown") && <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>}
+          {status === "expired"     && <button onClick={reconnect} className="px-3 py-1.5 text-xs rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 transition-colors">{t("ripper_reconnect")}</button>}
         </div>
-        {status === "expired"      && <p className="text-xs text-amber-400/80 mt-2">{t("ripper_expired_msg")}</p>}
-        {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2">{t("ripper_connect_msg")}</p>}
-      </CardRow>
-    </SettingsCard>
+      </SettingsField>
+      {status === "expired"      && <p className="text-xs text-amber-400/80 mt-2 pb-3">{t("ripper_expired_msg")}</p>}
+      {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2 pb-3">{t("ripper_connect_msg")}</p>}
+    </div>
   );
 }
 
@@ -824,6 +819,18 @@ function UpdatesSection() {
     <>
       <SectionHeader icon={Download} title={t("settings_updates_title")} description={t("settings_updates_desc")} />
       <UpdateSettingsPanel />
+    </>
+  );
+}
+
+function LogsSection() {
+  const t = useT();
+  return (
+    <>
+      <SectionHeader icon={Terminal} title={t("settings_logs_title")} description={t("settings_logs_desc")} />
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+        <Logs embedded />
+      </div>
     </>
   );
 }
@@ -1044,6 +1051,64 @@ function DebugSection() {
               </div>
             )}
           </CardRow>
+          {/* Backup database */}
+          <CardRow>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">Backup database</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Export inventory, folders and assignments as a JSON file.
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const json = await tauriExportDatabase();
+                    const blob = new Blob([json], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "vrc-studio-backup.json";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (e) { alert(String(e)); }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white font-medium transition-colors shrink-0 border border-zinc-600"
+              >
+                <Download className="h-3.5 w-3.5" /> Export
+              </button>
+            </div>
+          </CardRow>
+
+          {/* Restore database */}
+          <CardRow last>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">Restore database</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Import a previously exported backup. This will replace current data.
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const { open } = await import("@tauri-apps/plugin-dialog");
+                    const file = await open({ filters: [{ name: "JSON", extensions: ["json"] }] });
+                    if (typeof file === "string") {
+                      const { readTextFile } = await import("@tauri-apps/plugin-fs");
+                      const content = await readTextFile(file);
+                      await tauriImportDatabase(content);
+                      useInventoryStore.getState().fetchAll();
+                      alert("Database imported successfully. Inventory refreshed.");
+                    }
+                  } catch (e) { alert(String(e)); }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white font-medium transition-colors shrink-0 border border-zinc-600"
+              >
+                <Upload className="h-3.5 w-3.5" /> Import
+              </button>
+            </div>
+          </CardRow>
         </SettingsCard>
       </div>
     </>
@@ -1052,7 +1117,7 @@ function DebugSection() {
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 
-type SettingsTab = "general" | "packages" | "integrations" | "connections" | "compression" | "updates" | "debug" | "appearance" | "storage";
+type SettingsTab = "general" | "packages" | "integrations" | "connections" | "compression" | "updates" | "debug" | "appearance" | "storage" | "logs";
 
 interface NavGroup {
   groupKey: "settings_group_app" | "settings_group_connect" | "settings_group_system";
@@ -1080,6 +1145,7 @@ const NAV_GROUPS: NavGroup[] = [
     groupKey: "settings_group_system",
     items: [
       { id: "updates", labelKey: "settings_tab_updates", icon: RefreshCw },
+      { id: "logs",  labelKey: "settings_tab_logs",  icon: FileText },
       { id: "debug",   labelKey: "settings_tab_debug",   icon: Bug },
     ],
   },
@@ -1093,7 +1159,7 @@ export default function Settings() {
 
   return (
     <div data-testid="page-settings" className="flex flex-1 min-h-0 h-full bg-zinc-950">
-      <aside className="w-52 shrink-0 border-r border-zinc-800/80 flex flex-col bg-zinc-950 pt-2 pb-6">
+      <aside className="w-48 shrink-0 border-r border-zinc-800/60 flex flex-col bg-zinc-950 pt-3 pb-6 gap-0.5">
         {NAV_GROUPS.map((group) => (
           <div key={group.groupKey}>
             <SidebarGroup label={t(group.groupKey)} />
@@ -1104,15 +1170,19 @@ export default function Settings() {
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    "relative w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-all text-left group",
-                    active ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+                    "relative w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg mx-1.5 text-sm font-medium transition-all text-left group",
+                    active
+                      ? "bg-zinc-800 text-zinc-100"
+                      : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
                   )}
                 >
-                  {active && <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-violet-500" />}
-                  <span className={cn(
-                    "flex items-center justify-center h-7 w-7 rounded-lg transition-all shrink-0",
-                    active ? "bg-zinc-800 text-zinc-200" : "text-zinc-600 group-hover:text-zinc-400"
-                  )}>
+                  {/* Remove the absolute indicator span */}
+                  <span
+                    className={cn(
+                      "flex items-center justify-center h-6 w-6 rounded-md transition-all shrink-0",
+                      active ? "text-zinc-200" : "text-zinc-600 group-hover:text-zinc-400"
+                    )}
+                  >
                     <item.icon className="h-3.5 w-3.5" />
                   </span>
                   {t(item.labelKey as any)}
@@ -1131,6 +1201,7 @@ export default function Settings() {
         {activeTab === "compression"  && <CompressionSectionWrapper />}
         {activeTab === "storage"      && <StorageSection />}
         {activeTab === "updates"      && <UpdatesSection />}
+        {activeTab === "logs" && <LogsSection />}
         {activeTab === "debug"        && <DebugSection />}
       </main>
     </div>

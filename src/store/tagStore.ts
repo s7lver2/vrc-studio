@@ -133,17 +133,6 @@ export const useTagStore = create<TagState>((set, get) => {
       set({ customTags: next });
     },
 
-    addUserTag: (id: string) => {
-      const clean = id.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-      if (!clean) return;
-      set((s) => {
-        if (s.userTags?.some((t) => t.id === clean)) return s;
-        return {
-          userTags: [...(s.userTags ?? []), { id: clean, label: clean, isSystem: false, color: "bg-zinc-400" }],
-        };
-      });
-    },
-
     removeCustomTag: (id) => set((s) => {
       const next = s.customTags.filter((t) => t.id !== id);
       saveCustomTags(next);

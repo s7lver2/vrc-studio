@@ -1,6 +1,6 @@
 // 📁 src/pages/Inventory.tsx
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   LayoutGrid, List, Upload, HardDrive, Search, X,
   Tag, User, FileText, ChevronDown, ChevronLeft,
@@ -16,6 +16,7 @@ import { SortModal } from "@/components/inventory/SortModal";
 import { InventoryOptionsMenu } from "@/components/inventory/InventoryOptionsMenu";
 import { MultiSelectToolbar } from "@/components/inventory/MultiSelectToolbar";
 import { useTagStore } from "../store/tagStore";
+import { listen } from '@tauri-apps/api/event';
 import { useT } from "../i18n";
 
 // ── Search suggestions ────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ interface Suggestion {
   icon: React.ReactNode;
   description: string;
 }
+
+
 
 // ── Active filter chips ────────────────────────────────────────────────────────
 
@@ -284,11 +287,84 @@ export default function Inventory() {
   const [showSort, setShowSort] = useState(false);
   const { sortField, sortDir } = useInventoryStore();
   const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0);
 
   const currentFolder = folders.find((f) => f.id === selectedFolderId);
+  const [preselectedImportFile, setPreselectedImportFile] = useState<string | null>(null);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    // Verificar si al menos un archivo tiene extensión válida
+    if (e.dataTransfer.items) {
+      const hasValidFile = Array.from(e.dataTransfer.items).some(
+        item => item.kind === 'file' && /\.(zip|unitypackage)$/i.test(item.type)
+      );
+      if (hasValidFile) setDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    dragCounter.current = 0;
+    // El path se obtiene del evento tauri://file-drop
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<string[]>('tauri://file-drop', (event) => {
+      const files = event.payload;
+      if (files && files.length > 0) {
+        // Tomamos el primer archivo que coincida
+        const match = files.find((f) => /\.(zip|unitypackage)$/i.test(f));
+        if (match) {
+          setPreselectedImportFile(match);
+          setShowImport(true);
+        }
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
 
   return (
-    <div className="flex h-full overflow-hidden">
+      <div
+        className="flex h-full overflow-hidden relative"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+      {/* Overlay de drop */}
+      {dragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-3 p-8 rounded-2xl border-2 border-dashed border-red-500/60 bg-zinc-900/80">
+            <Upload className="h-10 w-10 text-red-400 animate-bounce" />
+            <p className="text-sm font-semibold text-zinc-200">
+              Drop your .zip / .unitypackage here
+            </p>
+            <p className="text-xs text-zinc-500">
+              The file will be imported into your inventory
+            </p>
+          </div>
+        </div>
+      )}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-8 py-5 shrink-0">
@@ -387,8 +463,9 @@ export default function Inventory() {
 
       {showImport && (
         <ImportLocalDialog
-          onClose={() => setShowImport(false)}
-          onImported={() => setShowImport(false)}
+          onClose={() => { setShowImport(false); setPreselectedImportFile(null); }}
+          onImported={() => { setShowImport(false); setPreselectedImportFile(null); }}
+          preselectedFile={preselectedImportFile}
         />
       )}
 

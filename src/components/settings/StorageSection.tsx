@@ -10,9 +10,11 @@ import {
   HardDrive, FolderOpen, Trash2, RefreshCw,
   AlertTriangle, CheckCircle2, Loader2, ArrowRight,
   Database, Image, Package, FolderArchive, X,
+  Sparkles, FileImage, Layers, Video,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { SpaceReclaimerModal } from "./SpaceReclaimerModal";
 import { useT } from "@/i18n";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -295,6 +297,7 @@ export function StorageSection() {
   const [migrating, setMigrating] = useState(false);
   const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
   const [showMigrationResult, setShowMigrationResult] = useState(false);
+  const [showReclaimer, setShowReclaimer] = useState(false);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -537,6 +540,50 @@ export function StorageSection() {
                   Dismiss
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Free Up Space ──────────────────────────────────────────────────────── */}
+        {showReclaimer && (
+          <SpaceReclaimerModal onClose={() => { setShowReclaimer(false); loadStats(); }} />
+        )}
+
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" />
+            Space Recovery
+          </p>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+            <div className="px-5 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-zinc-100">Free Up Space</p>
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed max-w-xs">
+                    Scan Unity projects and your asset library for heavy files you don't need —
+                    PSD source art, Blender files, Unity caches, video references. You choose what to delete.
+                  </p>
+                  <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+                    {[
+                      { icon: FileImage, label: "PSD/AI",   color: "text-sky-400"     },
+                      { icon: Layers,    label: "Blender",   color: "text-orange-400"  },
+                      { icon: Package,   label: "Unity cache", color: "text-violet-400" },
+                      { icon: Video,     label: "Videos",    color: "text-pink-400"    },
+                    ].map(({ icon: Icon, label, color }) => (
+                      <span key={label} className="flex items-center gap-1 text-[10px] text-zinc-600">
+                        <Icon className={`h-3 w-3 ${color}`} /> {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowReclaimer(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 border border-violet-800/50 text-violet-300 hover:text-violet-200 text-xs font-medium transition-colors shrink-0 whitespace-nowrap"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Free Up Space
+                </button>
+              </div>
             </div>
           </div>
         </div>

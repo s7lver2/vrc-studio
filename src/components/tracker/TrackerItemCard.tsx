@@ -1,6 +1,18 @@
-import { Bell, BellOff, Trash2, ExternalLink, TrendingDown, Package } from "lucide-react";
+import { Bell, BellOff, Trash2, ExternalLink, TrendingDown, Package,
+  Clock, 
+ } from "lucide-react";
 import { useTrackerStore } from "@/store/trackerStore";
 import type { TrackerItem } from "@/lib/tauri";
+
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1)  return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 interface TrackerItemCardProps {
   item: TrackerItem;
@@ -47,12 +59,24 @@ export function TrackerItemCard({ item, eventCount, onDetail }: TrackerItemCardP
             )}
           </div>
           <div className="flex items-center gap-3 mt-2">
-            {item.last_known_price && (
-              <span className="flex items-center gap-1 text-xs text-emerald-400">
-                <TrendingDown className="w-3 h-3" />
-                {item.last_known_price}
-              </span>
-            )}
+            {item.last_known_price ? (
+            <span className="flex items-center gap-1 text-xs text-emerald-400">
+              <TrendingDown className="w-3 h-3" />
+              {item.last_known_price}
+            </span>
+          ) : (
+            <span className="text-xs text-zinc-500 italic">No data yet</span>
+          )}
+          <span className="text-xs text-zinc-600">
+            every {item.check_interval_minutes >= 60
+              ? `${item.check_interval_minutes / 60}h`
+              : `${item.check_interval_minutes}m`}
+          </span>
+          {item.last_checked_at && (
+            <span className="text-xs text-zinc-700 ml-auto truncate" title={item.last_checked_at}>
+              checked {formatRelative(item.last_checked_at)}
+            </span>
+          )}
             <span className="text-xs text-zinc-600">
               every {item.check_interval_minutes >= 60
                 ? `${item.check_interval_minutes / 60}h`

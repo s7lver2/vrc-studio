@@ -5,7 +5,7 @@ import { LogEntry } from "@/components/logs/LogEntry";
 import { LogsToolbar } from "@/components/logs/LogsToolbar";
 import { useT } from "@/i18n";
 
-export default function Logs() {
+export default function Logs({ embedded = false }: { embedded?: boolean }) {
   const t = useT();
   const entries  = useLogsStore((s) => s.entries);
   const clear    = useLogsStore((s) => s.clear);
@@ -47,7 +47,7 @@ export default function Logs() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={embedded ? "flex flex-col" : "flex flex-col h-full"}>
       {/* Header — igual que Projects */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-8 py-5">
         <div>

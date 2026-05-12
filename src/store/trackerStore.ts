@@ -11,6 +11,7 @@ import {
   tauriTrackerListEvents,
   tauriTrackerMarkEventsRead,
   tauriTrackerUnreadCount,
+  tauriTrackerRunNow,
 } from "@/lib/tauri";
 
 interface TrackerState {
@@ -19,6 +20,7 @@ interface TrackerState {
   unreadCount: number;
   loading: boolean;
   error: string | null;
+  scanning: boolean;
 
   load: () => Promise<void>;
   createItem: (payload: CreateTrackerItemPayload) => Promise<TrackerItem>;
@@ -27,6 +29,7 @@ interface TrackerState {
   loadEvents: (trackerItemId?: string) => Promise<void>;
   markRead: (ids: string[]) => Promise<void>;
   refreshUnreadCount: () => Promise<void>;
+  runNow: (id?: string) => Promise<void>;
 }
 
 export const useTrackerStore = create<TrackerState>((set, get) => ({
@@ -35,6 +38,7 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   unreadCount: 0,
   loading: false,
   error: null,
+  scanning: false,
 
   load: async () => {
     set({ loading: true, error: null });
@@ -85,5 +89,21 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   refreshUnreadCount: async () => {
     const count = await tauriTrackerUnreadCount();
     set({ unreadCount: count });
+  },
+  runNow: async (id) => {
+  set({ scanning: true });
+  try {
+    await tauriTrackerRunNow(id);
+    // Recargar items y eventos tras el scan
+    const [items, count] = await Promise.all([
+      tauriTrackerList(),
+      tauriTrackerUnreadCount(),
+    ]);
+    const events = await tauriTrackerListEvents({ trackerItemId: id });
+      set({ items, unreadCount: count, events, scanning: false });
+    } catch (e) {
+      set({ scanning: false });
+      throw e;
+    }
   },
 }));

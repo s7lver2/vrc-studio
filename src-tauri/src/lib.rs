@@ -87,6 +87,24 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
 
             let db_for_tracker = app.state::<SqlitePool>().inner().clone();
             crate::services::tracker_service::start_polling(app_handle, db_for_tracker);
+
+            // System tray — mantiene la app viva cuando se cierra la ventana
+            crate::services::tray::setup_tray(&app.handle().clone())
+                .expect("Failed to setup system tray");
+
+            // Interceptar cierre de ventana → ocultar al tray en lugar de salir
+            let app_handle_close = app.handle().clone();
+            app.get_webview_window("main")
+                .expect("main window not found")
+                .on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        if let Some(win) = app_handle_close.get_webview_window("main") {
+                            let _ = win.hide();
+                        }
+                    }
+                });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -211,6 +229,13 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::inventory::set_item_custom_images,
             commands::inventory::update_folder,
             commands::inventory::delete_inventory_folder,
-            commands::inventory::reset_all_folder_assignments
+            commands::inventory::reset_all_folder_assignments,
+            commands::inventory::export_database_data,        // si también añadiste backup
+            commands::inventory::import_database_data,        // si también añadiste backup
+            commands::inventory::check_duplicate_items,
+            commands::tracker::tracker_run_now,
+            commands::app_settings::scan_reclaimable_files,
+            commands::app_settings::delete_reclaimable_files,
+            commands::app_settings::get_app_version,
         ])
 }

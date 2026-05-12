@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { Project } from "@/lib/tauri";
 import { isUntrustedSourcesUnlocked, lockUntrustedSources } from "@/hooks/useUntrustedSources";
 
-export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "sandbox";
+export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "sandbox" | "creators";
 
 // ── Riperstore experimental flag ───────────────────────────────────────────────
 const RIPERSTORE_KEY = "app:riperstoreExperimental";

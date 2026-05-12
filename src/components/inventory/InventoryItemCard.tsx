@@ -1,16 +1,10 @@
-/**
- * InventoryItemCard — Item card with full context menu.
- * Left click  → floating context menu (Info, Move, Tags, Compress, Delete).
- * Right click drag → drag to reorganize (via custom right-click sensor in InventoryGrid).
- * No-preview → icon based on item behavior type (base/outfit/accessory/material).
- */
-
+// src/components/inventory/InventoryItemCard.tsx
 import {
   Info, FolderInput, Archive, Trash2, GripVertical,
-  FolderOpen, CheckCircle2, PackageOpen,
+  FolderOpen, PackageOpen,
   User, Shirt, Sparkles, Layers, Package, Check,
 } from "lucide-react";
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { InventoryItem } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { useTagStore } from "../../store/tagStore";
@@ -24,13 +18,12 @@ import { toAssetUrl } from "../../lib/utils";
 interface Props {
   item: InventoryItem;
   viewMode: "grid" | "list";
-  isSelected:       boolean;
+  isSelected: boolean;
   onCheckboxToggle: () => void;
-  isDragging:       boolean;
+  isDragging: boolean;
 }
 
-// ── Type icon (replaces "No preview") ────────────────────────────────────────
-
+// Type icon config (unchanged)
 type ItemBehavior = "base" | "outfit" | "accessory" | "material" | "shader" | null;
 
 const BEHAVIOR_ICON_CONFIG: Record<
@@ -44,35 +37,91 @@ const BEHAVIOR_ICON_CONFIG: Record<
   shader:    { icon: Layers,   color: "text-green-400",  bg: "bg-green-900/30",  label: "Shader" },
 };
 
-function useHoverCarousel(images: string[], delayMs = 600, intervalMs = 900) {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const delayRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cycleRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+function InfiniteCarousel({ images, compressed }: { images: string[]; compressed: boolean }) {
+  const [active, setActive] = useState(0);
+  const [prev, setPrev] = useState<number | null>(null);
+  const [direction, setDirection] = useState<"left" | "right">("left");
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [hovered, setHovered] = useState(false);
 
-  const start = useCallback(() => {
-    if (images.length < 2) return;
-    delayRef.current = setTimeout(() => {
-      let idx = 1;
-      setActiveIdx(idx);
-      cycleRef.current = setInterval(() => {
-        idx = (idx + 1) % images.length;
-        setActiveIdx(idx);
-      }, intervalMs);
-    }, delayMs);
-  }, [images.length, delayMs, intervalMs]);
+  const advance = useCallback(() => {
+    setDirection("left");
+    setActive((cur) => {
+      setPrev(cur);
+      return (cur + 1) % images.length;
+    });
+  }, [images.length]);
 
-  const stop = useCallback(() => {
-    if (delayRef.current)  clearTimeout(delayRef.current);
-    if (cycleRef.current)  clearInterval(cycleRef.current);
-    delayRef.current = null;
-    cycleRef.current = null;
-    setActiveIdx(0);
-  }, []);
+  useEffect(() => {
+    if (hovered && images.length > 1) {
+      intervalRef.current = setInterval(advance, 1400);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [hovered, images.length, advance]);
 
-  // Cleanup on unmount
-  useEffect(() => () => { stop(); }, [stop]);
+  const handleMouseLeave = useCallback(() => {
+    setHovered(false);
+    // Slide back to first image
+    setDirection("right");
+    setPrev(active);
+    setActive(0);
+  }, [active]);
 
-  return { activeIdx, start, stop };
+  if (images.length === 0) {
+    return <TypePlaceholder behavior={null} size="full" />;
+  }
+
+  return (
+    <div
+      className="relative aspect-square bg-zinc-800 overflow-hidden"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={handleMouseLeave}
+    >
+      {images.map((src, i) => {
+        const isActive = i === active;
+        const isPrev   = i === prev;
+        // Active slides in from the right (direction=left) or left (direction=right)
+        const translateActive = isActive
+          ? "translateX(0%)"
+          : isPrev
+            ? direction === "left" ? "translateX(-100%)" : "translateX(100%)"
+            : "translateX(100%)";
+
+        return (
+          <img
+            key={i}
+            src={src}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className={`absolute inset-0 w-full h-full object-cover ${compressed ? "blur-[3px]" : ""}`}
+            style={{
+              transform: translateActive,
+              transition: "transform 380ms cubic-bezier(0.4, 0, 0.2, 1)",
+              willChange: "transform",
+              // Only the active and prev images need to be visible; hide others instantly
+              visibility: isActive || isPrev ? "visible" : "hidden",
+            }}
+          />
+        );
+      })}
+      {compressed && <CompressedOverlay />}
+    </div>
+  );
+}
+
+function CompressedOverlay() {
+  const t = useT();
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/55 backdrop-blur-[2px] rounded-t-lg pointer-events-none">
+      <Archive className="h-7 w-7 text-amber-400/90" />
+      <span className="text-[9px] text-amber-300/80 mt-0.5 font-semibold uppercase tracking-wider">
+        {t("card_compressed")}
+      </span>
+    </div>
+  );
 }
 
 function TypePlaceholder({ behavior, size = "full" }: { behavior: ItemBehavior; size?: "full" | "sm" }) {
@@ -95,8 +144,7 @@ function TypePlaceholder({ behavior, size = "full" }: { behavior: ItemBehavior; 
   );
 }
 
-// ── Context menu (sin Tags) ───────────────────────────────────────────────────
-
+// Context menu (unchanged)
 type SubView = null | "move" | "delete";
 
 function ContextMenu({
@@ -133,18 +181,14 @@ function ContextMenu({
             onClick={() => { selectItem(item); onClose(); }}>
             <Info className="h-3.5 w-3.5 text-zinc-400 shrink-0" /> {t("ctx_view_details")}
           </button>
-
           <div className="my-1 border-t border-zinc-800" />
-
           <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-zinc-800"
             onClick={() => setSub("move")}>
             <FolderInput className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
             <span className="flex-1">{t("ctx_move_folder")}</span>
             <span className="text-zinc-600 text-xs">›</span>
           </button>
-
           <div className="my-1 border-t border-zinc-800" />
-
           {item.is_compressed ? (
             <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-blue-300 hover:bg-zinc-800"
               onClick={() => { onCompress(); onClose(); }}>
@@ -158,9 +202,7 @@ function ContextMenu({
               <span className="text-[9px] text-zinc-600 bg-zinc-800 rounded px-1 ml-auto">max</span>
             </button>
           )}
-
           <div className="my-1 border-t border-zinc-800" />
-
           <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-red-400 hover:bg-zinc-800"
             onClick={() => setSub("delete")}>
             <Trash2 className="h-3.5 w-3.5 shrink-0" />
@@ -169,7 +211,6 @@ function ContextMenu({
           </button>
         </>
       )}
-
       {sub === "move" && (
         <>
           <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
@@ -185,7 +226,6 @@ function ContextMenu({
           ))}
         </>
       )}
-
       {sub === "delete" && (
         <>
           <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
@@ -209,9 +249,8 @@ function ContextMenu({
   );
 }
 
-// ── Card ──────────────────────────────────────────────────────────────────────
-
-export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle, isDragging }: Props) {
+// Main card component (inner)
+const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle, isDragging }: Props) {
   const t = useT();
   const { showTagsInGrid } = useAppearanceStore();
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -222,10 +261,14 @@ export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: isSortableDragging } = useSortable({ id: item.id });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isSortableDragging || isDragging ? 0.4 : 1,
+    transition: transition ?? "transform 180ms cubic-bezier(0.25, 1, 0.5, 1)",
+    opacity: isSortableDragging || isDragging ? 0.35 : 1,
+    willChange: transform ? "transform" : undefined,
+    // Prevent layout shift jank while the ghost card repositions
+    zIndex: isSortableDragging ? 1 : undefined,
+    contain: "layout",
   };
 
   const behavior = resolveItemBehavior(item.tags);
@@ -265,36 +308,23 @@ export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle
     fetchAll();
   }, [fetchAll]);
 
-  const CompressedOverlay = () => (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/55 backdrop-blur-[2px] rounded-t-lg pointer-events-none">
-      <Archive className="h-7 w-7 text-amber-400/90" />
-      <span className="text-[9px] text-amber-300/80 mt-0.5 font-semibold uppercase tracking-wider">{t("card_compressed")}</span>
-    </div>
-  );
-
-  const coverSrc = item.custom_cover_path
-    ? toAssetUrl(item.custom_cover_path)
-    : item.thumbnail_url ?? null;
+  const coverSrc = item.custom_cover_path ? toAssetUrl(item.custom_cover_path) : item.thumbnail_url ?? null;
 
   const carouselImages: string[] = useMemo(() => {
     const imgs: string[] = [];
     if (coverSrc) imgs.push(coverSrc);
-    // Imágenes custom que el usuario añadió manualmente (paths locales → asset URL)
     for (const p of item.custom_images ?? []) {
       if (!p) continue;
       const url = p.startsWith("http") ? p : (toAssetUrl(p) ?? "");
       if (url && url !== coverSrc) imgs.push(url);
     }
-    // Imágenes de producto de Booth (URLs HTTP)
     for (const url of item.product_images) {
       if (url && url !== coverSrc) imgs.push(url);
     }
     return imgs.filter(Boolean);
   }, [coverSrc, item.custom_images, item.product_images]);
 
-  const { activeIdx, start, stop } = useHoverCarousel(carouselImages);
-  const displaySrc = carouselImages[activeIdx] ?? null;
-
+  // List mode render (add lazy loading)
   if (viewMode === "list") {
     return (
       <>
@@ -309,7 +339,13 @@ export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle
           </div>
           <div className="relative w-9 h-9 rounded bg-zinc-800 shrink-0 overflow-hidden">
             {coverSrc ? (
-              <img src={coverSrc} alt="" className={`w-full h-full object-cover ${item.is_compressed ? "blur-[2px]" : ""}`} />
+              <img
+                src={coverSrc}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className={`w-full h-full object-cover ${item.is_compressed ? "blur-[2px]" : ""}`}
+              />
             ) : (
               <TypePlaceholder behavior={behavior} size="sm" />
             )}
@@ -341,80 +377,46 @@ export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle
     );
   }
 
+  // Grid mode
   return (
     <>
       <div
         ref={setNodeRef} {...attributes} {...listeners}
         style={style}
-        className={`group relative flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-all select-none ${isDragging ? "opacity-40 scale-95" : ""}`}
+        className={`group relative flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-all select-none ${isDragging ? "opacity-40 scale-95 drag-overlay-item" : ""}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => {
-          // Precargar todas las imágenes del carousel
-          carouselImages.forEach((src) => {
-            if (src) {
-              const img = new Image();
-              img.src = src;
-            }
-          });
-          start();
-        }}
-        onMouseLeave={stop} 
       >
-        <div className="relative aspect-square bg-zinc-800 overflow-hidden">
-          {/* Capa base — siempre visible, sin animación */}
-          {carouselImages[0] ? (
-            <img
-              src={carouselImages[0]}
-              alt={item.name}
-              className={`absolute inset-0 w-full h-full object-cover ${item.is_compressed ? "blur-[3px]" : ""}`}
-            />
-          ) : (
-            <TypePlaceholder behavior={behavior} size="full" />
-          )}
+        <InfiniteCarousel images={carouselImages} compressed={item.is_compressed} />
 
-          {/* Capa de barrido — aparece al hacer hover y cambia de imagen */}
-          {carouselImages.length > 1 && activeIdx > 0 && displaySrc && (
-            <img
-              key={`${item.id}-${activeIdx}`}
-              src={displaySrc}
-              alt=""
-              className={`absolute inset-0 w-full h-full object-cover inventory-sweep ${item.is_compressed ? "blur-[3px]" : ""}`}
-            />
-          )}
-
-          {item.is_compressed && <CompressedOverlay />}
-        </div>
-
-        {/* Checkbox — visible on hover or when selected */}
         <button
           onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
-          className={`absolute top-2 left-2 z-10 rounded-md border transition-all
-            ${isSelected
+          className={`absolute top-2 left-2 z-10 rounded-md border transition-all ${
+            isSelected
               ? "opacity-100 bg-red-600 border-red-600"
               : "opacity-0 group-hover:opacity-100 bg-zinc-900/80 border-zinc-600"
-            } w-5 h-5 flex items-center justify-center`}
+          } w-5 h-5 flex items-center justify-center`}
         >
           {isSelected && <Check className="h-3 w-3 text-white" />}
         </button>
 
-        <div className="p-2">
-          <p className="text-xs font-medium text-zinc-200 truncate">
+        <div className="p-1.5 h-14 flex flex-col justify-center overflow-hidden">
+          <p className="text-[10px] font-medium text-zinc-200 truncate">
             {item.display_name ?? item.name}
           </p>
-          <p className="text-[10px] text-zinc-500 truncate">{item.author ?? "Unknown"}</p>
+          <p className="text-[9px] text-zinc-500 truncate">{item.author ?? "Unknown"}</p>
           {showTagsInGrid && item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-0.5 mt-0.5">
-              {item.tags.slice(0, 3).map((tag) => (
-                <span key={tag} className="text-[8px] px-1 py-0.5 bg-zinc-800 text-zinc-500 rounded">
+            <div className="flex flex-wrap gap-0.5 mt-0.5 max-h-4 overflow-hidden">
+              {item.tags.slice(0, 2).map((tag) => (
+                <span key={tag} className="text-[8px] px-1 py-0.5 bg-zinc-800 text-zinc-500 rounded truncate whitespace-nowrap">
                   {tag}
                 </span>
               ))}
+              {item.tags.length > 2 && <span className="text-[8px] text-zinc-600">+{item.tags.length - 2}</span>}
             </div>
           )}
         </div>
 
-        {/* Grip handle — right click drag */}
         <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           <div className="h-6 w-6 flex items-center justify-center rounded bg-zinc-900/80 border border-zinc-700 text-zinc-400">
             <GripVertical className="h-3 w-3" />
@@ -434,4 +436,20 @@ export function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle
       )}
     </>
   );
-}
+};
+
+// Memoized export
+export const InventoryItemCard = React.memo(InventoryItemCardInner, (prev, next) => {
+  return (
+    prev.item.id              === next.item.id              &&
+    prev.item.is_compressed   === next.item.is_compressed   &&
+    prev.item.display_name    === next.item.display_name    &&
+    prev.item.custom_cover_path === next.item.custom_cover_path &&
+    prev.item.thumbnail_url   === next.item.thumbnail_url   &&
+    prev.item.tags            === next.item.tags            &&
+    prev.item.folder_id       === next.item.folder_id       &&
+    prev.isSelected           === next.isSelected           &&
+    prev.viewMode             === next.viewMode             &&
+    prev.isDragging           === next.isDragging            // ← was missing
+  );
+});

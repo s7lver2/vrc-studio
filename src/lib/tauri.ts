@@ -46,7 +46,6 @@ export interface VpmPackageVersion {
   description: string | null;
   url: string;
   dependencies: Record<string, string>;
-  // Extra optional VPM fields
   changelogUrl?: string | null;
   documentationUrl?: string | null;
   licensesUrl?: string | null;
@@ -74,7 +73,6 @@ export interface CreateProjectProgress {
 }
 
 // ── Packages ───────────────────────────────────────────────────
-
 export interface CustomPackage {
   id: string;
   name: string;
@@ -97,7 +95,6 @@ export interface CreatePackagePayload {
 }
 
 // ── Inventory ──────────────────────────────────────────────────
-
 export interface InventoryItem {
   id: string;
   name: string;
@@ -110,7 +107,6 @@ export interface InventoryItem {
   size_bytes: number | null;
   tags: string[];
   is_compressed: boolean;
-  // v2
   display_name: string | null;
   custom_cover_path: string | null;
   sort_order: number | null;
@@ -118,6 +114,19 @@ export interface InventoryItem {
   custom_images: string[];
   folder_id: string | null;
 }
+
+export interface InventoryFolder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  color: string | null;
+  custom_image_path: string | null;
+}
+
+export type DeleteMode =
+  | "InventoryOnly"
+  | "InventoryAndDisk"
+  | "InventoryDiskAndProjects";
 
 // ── Commands ────────────────────────────────────────────────────
 
@@ -136,22 +145,14 @@ export const tauriListUnityInstallations = (): Promise<UnityInstallation[]> =>
 export const tauriFetchVpmIndex = (url?: string): Promise<VpmPackage[]> =>
   invoke("fetch_vpm_index", { url: url ?? null });
 
-export const tauriCreateProject = (
-  request: CreateProjectRequest
-): Promise<Project> => invoke("create_project", { request });
+export const tauriCreateProject = (request: CreateProjectRequest): Promise<Project> =>
+  invoke("create_project", { request });
 
-export const tauriOpenProjectInUnity = (
-  projectId: string,
-  projectPath: string,
-  unityPath: string
-): Promise<void> => invoke("open_project_in_unity", { projectId, projectPath, unityPath });
+export const tauriOpenProjectInUnity = (projectId: string, projectPath: string, unityPath: string): Promise<void> =>
+  invoke("open_project_in_unity", { projectId, projectPath, unityPath });
 
-export const tauriSaveProjectScreenshot = (
-  id: string,
-  screenshotPath: string,
-): Promise<Project> => invoke("save_project_screenshot", { id, screenshotPath });
-
-// ── Scan existing projects from disk ─────────────────────────────────────────
+export const tauriSaveProjectScreenshot = (id: string, screenshotPath: string): Promise<Project> =>
+  invoke("save_project_screenshot", { id, screenshotPath });
 
 export interface ScannedProject {
   path: string;
@@ -163,13 +164,10 @@ export interface ScannedProject {
 export const tauriScanForProjects = (rootDir: string): Promise<ScannedProject[]> =>
   invoke("scan_for_projects", { rootDir });
 
-export const tauriImportExistingProject = (
-  path: string,
-  name: string,
-): Promise<Project> => invoke("import_existing_project", { path, name });
+export const tauriImportExistingProject = (path: string, name: string): Promise<Project> =>
+  invoke("import_existing_project", { path, name });
 
 // ── Package commands ──────────────────────────────────────────
-
 export const tauriListPackages = (): Promise<CustomPackage[]> =>
   invoke("list_packages");
 
@@ -185,25 +183,16 @@ export const tauriDeletePackage = (id: string): Promise<void> =>
 export const tauriBuildPackage = (id: string): Promise<CustomPackage> =>
   invoke("build_package", { id });
 
-// ── Shop ───────────────────────────────────────────────────────────────────────
-
+// ── Shop ───────────────────────────────────────────────────────
 export interface ShopProductSource {
   source: "booth" | "riperstore";
   source_id: string;
   url: string;
 }
 
-/**
- * Structured download entry extracted from a Riperstore thread post.
- * `display_host` is parsed from link text (e.g. "🔗 Download (workupload.com)")
- * so the user knows the final destination without resolving the hidelinks redirect.
- */
 export interface DownloadEntry {
-  /** The raw download URL (may be a hidelinks/r/... redirect) */
   url: string;
-  /** Real hostname extracted from link text or URL — e.g. "workupload.com", "mega.nz" */
   display_host: string | null;
-  /** Password found in the immediate context of the link (e.g. "Password: ERPandUpvote") */
   password: string | null;
 }
 
@@ -215,38 +204,13 @@ export interface ShopProduct {
   price_display: string;
   url: string;
   source: "booth" | "riperstore";
-  /** Set when this product is available in multiple stores */
   extra_sources?: ShopProductSource[];
-  /**
-   * Booth item IDs found in the Riperstore thread content.
-   * Only present on products with source === "riperstore".
-   * 99.9% of Riperstore assets are also on Booth — use these IDs to
-   * cross-reference with Booth results (better thumbnails, prices, etc.).
-   */
   booth_ids?: string[];
-  /**
-   * Booth ID of the *avatar base* if the thread OP linked to boothplorer.com/avatar/XXXX.
-   * This identifies the avatar (e.g. Airi = 6082686), not a clothing asset.
-   * Only present on products with source === "riperstore".
-   */
   avatar_booth_id?: string | null;
-  /**
-   * Structured download entries with host and password, extracted from all posts.
-   * Only present on products with source === "riperstore" after a topic detail fetch.
-   */
   downloads?: DownloadEntry[];
-  /**
-   * Canonical avatar names this asset is compatible with (e.g. ["Airi", "Manuka"]).
-   * Extracted from thread title, tags, and post content.
-   * Empty array = unknown compatibility.
-   */
   supported_avatars?: string[];
 }
 
-/**
- * Result wrapper for a RipperStore search, including pagination info.
- * Matches the Rust `RiperstoreSearchResult` struct (snake_case field names).
- */
 export interface RiperstoreSearchResult {
   products: ShopProduct[];
   page_count: number;
@@ -263,17 +227,12 @@ export interface BoothProductDetail {
   price_display: string;
   url: string;
   source: "booth";
-  /** Imágenes en resolución original. Mínimo 1, normalmente 4-10. */
   images: string[];
-  /** Descripción completa del producto con saltos de línea preservados. */
   description: string;
-  /** Hasta 12 productos relacionados del mismo shop/página. */
   similar: ShopProduct[];
 }
 
-export const tauriGetBoothProductDetail = (
-  source_id: string
-): Promise<BoothProductDetail> =>
+export const tauriGetBoothProductDetail = (source_id: string): Promise<BoothProductDetail> =>
   invoke("get_booth_product_detail", { sourceId: source_id });
 
 export const tauriStartDownload = (args: {
@@ -282,13 +241,14 @@ export const tauriStartDownload = (args: {
   name: string;
   author: string;
   thumbnail_url: string;
-}): Promise<string> => invoke("start_download", {
-  source:       args.source,
-  sourceId:     args.source_id,
-  name:         args.name,
-  author:       args.author,
-  thumbnailUrl: args.thumbnail_url,
-});
+}): Promise<string> =>
+  invoke("start_download", {
+    source: args.source,
+    sourceId: args.source_id,
+    name: args.name,
+    author: args.author,
+    thumbnailUrl: args.thumbnail_url,
+  });
 
 export const tauriLinkAccount = (provider: string, token: string): Promise<void> =>
   invoke("link_account", { provider, token });
@@ -299,51 +259,26 @@ export const tauriUnlinkAccount = (provider: string): Promise<void> =>
 export const tauriGetLinkedProviders = (): Promise<string[]> =>
   invoke("get_linked_providers");
 
-// ── Inventory ─────────────────────────────────────────────────────────────────
-
-export interface InventoryFolder {
-  id: string;
-  name: string;
-  parent_id: string | null;
-  color: string | null;
-  custom_image_path: string | null;
-}
-
-
-export type DeleteMode =
-  | "InventoryOnly"
-  | "InventoryAndDisk"
-  | "InventoryDiskAndProjects";
-
+// ── Inventory commands ─────────────────────────────────────────
 export const tauriListInventory = (): Promise<InventoryItem[]> =>
   invoke("list_inventory");
 
-export const tauriDeleteInventoryItem = (
-  item_id: string,
-  mode: DeleteMode
-): Promise<void> => invoke("delete_inventory_item", { itemId: item_id, mode });
+export const tauriDeleteInventoryItem = (item_id: string, mode: DeleteMode): Promise<void> =>
+  invoke("delete_inventory_item", { itemId: item_id, mode });
 
-export const tauriCreateInventoryFolder = (
-  name: string,
-  parent_id?: string
-): Promise<string> =>
+export const tauriCreateInventoryFolder = (name: string, parent_id?: string): Promise<string> =>
   invoke("create_inventory_folder", { name, parentId: parent_id ?? null });
 
 export const tauriListInventoryFolders = (): Promise<InventoryFolder[]> =>
   invoke("list_inventory_folders");
 
-export const tauriMoveItemToFolder = (
-  item_id: string,
-  folder_id: string | null
-): Promise<void> => invoke("move_item_to_folder", { itemId: item_id, folderId: folder_id });
+export const tauriMoveItemToFolder = (item_id: string, folder_id: string | null): Promise<void> =>
+  invoke("move_item_to_folder", { itemId: item_id, folderId: folder_id });
 
-export const tauriTagInventoryItem = (
-  item_id: string,
-  tags: string[]
-): Promise<void> => invoke("tag_inventory_item", { itemId: item_id, tags });
+export const tauriTagInventoryItem = (item_id: string, tags: string[]): Promise<void> =>
+  invoke("tag_inventory_item", { itemId: item_id, tags });
 
-// ── Inventory — File system ───────────────────────────────────────────────────
-
+// ── Inventory file system ──────────────────────────────────────
 export interface FileNode {
   name: string;
   path: string;
@@ -369,10 +304,8 @@ export const tauriOpenItemLocation = (path: string): Promise<void> =>
 export const tauriReadUnitypackage = (path: string): Promise<UnityAsset[]> =>
   invoke("read_unitypackage", { path });
 
-export const tauriSetItemProductImages = (
-  item_id: string,
-  images: string[]
-): Promise<void> => invoke("set_item_product_images", { itemId: item_id, images });
+export const tauriSetItemProductImages = (item_id: string, images: string[]): Promise<void> =>
+  invoke("set_item_product_images", { itemId: item_id, images });
 
 export const tauriGetItemProductImages = (item_id: string): Promise<string[]> =>
   invoke("get_item_product_images", { itemId: item_id });
@@ -383,6 +316,7 @@ export const tauriImportLocalPackage = (args: {
   author?: string;
   thumbnail_url?: string;
   booth_id?: string;
+  overwrite?: boolean;
 }): Promise<string> =>
   invoke("import_local_package", {
     zipPath: args.zip_path,
@@ -390,8 +324,8 @@ export const tauriImportLocalPackage = (args: {
     author: args.author ?? null,
     thumbnailUrl: args.thumbnail_url ?? null,
     boothId: args.booth_id ?? null,
+    overwrite: args.overwrite ?? false,
   });
-
 
 export const tauriRipperIsAuthenticated = (): Promise<boolean> =>
   invoke("ripper_is_authenticated");
@@ -402,56 +336,23 @@ export const tauriOpenRipperAuth = (): Promise<void> =>
 export const tauriRipperLogout = (): Promise<void> =>
   invoke("ripper_logout");
 
-/**
- * Searches Ripper.store via the authenticated WebView.
- * Returns a `RiperstoreSearchResult` with products + pagination info.
- * Use `.products` for the actual list; use `.page_count` to drive "Load More".
- */
-export const tauriRipperSearch = (
-  query: string,
-  page: number
-): Promise<RiperstoreSearchResult> =>
+export const tauriRipperSearch = (query: string, page: number): Promise<RiperstoreSearchResult> =>
   invoke("ripper_search_via_webview", { query, page });
 
-/**
- * Fires-and-forgets a category browse into the Ripper WebView.
- * Result arrives via the `ripper:category-result` Tauri event (not return value).
- * Useful for browsing Cat 38 (Clothes) without going through the search endpoint.
- */
 export const tauriRipperBrowseCategory = (cid: number, page: number): Promise<void> =>
   invoke("ripper_browse_category", { cid, page });
 
-export const tauriRipperGetTopicDetail = (
-  source_id: string
-): Promise<[string, string[], string[]]> =>
+export const tauriRipperGetTopicDetail = (source_id: string): Promise<[string, string[], string[]]> =>
   invoke("ripper_get_topic_detail", { sourceId: source_id });
 
-/**
- * Un link de descarga extraído del scrape profundo, con los avatares
- * mencionados en el post donde apareció el link.
- */
 export interface DownloadLinkContext {
   url: string;
-  /** Avatares canónicos detectados en el post que contenía este link. Vacío = desconocido. */
   avatars: string[];
 }
 
-/**
- * Deep-scrape a Riperstore topic across multiple pages (1..maxPages).
- * Returns links enriched with per-post avatar context.
- * Rust command: `ripper_scrape_deep`
- */
-export const tauriRipperScrapeDeep = (
-  source_id: string,
-  max_pages: number = 5
-): Promise<DownloadLinkContext[]> =>
+export const tauriRipperScrapeDeep = (source_id: string, max_pages = 5): Promise<DownloadLinkContext[]> =>
   invoke("ripper_scrape_deep", { sourceId: source_id, maxPages: max_pages });
 
-/**
- * Descarga directamente desde una URL arbitraria (para links de Riperstore ya resueltos).
- * Solo funciona con hosts de descarga directa (workupload, pixeldrain, gofile, catbox…).
- * Registra el archivo en el inventario y emite download://progress events.
- */
 export const tauriDownloadDirectUrl = (args: {
   url: string;
   name: string;
@@ -467,16 +368,10 @@ export const tauriDownloadDirectUrl = (args: {
     sourceId: args.source_id,
   });
 
-/**
- * Resuelve un link `/hidelinks/r/<token>` de Riperstore a través del WebView
- * autenticado, evitando el reto de Cloudflare que bloquea el navegador del sistema.
- * Retorna la URL final real (workupload, mega, etc.) después de los redirects.
- */
 export const tauriRipperResolveHidelink = (url: string): Promise<string> =>
   invoke("ripper_resolve_hidelink", { url });
 
-// ── Booth.pm WebView auth ──────────────────────────────────────────────────────
-
+// ── Booth.pm ──────────────────────────────────────────────────
 export const tauriBoothIsAuthenticated = (): Promise<boolean> =>
   invoke("booth_is_authenticated");
 
@@ -492,8 +387,7 @@ export const tauriBoothFetchPurchases = (): Promise<string[]> =>
 export const tauriBoothGetOwnedIds = (): Promise<string[]> =>
   invoke("booth_get_owned_ids");
 
-// ── Compression ───────────────────────────────────────────────────────────────
-
+// ── Compression ────────────────────────────────────────────────
 export const tauriCompressItem = (item_id: string): Promise<void> =>
   invoke("compress_item", { itemId: item_id });
 
@@ -506,86 +400,49 @@ export const tauriCompressProject = (project_id: string): Promise<void> =>
 export const tauriDecompressProject = (project_id: string): Promise<void> =>
   invoke("decompress_project", { projectId: project_id });
 
-// ── VCS ───────────────────────────────────────────────────────────────────────
-
+// ── VCS ────────────────────────────────────────────────────────
 import type { GitStatus, CommitEntry, BranchInfo, CommitDiffFile, FileDiff } from "@/types/vcs";
 
 export const vcs = {
-  getStatus: (projectPath: string) =>
-    invoke<GitStatus>("get_vcs_status", { projectPath }),
-
-  commit: (projectPath: string, message: string) =>
-    invoke<string>("vcs_commit", { projectPath, message }),
-
-  getLog: (projectPath: string, limit = 50) =>
-    invoke<CommitEntry[]>("get_vcs_log", { projectPath, limit }),
-
-  listBranches: (projectPath: string) =>
-    invoke<BranchInfo[]>("list_vcs_branches", { projectPath }),
-
-  createBranch: (projectPath: string, branchName: string) =>
-    invoke<void>("create_vcs_branch", { projectPath, branchName }),
-
-  switchBranch: (projectPath: string, branchName: string) =>
-    invoke<void>("switch_vcs_branch", { projectPath, branchName }),
-
-  addRemote: (projectPath: string, remoteUrl: string) =>
-    invoke<void>("vcs_add_remote", { projectPath, remoteUrl }),
-
-  push: (projectPath: string, token: string) =>
-    invoke<void>("vcs_push", { projectPath, token }),
-
-  pull: (projectPath: string, token: string) =>
-    invoke<void>("vcs_pull", { projectPath, token }),
-
-  /** Devuelve los archivos cambiados en un commit */
-  getCommitDiff: (projectPath: string, commitSha: string) =>
-    invoke<CommitDiffFile[]>("vcs_get_commit_diff", { projectPath, commitSha }),
-
-  /** Devuelve el diff línea a línea de un archivo en un commit */
-  getFileDiff: (projectPath: string, commitSha: string, filePath: string) =>
-    invoke<FileDiff>("vcs_get_file_diff", { projectPath, commitSha, filePath }),
-
-  /** Devuelve los archivos con conflictos de merge */
-  getConflicts: (projectPath: string) =>
-    invoke<ConflictFile[]>("vcs_get_conflicts", { projectPath }),
-
-  /** Resuelve un conflicto: "ours" | "theirs" | "manual" */
-  resolveConflict: (projectPath: string, filePath: string, strategy: ConflictStrategy) =>
-    invoke<void>("vcs_resolve_conflict", { projectPath, filePath, strategy }),
+  getStatus: (projectPath: string) => invoke<GitStatus>("get_vcs_status", { projectPath }),
+  commit: (projectPath: string, message: string) => invoke<string>("vcs_commit", { projectPath, message }),
+  getLog: (projectPath: string, limit = 50) => invoke<CommitEntry[]>("get_vcs_log", { projectPath, limit }),
+  listBranches: (projectPath: string) => invoke<BranchInfo[]>("list_vcs_branches", { projectPath }),
+  createBranch: (projectPath: string, branchName: string) => invoke<void>("create_vcs_branch", { projectPath, branchName }),
+  switchBranch: (projectPath: string, branchName: string) => invoke<void>("switch_vcs_branch", { projectPath, branchName }),
+  addRemote: (projectPath: string, remoteUrl: string) => invoke<void>("vcs_add_remote", { projectPath, remoteUrl }),
+  push: (projectPath: string, token: string) => invoke<void>("vcs_push", { projectPath, token }),
+  pull: (projectPath: string, token: string) => invoke<void>("vcs_pull", { projectPath, token }),
+  getCommitDiff: (projectPath: string, commitSha: string) => invoke<CommitDiffFile[]>("vcs_get_commit_diff", { projectPath, commitSha }),
+  getFileDiff: (projectPath: string, commitSha: string, filePath: string) => invoke<FileDiff>("vcs_get_file_diff", { projectPath, commitSha, filePath }),
+  getConflicts: (projectPath: string) => invoke<ConflictFile[]>("vcs_get_conflicts", { projectPath }),
+  resolveConflict: (projectPath: string, filePath: string, strategy: ConflictStrategy) => invoke<void>("vcs_resolve_conflict", { projectPath, filePath, strategy }),
 };
 
-// ── GitHub OAuth ──────────────────────────────────────────────────────────────
- 
+export interface ConflictFile {
+  path: string;
+  ours_snippet: string;
+  theirs_snippet: string;
+}
+export type ConflictStrategy = "ours" | "theirs" | "manual";
+
+// ── GitHub OAuth ──────────────────────────────────────────────
 export interface GithubUserInfo {
   login: string;
   name: string | null;
   email: string | null;
   avatar_url: string | null;
 }
- 
+
 export const github = {
-  /** Paso 1: inicia el Device Flow. Devuelve user_code + URL para el usuario. */
-  startDeviceAuth: () =>
-    invoke<{ user_code: string; verification_uri: string; interval: number }>(
-      "github_start_device_auth"
-    ),
- 
-  /** Paso 2: polling — devuelve info del usuario cuando se complete la auth. */
+  startDeviceAuth: () => invoke<{ user_code: string; verification_uri: string; interval: number }>("github_start_device_auth"),
   pollToken: () => invoke<GithubUserInfo>("github_poll_token"),
- 
-  /** Devuelve la info del usuario autenticado, o null si no hay sesión. */
   getUser: () => invoke<GithubUserInfo | null>("github_get_user"),
- 
-  /** Devuelve el access token para usarlo en push/pull. */
   getToken: () => invoke<string>("github_get_token"),
- 
-  /** Cierra la sesión eliminando el token del keyring. */
   logout: () => invoke<void>("github_logout"),
 };
 
-// ── Project VPM package management ────────────────────────────────────────────
-
+// ── Project packages ──────────────────────────────────────────
 export interface InstalledVpmPackage {
   name: string;
   version: string;
@@ -603,21 +460,13 @@ export interface PkgProgress {
 export const tauriGetInstalledVpmPackages = (projectPath: string): Promise<InstalledVpmPackage[]> =>
   invoke("get_installed_vpm_packages", { projectPath });
 
-export const tauriInstallVpmPackageToProject = (
-  projectPath: string,
-  packageId: string,
-  version: string | null,
-  repoUrls: string[],
-): Promise<void> =>
+export const tauriInstallVpmPackageToProject = (projectPath: string, packageId: string, version: string | null, repoUrls: string[]): Promise<void> =>
   invoke("install_vpm_package_to_project", { projectPath, packageId, version, repoUrls });
 
-export const tauriRemoveVpmPackageFromProject = (
-  projectPath: string,
-  packageId: string,
-): Promise<void> =>
+export const tauriRemoveVpmPackageFromProject = (projectPath: string, packageId: string): Promise<void> =>
   invoke("remove_vpm_package_from_project", { projectPath, packageId });
-// ── Journal ───────────────────────────────────────────────────────────────────
 
+// ── Journal ───────────────────────────────────────────────────
 export interface JournalEntry {
   id: string;
   project_id: string;
@@ -627,18 +476,13 @@ export interface JournalEntry {
 }
 
 export const journal = {
-  list: (projectId: string) =>
-    invoke<JournalEntry[]>("journal_list", { projectId }),
-  create: (projectId: string, content: string) =>
-    invoke<JournalEntry>("journal_create", { projectId, content }),
-  update: (id: string, content: string) =>
-    invoke<void>("journal_update", { id, content }),
-  delete: (id: string) =>
-    invoke<void>("journal_delete", { id }),
+  list: (projectId: string) => invoke<JournalEntry[]>("journal_list", { projectId }),
+  create: (projectId: string, content: string) => invoke<JournalEntry>("journal_create", { projectId, content }),
+  update: (id: string, content: string) => invoke<void>("journal_update", { id, content }),
+  delete: (id: string) => invoke<void>("journal_delete", { id }),
 };
 
-// ── Terminal ──────────────────────────────────────────────────────────────────
-
+// ── Terminal ──────────────────────────────────────────────────
 export interface CommandOutput {
   stdout: string;
   stderr: string;
@@ -646,30 +490,18 @@ export interface CommandOutput {
 }
 
 export const terminal = {
-  run: (projectPath: string, command: string) =>
-    invoke<CommandOutput>("run_in_project", { projectPath, command }),
+  run: (projectPath: string, command: string) => invoke<CommandOutput>("run_in_project", { projectPath, command }),
 };
-// ── VCS Conflicts ─────────────────────────────────────────────────────────────
-
-export interface ConflictFile {
-  path: string;
-  ours_snippet: string;
-  theirs_snippet: string;
-}
-
-export type ConflictStrategy = "ours" | "theirs" | "manual";
 
 export const tauriGetVpmPackageFiles = (url: string): Promise<string[]> =>
-    invoke("get_vpm_package_files", { url });
+  invoke("get_vpm_package_files", { url });
 
-// ── Tracker ────────────────────────────────────────────────────────────────────
-
+// ── Tracker ───────────────────────────────────────────────────
 export type TrackerKind = "item" | "author";
 
 export interface TrackerItem {
   id: string;
   kind: TrackerKind;
-  // item fields
   booth_id: string | null;
   item_name: string | null;
   item_author: string | null;
@@ -678,11 +510,9 @@ export interface TrackerItem {
   last_known_price: string | null;
   track_price_drops: boolean;
   track_availability: boolean;
-  // author fields
   author_name: string | null;
   author_booth_shop_id: string | null;
   track_new_items: boolean;
-  // common
   check_interval_minutes: number;
   last_checked_at: string | null;
   is_active: boolean;
@@ -693,7 +523,7 @@ export interface TrackerEvent {
   id: string;
   tracker_item_id: string;
   event_type: "price_drop" | "price_change" | "back_in_stock" | "new_item";
-  payload: string; // JSON string
+  payload: string;
   detected_at: string;
   is_read: boolean;
 }
@@ -721,37 +551,14 @@ export interface UpdateTrackerItemPayload {
   is_active?: boolean;
 }
 
-export const tauriTrackerList = (): Promise<TrackerItem[]> =>
-  invoke("tracker_list");
-
-export const tauriTrackerCreate = (
-  payload: CreateTrackerItemPayload
-): Promise<TrackerItem> =>
-  invoke("tracker_create", { payload });
-
-export const tauriTrackerUpdate = (
-  id: string,
-  payload: UpdateTrackerItemPayload
-): Promise<TrackerItem> =>
-  invoke("tracker_update", { id, payload });
-
-export const tauriTrackerDelete = (id: string): Promise<void> =>
-  invoke("tracker_delete", { id });
-
-export const tauriTrackerListEvents = (args: {
-  trackerItemId?: string;
-  unreadOnly?: boolean;
-}): Promise<TrackerEvent[]> =>
-  invoke("tracker_list_events", {
-    trackerItemId: args.trackerItemId ?? null,
-    unreadOnly: args.unreadOnly ?? false,
-  });
-
-export const tauriTrackerMarkEventsRead = (ids: string[]): Promise<void> =>
-  invoke("tracker_mark_events_read", { ids });
-
-export const tauriTrackerUnreadCount = (): Promise<number> =>
-  invoke("tracker_unread_count");
+export const tauriTrackerList = (): Promise<TrackerItem[]> => invoke("tracker_list");
+export const tauriTrackerCreate = (payload: CreateTrackerItemPayload): Promise<TrackerItem> => invoke("tracker_create", { payload });
+export const tauriTrackerUpdate = (id: string, payload: UpdateTrackerItemPayload): Promise<TrackerItem> => invoke("tracker_update", { id, payload });
+export const tauriTrackerDelete = (id: string): Promise<void> => invoke("tracker_delete", { id });
+export const tauriTrackerListEvents = (args: { trackerItemId?: string; unreadOnly?: boolean }): Promise<TrackerEvent[]> =>
+  invoke("tracker_list_events", { trackerItemId: args.trackerItemId ?? null, unreadOnly: args.unreadOnly ?? false });
+export const tauriTrackerMarkEventsRead = (ids: string[]): Promise<void> => invoke("tracker_mark_events_read", { ids });
+export const tauriTrackerUnreadCount = (): Promise<number> => invoke("tracker_unread_count");
 
 export interface ShopAuthor {
   name: string;
@@ -770,28 +577,19 @@ export interface UpdateItemMetadataPayload {
   tags?: string[];
 }
 
-export const tauriUpdateItemMetadata = (
-  payload: UpdateItemMetadataPayload,
-): Promise<void> => invoke("update_item_metadata", { payload });
+export const tauriUpdateItemMetadata = (payload: UpdateItemMetadataPayload): Promise<void> =>
+  invoke("update_item_metadata", { payload });
 
-export const tauriSetItemCustomCover = (
-  item_id: string,
-  source_path: string,
-): Promise<string> => invoke("set_item_custom_cover", { itemId: item_id, sourcePath: source_path });
+export const tauriSetItemCustomCover = (item_id: string, source_path: string): Promise<string> =>
+  invoke("set_item_custom_cover", { itemId: item_id, sourcePath: source_path });
 
 export const tauriReorderItems = (item_ids: string[]): Promise<void> =>
   invoke("reorder_items", { itemIds: item_ids });
 
-export const tauriSetItemCustomImages = (
-  item_id: string,
-  source_paths: string[]
-): Promise<string[]> =>
+export const tauriSetItemCustomImages = (item_id: string, source_paths: string[]): Promise<string[]> =>
   invoke("set_item_custom_images", { itemId: item_id, sourcePaths: source_paths });
 
-export const tauriUpdateFolder = (
-  folder_id: string,
-  opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean }
-): Promise<InventoryFolder> =>
+export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean }): Promise<InventoryFolder> =>
   invoke("update_folder", {
     folderId: folder_id,
     name: opts.name ?? null,
@@ -807,3 +605,50 @@ export async function tauriDeleteInventoryFolder(folderId: string) {
 export async function tauriResetAllFolderAssignments(): Promise<void> {
   await invoke("reset_all_folder_assignments");
 }
+
+// ── Backup & Restore ──────────────────────────────────────────
+export const tauriExportDatabase = (): Promise<string> => invoke("export_database_data");
+export const tauriImportDatabase = (json: string): Promise<void> => invoke("import_database_data", { json });
+
+// ── Duplicate check ───────────────────────────────────────────
+export const tauriCheckDuplicateItems = (name: string, zipPath?: string): Promise<{ exists: boolean; existing_item_ids: string[] }> =>
+  invoke("check_duplicate_items", { name, zipPath: zipPath ?? null });
+
+export const tauriTrackerRunNow = (id?: string): Promise<void> =>
+  invoke("tracker_run_now", { id: id ?? null });
+
+export interface ReclaimableFile {
+  path:         string;
+  size_bytes:   number;
+  category:     "source_art" | "blender" | "unity_cache" | "video" | "log";
+  description:  string;
+  source_name:  string;
+  can_compress: boolean;
+  is_directory: boolean;
+}
+
+export interface ScanReclaimableOptions {
+  min_size_bytes?:      number;
+  include_unity_cache?: boolean;
+  include_source_art?:  boolean;
+  include_blender?:     boolean;
+  include_logs?:        boolean;
+  include_videos?:      boolean;
+}
+
+export interface DeleteReclaimableResult {
+  deleted:      number;
+  freed_bytes:  number;
+  errors:       string[];
+}
+
+export const tauriScanReclaimable = (
+  searchPaths: string[],
+  options?: ScanReclaimableOptions,
+): Promise<ReclaimableFile[]> =>
+  invoke("scan_reclaimable_files", { searchPaths, options: options ?? null });
+
+export const tauriDeleteReclaimable = (
+  paths: string[],
+): Promise<DeleteReclaimableResult> =>
+  invoke("delete_reclaimable_files", { paths });

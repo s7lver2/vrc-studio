@@ -2,7 +2,24 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { applyUiScale } from "@/store/appearanceStore";
+import {
+  useAppearanceStore,
+  applyUiScale,
+  applyFontSize,
+  applyAnimSpeed,
+  applyAccentColor,
+  applySidebarWidth,
+  applyBgStyle,
+} from "@/store/appearanceStore";
+
+
+const s = useAppearanceStore.getState();
+applyUiScale(s.uiScale);
+applyFontSize(s.fontSize);
+applyAnimSpeed(s.animSpeed);
+applyAccentColor(s.accentColor);
+applySidebarWidth(s.sidebarWidth);
+applyBgStyle(s.bgStyle);
 
 // Aplicar la escala guardada al arrancar
 try {

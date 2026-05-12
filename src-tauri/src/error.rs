@@ -16,6 +16,9 @@ pub enum AppError {
 
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+
+    #[error("Generic error: {0}")]
+    Generic(String),
 }
 
 impl From<sqlx::Error> for AppError {

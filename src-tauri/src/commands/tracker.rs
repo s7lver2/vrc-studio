@@ -180,3 +180,14 @@ pub async fn tracker_unread_count(
         .fetch_one(db.inner()).await?;
     Ok(row.get("cnt"))
 }
+
+#[tauri::command]
+pub async fn tracker_run_now(
+    id: Option<String>,
+    app: tauri::AppHandle,
+    db: State<'_, SqlitePool>,
+) -> Result<(), AppError> {
+    crate::services::tracker_service::run_checks_now(&app, db.inner(), id)
+        .await
+        .map_err(|e| AppError::Generic(e.to_string()))
+}

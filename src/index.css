@@ -10,10 +10,30 @@
   --muted: 220 13% 18%;
   --muted-fg: 215 16% 55%;
   --radius: 0.5rem;
+  --app-bg: #09090b;
+  --anim: 1;
+  --base-font-size: 14px;
+  --sidebar-width: 14rem;
+  --accent-h: 0;
+  --accent-s: 72%;
+  --accent-l: 51%;
+}
+
+
+html {
+  font-size: var(--base-font-size);
+  background-color: var(--app-bg);
 }
 
 * {
-  box-sizing: border-box;
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  transition-duration: calc(var(--anim, 1) * 200ms);
+  transition-timing-function: ease;
+}
+
+.drag-overlay-item {
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 @keyframes inventory-sweep {
@@ -30,6 +50,7 @@ body {
   color: hsl(var(--foreground));
   font-family: system-ui, -apple-system, sans-serif;
 }
+
 @keyframes shimmer {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
@@ -105,4 +126,33 @@ body.vrc-animations-on [data-anim="glow-active"] {
   60%       { transform: translateX(4px); }
   75%       { transform: translateX(-2px); }
   90%       { transform: translateX(2px); }
+}
+
+/* ── Global custom scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(63, 63, 70, 0.7);   /* zinc-700 translucent */
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 38, 38, 0.45); /* red-600 suave */
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(63, 63, 70, 0.7) transparent;
+}
+
+.animate-spin {
+  animation-duration: calc(var(--anim, 1) * 1s) !important;
 }
