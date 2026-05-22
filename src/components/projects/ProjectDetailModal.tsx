@@ -7,7 +7,7 @@ import {
   X, ExternalLink, FolderOpen, GitBranch,
   Monitor, Layers, Cpu, Calendar, HardDrive,
   Loader2, AlertTriangle, RefreshCw, Camera,
-  Info, FileSearch, Package, Sparkles, LayoutDashboard,
+  Info, FileSearch, Package, Sparkles,
   Archive, PackageOpen,
 } from "lucide-react";
 import {
@@ -339,7 +339,6 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
   const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
   const [opening, setOpening] = useState(false);
-  const openWorkspace = useAppStore((s) => s.openWorkspace);
   const [manualUnityPath, setManualUnityPath] = useState<string | null>(null);
   const [showManualInput, setShowManualInput] = useState(false);
 
@@ -447,14 +446,6 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
           >
             <FolderOpen className="h-3.5 w-3.5" />
             {t("project_detail_open_folder")}
-          </button>
-
-          <button
-            onClick={() => { onClose(); openWorkspace(project); }}
-            className="flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:border-red-600/50 hover:text-red-400 transition-colors"
-          >
-            <LayoutDashboard className="h-3.5 w-3.5" />
-            {t("project_detail_open_workspace")}
           </button>
 
           <div className="mt-auto pt-2 border-t border-zinc-800">

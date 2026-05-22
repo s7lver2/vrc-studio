@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Lock, ShieldAlert, X } from "lucide-react";
+import { Lock, ShieldAlert, X, Loader2 } from "lucide-react";
 import { unlockUntrustedSources } from "@/hooks/useUntrustedSources";
 
 interface DeveloperCodeModalProps {
@@ -15,15 +15,18 @@ export function DeveloperCodeModal({ onClose, onUnlocked }: DeveloperCodeModalPr
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Foco automático en el input al abrir
     setTimeout(() => inputRef.current?.focus(), 50);
   }, []);
 
-  const handleSubmit = () => {
-    const ok = unlockUntrustedSources(code);
+  const handleSubmit = async () => {
+    if (!code.trim() || loading) return;
+    setLoading(true);
+    const ok = await unlockUntrustedSources(code);
+    setLoading(false);
     if (ok) {
       onUnlocked();
       onClose();
@@ -55,10 +58,7 @@ export function DeveloperCodeModal({ onClose, onUnlocked }: DeveloperCodeModalPr
               <p className="text-[11px] text-zinc-500 mt-0.5">Enter your developer code to continue</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2 shrink-0"
-          >
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2 shrink-0">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -83,9 +83,10 @@ export function DeveloperCodeModal({ onClose, onUnlocked }: DeveloperCodeModalPr
               onChange={(e) => { setCode(e.target.value); setError(false); }}
               onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
               placeholder="Enter code…"
+              disabled={loading}
               className={cn(
                 "w-full bg-zinc-900 border rounded-xl px-4 py-3 text-sm text-zinc-200 font-mono tracking-widest",
-                "focus:outline-none transition-colors placeholder-zinc-700",
+                "focus:outline-none transition-colors placeholder-zinc-700 disabled:opacity-50",
                 error
                   ? "border-red-500/60 focus:border-red-500/80"
                   : "border-zinc-700 focus:border-zinc-500"
@@ -105,20 +106,22 @@ export function DeveloperCodeModal({ onClose, onUnlocked }: DeveloperCodeModalPr
         <div className="flex justify-end gap-2.5 border-t border-zinc-800 px-6 py-4">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            disabled={loading}
+            className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!code.trim()}
+            disabled={!code.trim() || loading}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm font-medium text-zinc-200 transition-colors disabled:opacity-40"
           >
-            <Lock className="h-3.5 w-3.5" /> Unlock
+            {loading
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying…</>
+              : <><Lock className="h-3.5 w-3.5" /> Unlock</>}
           </button>
         </div>
       </div>
-      {/* Shake keyframes — insertar en index.css si no existe ya */}
     </div>
   );
 }

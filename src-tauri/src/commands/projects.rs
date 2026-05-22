@@ -1,15 +1,25 @@
+// src-tauri/src/commands/projects.rs
+
 use crate::error::AppError;
 use crate::models::{
     CreateProjectProgress, CreateProjectRequest, Project, Shader, UnityInstallation, UnityType,
     VpmPackage,
 };
 use crate::services::{dependency_resolver, project_creator, unity_detector, vpm_client};
-use sqlx::SqlitePool;
+use rusqlite::{params, OptionalExtension};
+use crate::db::DbPool;
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
+use futures::future::join_all;
+
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextW, SetForegroundWindow, ShowWindow, SW_RESTORE};
 
 const INVALID_PATH_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-const OFFICIAL_VPM_URL: &str = "https://packages.vrchat.com/official?download";
+/// Curated index — includes official + community-vetted packages (same as alcom default).
+const OFFICIAL_VPM_URL: &str = "https://packages.vrchat.com/curated?download";
 
 pub fn validate_project_name(name: &str) -> Result<(), AppError> {
     let trimmed = name.trim();
@@ -26,75 +36,71 @@ pub fn validate_project_name(name: &str) -> Result<(), AppError> {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-fn row_to_project(
-    id: String,
-    name: String,
-    path: String,
-    unity_version: String,
-    _unity_type: String,
-    avatar_base_id: Option<String>,
-    shader: Option<String>,
-    vcs_enabled: i64,
-    last_screenshot: Option<String>,
-) -> Result<Project, AppError> {
-    let unity_type = UnityType::Standard;
-    let shader = match shader.as_deref() {
-        Some("liltoon") => Some(Shader::Liltoon),
-        Some("poiyomi") => Some(Shader::Poiyomi),
-        _ => None,
+fn row_to_project(row: &rusqlite::Row<'_>) -> Result<Project, rusqlite::Error> {
+    let id: String = row.get("id")?;
+    let name: String = row.get("name")?;
+    let path: String = row.get("path")?;
+    let unity_version: String = row.get("unity_version")?;
+    let unity_type_str: String = row.get("unity_type")?;
+    let avatar_base_id: Option<String> = row.get("avatar_base_id").ok();
+    let shader_str: Option<String> = row.get("shader").ok();
+    let vcs_enabled_i64: i64 = row.get("vcs_enabled")?;
+    let last_screenshot: Option<String> = row.get("last_screenshot").ok();
+
+    let unity_type = match unity_type_str.as_str() {
+        "standard" => UnityType::Standard,
+        _ => UnityType::Standard,
     };
-    Ok(Project { id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled: vcs_enabled != 0, last_screenshot })
+    let shader = shader_str.as_deref().and_then(|s| match s {
+        "liltoon" => Some(Shader::Liltoon),
+        "poiyomi" => Some(Shader::Poiyomi),
+        _ => None,
+    });
+
+    Ok(Project {
+        id,
+        name,
+        path,
+        unity_version,
+        unity_type,
+        avatar_base_id,
+        shader,
+        vcs_enabled: vcs_enabled_i64 != 0,
+        last_screenshot,
+    })
 }
 
-async fn fetch_project_by_id(id: &str, pool: &SqlitePool) -> Result<Project, AppError> {
-    let row = sqlx::query(
-        "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot \
-         FROM projects WHERE id = ?"
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| AppError::External(e.to_string()))?
-    .ok_or_else(|| AppError::NotFound(format!("Project {id}")))?;
-
-    use sqlx::Row;
-    row_to_project(
-        row.get("id"),
-        row.get("name"),
-        row.get("path"),
-        row.get("unity_version"),
-        row.get("unity_type"),
-        row.get("avatar_base_id"),
-        row.get("shader"),
-        row.get("vcs_enabled"),
-        row.get("last_screenshot"),
-    )
+async fn fetch_project_by_id(id: &str, pool: &DbPool) -> Result<Project, AppError> {
+    let conn = pool.get()?;
+    let project = conn
+        .query_row(
+            "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot
+             FROM projects WHERE id = ?1",
+            params![id],
+            |row| row_to_project(row),
+        )
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(format!("project {}", id)))?;
+    Ok(project)
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn list_projects(pool: State<'_, SqlitePool>) -> Result<Vec<Project>, AppError> {
-    use sqlx::Row;
-    let rows = sqlx::query(
-        "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot \
-         FROM projects ORDER BY updated_at DESC"
-    )
-    .fetch_all(&*pool)
-    .await
-    .map_err(|e| AppError::External(e.to_string()))?;
-
-    rows.into_iter()
-        .map(|r| row_to_project(
-            r.get("id"), r.get("name"), r.get("path"), r.get("unity_version"),
-            r.get("unity_type"), r.get("avatar_base_id"), r.get("shader"), r.get("vcs_enabled"),
-            r.get("last_screenshot"),
-        ))
-        .collect()
+pub async fn list_projects(pool: State<'_, DbPool>) -> Result<Vec<Project>, AppError> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot
+         FROM projects ORDER BY updated_at DESC",
+    )?;
+    let projects = stmt
+        .query_map([], |row| row_to_project(row))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(projects)
 }
 
 #[tauri::command]
-pub async fn get_project(id: String, pool: State<'_, SqlitePool>) -> Result<Project, AppError> {
+pub async fn get_project(id: String, pool: State<'_, DbPool>) -> Result<Project, AppError> {
     fetch_project_by_id(&id, &pool).await
 }
 
@@ -102,26 +108,23 @@ pub async fn get_project(id: String, pool: State<'_, SqlitePool>) -> Result<Proj
 pub async fn delete_project(
     id: String,
     also_delete_files: Option<bool>,
-    pool: State<'_, SqlitePool>,
+    pool: State<'_, DbPool>,
 ) -> Result<(), AppError> {
+    let conn = pool.get()?;
+
     // Fetch path before deletion if we need to remove files from disk
     let path: Option<String> = if also_delete_files.unwrap_or(false) {
-        sqlx::query_scalar("SELECT path FROM projects WHERE id = ?")
-            .bind(&id)
-            .fetch_optional(&*pool)
-            .await
-            .map_err(|e| AppError::External(e.to_string()))?
+        conn.query_row(
+            "SELECT path FROM projects WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()?
     } else {
         None
     };
 
-    let affected = sqlx::query("DELETE FROM projects WHERE id = ?")
-        .bind(&id)
-        .execute(&*pool)
-        .await
-        .map_err(|e| AppError::External(e.to_string()))?
-        .rows_affected();
-
+    let affected = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
     if affected == 0 {
         return Err(AppError::NotFound(format!("Project {id}")));
     }
@@ -150,16 +153,59 @@ pub async fn list_unity_installations(app: AppHandle) -> Result<Vec<UnityInstall
 }
 
 #[tauri::command]
-pub async fn fetch_vpm_index(url: Option<String>) -> Result<Vec<VpmPackage>, AppError> {
-    let target = url.as_deref().unwrap_or(OFFICIAL_VPM_URL);
-    vpm_client::fetch_vpm_repository(target).await
+pub async fn fetch_vpm_index(app: AppHandle) -> Result<Vec<VpmPackage>, AppError> {
+    use crate::commands::app_settings::load_settings;
+    use crate::services::vcc_reader::read_external_vpm_sources;
+
+    let settings = load_settings(&app);
+    let mut urls = vec![OFFICIAL_VPM_URL.to_string()];
+
+    // 1. Manually added sources from Settings
+    for src in &settings.extra_vpm_sources {
+        let trimmed = src.trim().to_string();
+        if !trimmed.is_empty() && !urls.contains(&trimmed) {
+            urls.push(trimmed);
+        }
+    }
+
+    // 2. Auto-discovered from VCC / alcom config files on disk
+    for src in read_external_vpm_sources() {
+        if !urls.contains(&src) {
+            urls.push(src);
+        }
+    }
+
+    let fetches: Vec<_> = urls.iter()
+        .map(|url| vpm_client::fetch_vpm_repository(url))
+        .collect();
+    let results = join_all(fetches).await;
+
+    let mut merged: Vec<VpmPackage> = Vec::new();
+    let mut all_failed = true;
+    for result in results {
+        match result {
+            Ok(pkgs) => {
+                all_failed = false;
+                for pkg in pkgs {
+                    if !merged.iter().any(|p| p.id == pkg.id) {
+                        merged.push(pkg);
+                    }
+                }
+            }
+            Err(e) => eprintln!("[fetch_vpm_index] repo error (non-fatal): {e}"),
+        }
+    }
+    if all_failed {
+        return Err(AppError::External("No se pudo conectar a ningún repositorio VPM".into()));
+    }
+    Ok(merged)
 }
 
 #[tauri::command]
 pub async fn create_project(
     request: CreateProjectRequest,
     app: AppHandle,
-    pool: State<'_, SqlitePool>,
+    pool: State<'_, DbPool>,
 ) -> Result<Project, AppError> {
     validate_project_name(&request.name)?;
 
@@ -196,7 +242,38 @@ pub async fn create_project(
     emit(0.2, "Resolving VPM packages...", false, None);
 
     if !request.vpm_packages.is_empty() {
-        let all_packages = vpm_client::fetch_vpm_repository(OFFICIAL_VPM_URL).await?;
+        // Fetch todos los repos configurados (oficial + extra_vpm_sources)
+        let settings = crate::commands::app_settings::load_settings(&app);
+        let mut repo_urls: Vec<String> = vec![OFFICIAL_VPM_URL.to_string()];
+        for u in &settings.extra_vpm_sources {
+            let u = u.trim().to_string();
+            if !u.is_empty() && !repo_urls.contains(&u) {
+                repo_urls.push(u);
+            }
+        }
+        eprintln!("[create_project] fetching {} repo(s): {:?}", repo_urls.len(), &repo_urls);
+        let fetches: Vec<_> = repo_urls.iter()
+            .map(|u| vpm_client::fetch_vpm_repository(u))
+            .collect();
+        let fetch_results = join_all(fetches).await;
+        let mut all_packages: Vec<crate::models::VpmPackage> = Vec::new();
+        for result in fetch_results {
+            match result {
+                Ok(pkgs) => {
+                    for pkg in pkgs {
+                        if !all_packages.iter().any(|p| p.id == pkg.id) {
+                            all_packages.push(pkg);
+                        }
+                    }
+                }
+                Err(e) => eprintln!("[create_project] repo fetch error (non-fatal): {e}"),
+            }
+        }
+        if all_packages.is_empty() {
+            return Err(AppError::External(
+                "No se pudo obtener el índice VPM de ningún repositorio".to_string()
+            ));
+        }
         let refs: Vec<&str> = request.vpm_packages.iter().map(|s| s.as_str()).collect();
         let resolved = dependency_resolver::resolve(&refs, &all_packages)?;
         let total = resolved.len();
@@ -222,21 +299,21 @@ pub async fn create_project(
     let vcs_enabled_i: i64 = if request.vcs_enabled { 1 } else { 0 };
     let path_str = project_dir.to_string_lossy().to_string();
 
-    sqlx::query(
-        "INSERT INTO projects (id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    )
-    .bind(&project_id)
-    .bind(&request.name)
-    .bind(&path_str)
-    .bind(&request.unity_version)
-    .bind(unity_type_str)
-    .bind(&request.avatar_base_id)
-    .bind(shader_str)
-    .bind(vcs_enabled_i)
-    .execute(&*pool)
-    .await
-    .map_err(|e| AppError::External(e.to_string()))?;
+    let conn = pool.get()?;
+    conn.execute(
+        "INSERT INTO projects (id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            project_id,
+            request.name,
+            path_str,
+            request.unity_version,
+            unity_type_str,
+            request.avatar_base_id,
+            shader_str,
+            vcs_enabled_i
+        ],
+    )?;
 
     emit(1.0, "Project created!", true, None);
 
@@ -249,7 +326,7 @@ pub async fn open_project_in_unity(
     project_path: String,
     unity_path: String,
     app: AppHandle,
-    pool: State<'_, SqlitePool>,
+    pool: State<'_, DbPool>,
 ) -> Result<(), AppError> {
     tokio::process::Command::new(&unity_path)
         .arg("-projectPath")
@@ -270,17 +347,72 @@ pub async fn open_project_in_unity(
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         if let Ok(png_path) = capture_screen_to_file(&data_dir, &pid) {
-            let _ = sqlx::query(
-                "UPDATE projects SET last_screenshot = ?, updated_at = datetime('now') WHERE id = ?"
-            )
-            .bind(&png_path)
-            .bind(&pid)
-            .execute(&pool_clone)
-            .await;
+            let conn = match pool_clone.get() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Failed to get DB connection for screenshot: {e}");
+                    return;
+                }
+            };
+            let _ = conn.execute(
+                "UPDATE projects SET last_screenshot = ?1, updated_at = datetime('now') WHERE id = ?2",
+                params![png_path, pid],
+            );
             let _ = app_clone.emit("project:screenshot_ready", &pid);
         }
     });
 
+    Ok(())
+}
+
+/// Brings an already-running Unity Editor window to the foreground.
+/// Identifies the window by the project path that appears in Unity's title bar.
+/// Falls back silently on platforms where this isn't supported.
+#[tauri::command]
+pub async fn focus_unity_window(project_path: String) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::{BOOL, LPARAM};
+        use std::sync::atomic::{AtomicIsize, Ordering};
+
+        static FOUND_HWND: AtomicIsize = AtomicIsize::new(0);
+        FOUND_HWND.store(0, Ordering::SeqCst);
+
+        let folder_name = std::path::Path::new(&project_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let needle = &*(lparam.0 as *const String);
+            let mut buf = [0u16; 512];
+            let len = GetWindowTextW(hwnd, &mut buf);
+            if len > 0 {
+                let title = String::from_utf16_lossy(&buf[..len as usize]);
+                if title.contains("Unity") && title.contains(needle.as_str()) {
+                    FOUND_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
+                    return BOOL(0);
+                }
+            }
+            BOOL(1)
+        }
+
+        let needle_box = Box::new(folder_name);
+        let lparam = LPARAM(Box::into_raw(needle_box) as isize);
+        unsafe {
+            let _ = EnumWindows(Some(enum_proc), lparam);
+        }
+
+        let hwnd_val = FOUND_HWND.load(Ordering::SeqCst);
+        if hwnd_val != 0 {
+            let hwnd = HWND(hwnd_val);
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+                let _ = SetForegroundWindow(hwnd);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -416,17 +548,13 @@ fn capture_screen_to_file(data_dir: &std::path::Path, project_id: &str) -> Resul
 pub async fn save_project_screenshot(
     id: String,
     screenshot_path: String,
-    pool: State<'_, SqlitePool>,
+    pool: State<'_, DbPool>,
 ) -> Result<Project, AppError> {
-    sqlx::query(
-        "UPDATE projects SET last_screenshot = ?, updated_at = datetime('now') WHERE id = ?"
-    )
-    .bind(&screenshot_path)
-    .bind(&id)
-    .execute(&*pool)
-    .await
-    .map_err(|e| AppError::External(e.to_string()))?;
-
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE projects SET last_screenshot = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![screenshot_path, id],
+    )?;
     fetch_project_by_id(&id, &pool).await
 }
 
@@ -485,7 +613,7 @@ fn read_unity_version(project_dir: &std::path::Path) -> Option<String> {
 #[tauri::command]
 pub async fn scan_for_projects(
     root_dir: String,
-    pool: State<'_, SqlitePool>,
+    pool: State<'_, DbPool>,
 ) -> Result<Vec<ScannedProject>, AppError> {
     // Run the blocking filesystem walk on a thread-pool thread
     let root = std::path::PathBuf::from(&root_dir);
@@ -498,10 +626,11 @@ pub async fn scan_for_projects(
     .map_err(|e| AppError::External(e.to_string()))?;
 
     // Load already-imported paths from DB for deduplication
-    let existing: Vec<String> = sqlx::query_scalar("SELECT path FROM projects")
-        .fetch_all(&*pool)
-        .await
-        .unwrap_or_default();
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare("SELECT path FROM projects")?;
+    let existing: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
     let existing_set: std::collections::HashSet<String> = existing.into_iter().collect();
 
     let mut result = Vec::new();
@@ -525,7 +654,7 @@ pub async fn scan_for_projects(
 pub async fn import_existing_project(
     path: String,
     name: String,
-    pool: State<'_, SqlitePool>,
+    pool: State<'_, DbPool>,
 ) -> Result<Project, AppError> {
     // Verify it's actually a Unity project
     let project_dir = std::path::PathBuf::from(&path);
@@ -535,31 +664,27 @@ pub async fn import_existing_project(
         ))?;
 
     // Check for duplicates
-    let existing: Option<String> = sqlx::query_scalar("SELECT id FROM projects WHERE path = ?")
-        .bind(&path)
-        .fetch_optional(&*pool)
-        .await
-        .map_err(|e| AppError::External(e.to_string()))?;
+    let conn = pool.get()?;
+    let existing_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM projects WHERE path = ?1",
+            params![path],
+            |row| row.get(0),
+        )
+        .optional()?;
 
-    if let Some(existing_id) = existing {
+    if let Some(existing_id) = existing_id {
         return fetch_project_by_id(&existing_id, &pool).await;
     }
 
     let project_id = uuid::Uuid::new_v4().to_string();
     let vcs_enabled: i64 = if project_dir.join(".git").exists() { 1 } else { 0 };
 
-    sqlx::query(
-        "INSERT INTO projects (id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled) \
-         VALUES (?, ?, ?, ?, 'standard', NULL, NULL, ?)"
-    )
-    .bind(&project_id)
-    .bind(&name)
-    .bind(&path)
-    .bind(&unity_version)
-    .bind(vcs_enabled)
-    .execute(&*pool)
-    .await
-    .map_err(|e| AppError::External(e.to_string()))?;
+    conn.execute(
+        "INSERT INTO projects (id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled)
+         VALUES (?1, ?2, ?3, ?4, 'standard', NULL, NULL, ?5)",
+        params![project_id, name, path, unity_version, vcs_enabled],
+    )?;
 
     fetch_project_by_id(&project_id, &pool).await
 }
@@ -712,11 +837,27 @@ pub async fn install_vpm_package_to_project(
 
     emit("Fetching package index…", 0.05, false, None);
 
-    // Determinar qué repos consultar
-    let urls: Vec<String> = match repo_urls {
-        Some(ref urls) if !urls.is_empty() => urls.clone(),
-        _ => vec![OFFICIAL_VPM_URL.to_string()],
-    };
+    // Construir la lista de repos a consultar:
+    // 1. Siempre incluir el repo oficial
+    // 2. Añadir URLs pasadas por el frontend (si las hay)
+    // 3. Añadir AppSettings.extra_vpm_sources como red de seguridad
+    let settings = crate::commands::app_settings::load_settings(&app);
+    let mut urls: Vec<String> = vec![OFFICIAL_VPM_URL.to_string()];
+    if let Some(ref frontend_urls) = repo_urls {
+        for u in frontend_urls {
+            let u = u.trim().to_string();
+            if !u.is_empty() && !urls.contains(&u) {
+                urls.push(u);
+            }
+        }
+    }
+    for u in &settings.extra_vpm_sources {
+        let u = u.trim().to_string();
+        if !u.is_empty() && !urls.contains(&u) {
+            urls.push(u);
+        }
+    }
+    eprintln!("[install] fetching {} repo(s): {:?}", urls.len(), urls);
 
     // Fetch en paralelo y merge; si alguno falla, se ignora siempre que quede al menos uno
     let fetches: Vec<_> = urls.iter()
@@ -837,4 +978,76 @@ pub async fn remove_vpm_package_from_project(
     }
 
     Ok(())
+}
+
+// ── Running Unity detection ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RunningUnityProject {
+    pub pid: u32,
+    pub project_path: String,
+}
+
+/// Extrae el valor de `-projectPath <ruta>` de la lista de argumentos de un proceso.
+pub fn extract_unity_project_path(args: &[String]) -> Option<String> {
+    let idx = args.iter().position(|a| a == "-projectPath")?;
+    args.get(idx + 1).cloned()
+}
+
+/// Lista los procesos Unity en ejecución y extrae su `-projectPath`.
+/// Normaliza las rutas a `/` para comparación uniforme con las rutas de la DB.
+#[tauri::command]
+pub async fn get_running_unity_projects() -> Result<Vec<RunningUnityProject>, AppError> {
+    use sysinfo::System;
+
+    let result = tokio::task::spawn_blocking(|| {
+        let mut sys = System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+        let mut running = Vec::new();
+        for (pid, process) in sys.processes() {
+            let name = process.name().to_string_lossy().to_lowercase();
+            // Match "unity", "unity.exe", "unity editor", etc.
+            if !name.starts_with("unity") {
+                continue;
+            }
+            let args: Vec<String> = process.cmd()
+                .iter()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect();
+            if let Some(path) = extract_unity_project_path(&args) {
+                // Normalize separators
+                let normalized = path.replace('\\', "/");
+                running.push(RunningUnityProject {
+                    pid: pid.as_u32(),
+                    project_path: normalized,
+                });
+            }
+        }
+        running
+    })
+    .await
+    .map_err(|e| AppError::External(e.to_string()))?;
+
+    Ok(result)
+}
+
+/// Dado un string de versión Unity (ej. "2022.3.22f1"), busca y devuelve
+/// el path al ejecutable Unity que coincide exactamente. Devuelve None si
+/// no se encuentra ninguna instalación con esa versión.
+#[tauri::command]
+pub async fn find_unity_for_version(version: String) -> Result<Option<String>, AppError> {
+    let installations = unity_detector::detect_unity_installations().await;
+    let path = installations
+        .into_iter()
+        .find(|i| i.version == version)
+        .map(|i| i.path);
+    Ok(path)
+}
+
+/// Fetches a single VPM repository URL and returns its packages.
+/// Used by the frontend to preview or poll one specific source.
+#[tauri::command]
+pub async fn fetch_vpm_repo(url: String) -> Result<Vec<VpmPackage>, AppError> {
+    vpm_client::fetch_vpm_repository(&url).await
 }

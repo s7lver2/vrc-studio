@@ -17,7 +17,9 @@
   --accent-h: 0;
   --accent-s: 72%;
   --accent-l: 51%;
+  --accent-color: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
 }
+
 
 
 html {
@@ -46,7 +48,7 @@ html {
 
 body {
   margin: 0;
-  background-color: hsl(var(--background));
+  background-color: var(--app-bg);      /* ← era hsl(var(--background)) */
   color: hsl(var(--foreground));
   font-family: system-ui, -apple-system, sans-serif;
 }
@@ -155,4 +157,48 @@ body.vrc-animations-on [data-anim="glow-active"] {
 
 .animate-spin {
   animation-duration: calc(var(--anim, 1) * 1s) !important;
+}
+
+/* git tab */
+@keyframes marchingAnts {
+  to { stroke-dashoffset: -20; }
+}
+.marching-ants {
+  stroke-dasharray: 10 6;
+  animation: marchingAnts 1.2s linear infinite;
+}
+.marching-ants-slow {
+  stroke-dasharray: 12 8;
+  animation: marchingAnts 2s linear infinite;
+}
+
+@keyframes toolNodeFadeOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.85); }
+}
+.tool-node-fading {
+  animation: toolNodeFadeOut 0.4s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 0.9; transform: translateY(0); }
+}
+
+/* --- Git Tree Node Editor animations --- */
+
+@keyframes simFadeIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 0.75; transform: translateY(0) scale(1); }
+}
+
+@keyframes nodeDropIn {
+  from { opacity: 0; transform: scale(0.9) translateY(-8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes sim-pulse {
+    0%, 100% { box-shadow: 0 0 8px var(--sim-color, #a78bfa44); }
+    50%       { box-shadow: 0 0 20px var(--sim-color, #a78bfa88); }
 }

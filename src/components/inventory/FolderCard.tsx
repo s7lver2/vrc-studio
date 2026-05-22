@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { FolderCustomizeModal } from "./FolderCustomizeModal";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { toAssetUrl } from "@/lib/utils";
+import { useT } from "@/i18n";
 
 interface FolderCardProps {
   folder: InventoryFolder;
@@ -20,6 +21,7 @@ interface GoUpZoneProps {
 }
 
 export function GoUpZone({ isDragging }: GoUpZoneProps) {
+  const t = useT();
   const { isOver, setNodeRef } = useDroppable({ id: "root" });
   if (!isDragging) return null;
   return (
@@ -35,12 +37,13 @@ export function GoUpZone({ isDragging }: GoUpZoneProps) {
       `}
     >
       <ChevronRight className="h-3.5 w-3.5 rotate-180" />
-      Soltar aquí para sacar de la carpeta
+        {t("folders_drop_to_root")}
     </div>
   );
 }
 
 const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, isDragging, viewMode = "grid" }: FolderCardProps) {
+  const t = useT();
   const { isOver, setNodeRef } = useDroppable({ id: `folder:${folder.id}` });
   const { removeFolder } = useInventoryStore();
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
@@ -57,7 +60,8 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
   }, [ctxMenu]);
 
   const folderColor = folder.color ?? "#f59e0b";
-  const imageSrc = toAssetUrl(folder.custom_image_path);
+  const useGridFill = folder.custom_image_fill === "grid" && !!folder.custom_image_path;
+  const imageUrl = folder.custom_image_path ? (toAssetUrl(folder.custom_image_path) ?? "") : "";
 
   // LIST mode
   if (viewMode === "list") {
@@ -81,10 +85,10 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
             }
           `}
         >
-          {imageSrc ? (
+          {folder.custom_image_path && folder.custom_image_fill !== "grid" ? (
             <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0">
               <img
-                src={imageSrc}
+                src={imageUrl || undefined}
                 alt=""
                 loading="lazy"
                 decoding="async"
@@ -102,7 +106,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
           <div className="flex-1 min-w-0">
             <p className="text-sm text-zinc-200 truncate">{folder.name}</p>
             {itemCount > 0 && (
-              <p className="text-xs text-zinc-500">{itemCount} ítems</p>
+              <p className="text-xs text-zinc-500">{t("folders_items_count", { count: itemCount })}</p>
             )}
           </div>
           <ChevronRight className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
@@ -119,7 +123,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
               onClick={() => { setShowCustomize(true); setCtxMenu(null); }}
             >
               <Palette className="h-3.5 w-3.5 text-purple-400 shrink-0" />
-              Personalizar
+                {t("folders_customize")}
             </button>
             <div className="my-1 border-t border-zinc-800" />
             <button
@@ -127,7 +131,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
               onClick={async () => { await removeFolder(folder.id); setCtxMenu(null); }}
             >
               <Trash2 className="h-3.5 w-3.5 shrink-0" />
-              Eliminar carpeta
+                {t("folders_delete")}
             </button>
           </div>
         )}
@@ -160,33 +164,47 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
               : "border-zinc-700 bg-zinc-800/60 hover:border-zinc-500 hover:bg-zinc-800"
           }
         `}
+        style={
+          useGridFill
+            ? {
+                backgroundImage: `url(${imageUrl})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }
+            : undefined
+        }
       >
-        {imageSrc ? (
-          <div className="w-14 h-14 rounded-lg overflow-hidden">
+        {/* Dark overlay when using grid fill */}
+        {useGridFill && <div className="absolute inset-0 bg-black/40 rounded-xl" />}
+
+        {/* Icon / image area – hidden when grid fill is active (background replaces it) */}
+        {!useGridFill && (
+          folder.custom_image_path && folder.custom_image_fill !== "grid" ? (
             <img
-              src={imageSrc}
+              src={imageUrl || undefined}
               alt=""
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover"
+              className="w-14 h-14 rounded-lg object-cover z-10"
             />
-          </div>
-        ) : isOver && isDragging ? (
-          <FolderOpen className="h-10 w-10" style={{ color: folderColor }} />
-        ) : (
-          <Folder className="h-10 w-10" style={{ color: folderColor }} />
+          ) : (
+            isOver && isDragging
+              ? <FolderOpen className="h-10 w-10 z-10" style={{ color: folderColor }} />
+              : <Folder className="h-10 w-10 z-10" style={{ color: folderColor }} />
+          )
         )}
 
-        <span className="text-[11px] text-zinc-300 font-medium truncate max-w-[90%] text-center px-1">
+        {/* Folder name – always visible */}
+        <span className="text-[11px] text-zinc-300 font-medium truncate max-w-[90%] text-center px-1 z-10">
           {folder.name}
         </span>
 
         {itemCount > 0 && (
-          <span className="absolute top-2 right-2 text-[9px] text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded-full">
+          <span className="absolute top-2 right-2 text-[9px] text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded-full z-10">
             {itemCount}
           </span>
         )}
-        <ChevronRight className="absolute bottom-2 right-2 h-3 w-3 text-zinc-600" />
+        <ChevronRight className="absolute bottom-2 right-2 h-3 w-3 text-zinc-600 z-10" />
       </div>
 
       {ctxMenu && (
@@ -200,7 +218,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
             onClick={() => { setShowCustomize(true); setCtxMenu(null); }}
           >
             <Palette className="h-3.5 w-3.5 text-purple-400 shrink-0" />
-            Personalizar
+            {t("folders_customize")}
           </button>
           <div className="my-1 border-t border-zinc-800" />
           <button
@@ -208,7 +226,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
             onClick={async () => { await removeFolder(folder.id); setCtxMenu(null); }}
           >
             <Trash2 className="h-3.5 w-3.5 shrink-0" />
-            Eliminar carpeta
+            {t("folders_delete")}
           </button>
         </div>
       )}
@@ -222,11 +240,12 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
 
 export const FolderCard = React.memo(FolderCardInner, (prev, next) => {
   return (
-    prev.folder.id    === next.folder.id    &&
-    prev.folder.name  === next.folder.name  &&
-    prev.folder.color === next.folder.color &&
-    prev.itemCount    === next.itemCount     &&
-    prev.isDragging   === next.isDragging   &&
-    prev.viewMode     === next.viewMode
+    prev.folder.id        === next.folder.id        &&
+    prev.folder.name      === next.folder.name      &&
+    prev.folder.color     === next.folder.color     &&
+    prev.folder.custom_image_fill === next.folder.custom_image_fill &&
+    prev.itemCount        === next.itemCount        &&
+    prev.isDragging       === next.isDragging       &&
+    prev.viewMode         === next.viewMode
   );
 });

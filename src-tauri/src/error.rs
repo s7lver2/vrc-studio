@@ -21,12 +21,18 @@ pub enum AppError {
     Generic(String),
 }
 
-impl From<sqlx::Error> for AppError {
-    fn from(e: sqlx::Error) -> Self {
+impl From<rusqlite::Error> for AppError {
+    fn from(e: rusqlite::Error) -> Self {
         match e {
-            sqlx::Error::RowNotFound => AppError::NotFound("row".to_string()),
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("row".to_string()),
             other => AppError::Database(other.to_string()),
         }
+    }
+}
+
+impl From<r2d2::Error> for AppError {
+    fn from(e: r2d2::Error) -> Self {
+        AppError::Database(e.to_string())
     }
 }
 

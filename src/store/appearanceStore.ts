@@ -41,28 +41,44 @@ export interface AppearanceState {
 
 const STORAGE_KEY = "app:appearance";
 
-function load() {
+function load(): Omit<AppearanceState, keyof {
+  setShopItemSize: any; setInventoryItemSize: any; setUiScale: any;
+  setShowTagsInGrid: any; setShowTypeIcons: any; setSidebarWidth: any;
+  setFontSize: any; setAnimSpeed: any; setAccentColor: any; setBgStyle: any;
+  setDefaultView: any;
+}> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        shopItemSize:      parsed.shopItemSize      ?? "normal",
-        inventoryItemSize: parsed.inventoryItemSize ?? "normal",
-        uiScale:           parsed.uiScale           ?? 1.0,
-        showTagsInGrid:    parsed.showTagsInGrid    ?? false,
-        showTypeIcons:     parsed.showTypeIcons     ?? true,
-        sidebarWidth: parsed.sidebarWidth ?? "normal",
-        fontSize:     parsed.fontSize     ?? "normal",
-        animSpeed:    parsed.animSpeed    ?? "normal",
-        accentColor:  parsed.accentColor  ?? "red",
-        bgStyle:      parsed.bgStyle      ?? "zinc-950",
-        defaultView:  parsed.defaultView  ?? "grid",
+        shopItemSize:      (parsed.shopItemSize ?? "normal") as ItemSize,
+        inventoryItemSize: (parsed.inventoryItemSize ?? "normal") as ItemSize,
+        uiScale:           (parsed.uiScale ?? 1.0) as UiScale,
+        showTagsInGrid:    parsed.showTagsInGrid ?? false,
+        showTypeIcons:     parsed.showTypeIcons ?? true,
+        sidebarWidth:      (parsed.sidebarWidth ?? "normal") as SidebarWidth,
+        fontSize:          (parsed.fontSize ?? "normal") as FontSize,
+        animSpeed:         (parsed.animSpeed ?? "normal") as AnimSpeed,
+        accentColor:       parsed.accentColor ?? "red",
+        bgStyle:           (parsed.bgStyle ?? "zinc-950") as BgStyle,
+        defaultView:       (parsed.defaultView ?? "grid") as DefaultView,
       };
     }
   } catch {}
-  return { shopItemSize: "normal", inventoryItemSize: "normal", uiScale: 1.0,
-           showTagsInGrid: false, showTypeIcons: true };
+  return {
+    shopItemSize: "normal" as ItemSize,
+    inventoryItemSize: "normal" as ItemSize,
+    uiScale: 1.0 as UiScale,
+    showTagsInGrid: false,
+    showTypeIcons: true,
+    sidebarWidth: "normal" as SidebarWidth,
+    fontSize: "normal" as FontSize,
+    animSpeed: "normal" as AnimSpeed,
+    accentColor: "red",
+    bgStyle: "zinc-950" as BgStyle,
+    defaultView: "grid" as DefaultView,
+  };
 }
 
 function save(state: Partial<AppearanceState>) {
@@ -114,7 +130,7 @@ export function applyFontSize(size: FontSize) {
 }
 
 const ANIM_MAP: Record<AnimSpeed, string> = {
-  off: "0.0001s", slow: "2", normal: "1", fast: "0.4",
+  off: "0", slow: "2", normal: "1", fast: "0.4",
 };
 export function applyAnimSpeed(speed: AnimSpeed) {
   document.documentElement.style.setProperty("--anim", ANIM_MAP[speed]);

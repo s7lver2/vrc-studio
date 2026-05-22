@@ -6,7 +6,7 @@ pub mod services;
 
 use std::sync::Mutex;
 use tauri::Manager;
-use sqlx::SqlitePool;
+use crate::db::DbPool;
 
 /// Estado de autenticación de Ripper.store.
 /// Guardamos el label de la WebviewWindow activa; None = no autenticado.
@@ -74,7 +74,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
 
             // Inicializar el pool sincronamente: garantiza que el state esté
             // disponible antes de que el primer command Tauri sea procesado.
-            let pool = tauri::async_runtime::block_on(db::init_pool(&app_data_dir))
+            let pool = db::init_pool(&app_data_dir)
                 .expect("DB initialization failed");
             app.manage(pool);
 
@@ -85,7 +85,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             crate::commands::app_settings::grant_assets_scope(&app.handle());
             
 
-            let db_for_tracker = app.state::<SqlitePool>().inner().clone();
+            let db_for_tracker = app.state::<DbPool>().inner().clone();
             crate::services::tracker_service::start_polling(app_handle, db_for_tracker);
 
             // System tray — mantiene la app viva cuando se cierra la ventana
@@ -117,6 +117,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::projects::get_project,
             commands::projects::delete_project,
             commands::projects::list_unity_installations,
+            commands::projects::get_running_unity_projects,
             commands::projects::fetch_vpm_index,
             commands::projects::create_project,
             commands::projects::open_project_in_unity,
@@ -237,5 +238,43 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::app_settings::scan_reclaimable_files,
             commands::app_settings::delete_reclaimable_files,
             commands::app_settings::get_app_version,
+            commands::projects::find_unity_for_version,
+            commands::inventory::launch_unity_for_project,
+            commands::inventory::check_unity_running,
+            commands::inventory::import_items_in_unity,
+            commands::inventory::open_single_item_in_unity,
+            commands::projects::focus_unity_window,
+            commands::app_settings::read_vcc_repos,
+            commands::app_settings::debug_vcc_sources,
+            commands::app_settings::read_vcc_repos,
+            commands::projects::fetch_vpm_repo,
+            commands::app_settings::check_git_installed,
+            commands::vcs::create_vcs_branch_from_commit,
+            commands::vcs::github_list_repos,
+            commands::vcs::github_create_repo,
+            commands::vcs::vcs_merge_branch,
+            commands::vcs::vcs_delete_branch,
+            commands::vcs::vcs_create_branch_with_init,
+            commands::vcs::vcs_read_gitignore,
+            commands::vcs::vcs_write_gitignore,
+            commands::vcs::vcs_merge_by_sha,
+            commands::inventory::download_to_temp,
+            commands::shop::booth_capture_session_cookie,
+            commands::inventory::reorder_folders, 
+            commands::shop::booth_download_free_item,
+            commands::cart::cart_get_items,
+            commands::cart::cart_add_item,
+            commands::cart::cart_remove_item,
+            commands::cart::cart_clear,
+            commands::cart::cart_is_in_cart,
+            commands::collections::collections_list,
+            commands::collections::collection_create,
+            commands::collections::collection_delete,
+            commands::collections::collection_rename,
+            commands::collections::collection_set_cover,
+            commands::collections::collection_add_item,
+            commands::collections::collection_remove_item,
+            commands::collections::collection_get_items,
+            commands::collections::collection_get_item_collections,
         ])
 }

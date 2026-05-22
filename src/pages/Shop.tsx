@@ -1,15 +1,21 @@
-import { Search, Lock, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { Search, Lock, AlertTriangle, ShoppingCart, Home } from "lucide-react";
+import { useState, useEffect } from "react";
 import { DownloadProgress } from "../components/shop/DownloadProgress";
 import { ProductGrid } from "../components/shop/ProductGrid";
 import { ProductModal } from "../components/shop/ProductModal";
 import { ShopFilters } from "../components/shop/ShopFilters";
 import { useShopSearch } from "../hooks/useShopSearch";
+import { ShopHome } from "../components/shop/ShopHome";
 import { useRipperStatus } from "../hooks/useRipperStatus";
+import { useInventoryStore } from "../store/inventoryStore";
+import { CollectionsView } from "../components/shop/CollectionsView";
 import { useAppStore } from "@/store/app";
-import { useT } from "../i18n/index";
+import { CollectionPickerModal } from "../components/shop/CollectionPickerModal";
+import { useT } from "../i18n";
 import { AuthorModal } from "@/components/shop/AuthorModal";
 import { useShopStore } from "@/store/shopStore";
+import { CartDrawer } from "../components/shop/CartDrawer";
+import { useCartStore } from "../store/cartStore";
 import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
 
 // ── Shop Warning Dialog ───────────────────────────────────────────────────────
@@ -70,9 +76,26 @@ export default function Shop() {
   const { query, handleQueryChange } = useShopSearch();
   const { status: ripperStatus } = useRipperStatus();
   const setActiveSection = useAppStore((s) => s.setActiveSection);
+  const { items: inventoryItems, loadItems } = useInventoryStore();
+  const { items: cartItems, open: cartOpen, setOpen: setCartOpen } = useCartStore();
+  const [collectionsOpen, setCollectionsOpen] = useState(false);
+  const { recentSearches } = useShopStore();
+  const { search, setQuery: storeSetQuery } = useShopStore();
   const [warningAccepted, setWarningAccepted] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOP_WARNING_KEY) === "true"; } catch { return false; }
   });
+
+  const handleSurpriseMe = async () => {
+    // Genera un ID de Booth aleatorio entre los rangos de items activos (~1M a ~7M)
+    const randomId = Math.floor(Math.random() * 6_000_000) + 1_000_000;
+    handleQueryChange(String(randomId));
+  };
+
+  useEffect(() => {
+    if (inventoryItems.length === 0) {
+      loadItems();
+    }
+  }, []);
 
   if (!warningAccepted) {
     return (
@@ -88,7 +111,33 @@ export default function Shop() {
 
   return (
     <div className="flex flex-col h-full gap-4 p-6 overflow-auto">
-      <h1 className="text-xl font-semibold text-zinc-100">Shop</h1>
+      {/* Header con botón de carrito y Home */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-zinc-100">Shop</h1>
+        <div className="flex items-center gap-2">
+          {/* Home button — placeholder (se implementará en Task 9) */}
+          <button
+            onClick={() => { handleQueryChange(""); }}
+            className="p-2 rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+            title="Shop Home"
+          >
+            <Home className="h-4 w-4" />
+          </button>
+          {/* Cart button */}
+          <button
+            onClick={() => setCartOpen(true)}
+            className="relative p-2 rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+            title="Shopping Cart"
+          >
+            <ShoppingCart className="h-4 w-4" />
+            {cartItems.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-red-600 text-[9px] font-bold text-white">
+                {cartItems.length > 9 ? "9+" : cartItems.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
 
       {/* Search bar */}
       <div className="relative">
@@ -157,13 +206,32 @@ export default function Shop() {
       )}
 
       {/* Results */}
-      <ProductGrid />
+      {/* Si no hay query, mostrar ShopHome */}
+      {!query.trim() ? (
+        <ShopHome
+          onSurpriseMe={handleSurpriseMe}
+          onOpenCollections={() => setCollectionsOpen(true)}
+          recentSearches={recentSearches}
+          onSearchSuggestion={(q) => {
+            handleQueryChange(q);
+          }}
+        />
+      ) : (
+        <ProductGrid />
+      )}
 
       {/* Floating download toasts */}
       <DownloadProgress />
 
-      {/* Product detail modal — rendered at root of page so it sits above everything */}
+      {/* Product detail modal */}
       <ProductModal />
+
+      {/* Shopping cart drawer */}
+      <CartDrawer />
+
+      {collectionsOpen && <CollectionsView onClose={() => setCollectionsOpen(false)} />}
+
+      <CollectionPickerModal />
     </div>
   );
 }

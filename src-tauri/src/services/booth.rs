@@ -14,12 +14,108 @@ pub struct BoothProduct {
 
 // ── URL ────────────────────────────────────────────────────────────────────────
 
-/// Booth devuelve HTML server-side en /en/search/QUERY — no existe ningún endpoint .json.
+/// URL del endpoint HTML (usado como fallback y por booth_search_authenticated).
 pub fn build_search_url(query: &str, page: u32) -> String {
     let encoded = urlencoding::encode(query);
     format!(
         "https://booth.pm/en/search/{}?page={}&sort=new_arrival",
         encoded, page
+    )
+}
+
+/// URL del endpoint JSON oficial de Booth (usado como primera opción en `search`).
+/// Booth renderiza los resultados con JavaScript en el cliente, por lo que el HTML SSR
+/// solo contiene 1 item inicial. El endpoint JSON devuelve todos los resultados sin JS.
+fn build_json_search_url(query: &str, page: u32) -> String {
+    let encoded = urlencoding::encode(query);
+    format!(
+        "https://booth.pm/en/browse.json?q={}&page={}&sort=new_arrival",
+        encoded, page
+    )
+}
+
+// ── JSON API structs ──────────────────────────────────────────────
+
+/// Deserializa un campo que puede ser u64 o null (Booth a veces envía null en price).
+fn deserialize_null_as_zero<'de, D>(d: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<u64>::deserialize(d)?.unwrap_or(0))
+}
+
+#[derive(Deserialize)]
+struct BoothJsonImage {
+    original: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BoothJsonShop {
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BoothJsonItem {
+    id: u64,
+    /// Puede ser null en algunos items — se filtra después.
+    #[serde(default)]
+    name: Option<String>,
+    /// Booth a veces devuelve null en lugar de 0 para items gratis.
+    #[serde(default, deserialize_with = "deserialize_null_as_zero")]
+    price: u64,
+    shop: Option<BoothJsonShop>,
+    #[serde(default)]
+    images: Vec<BoothJsonImage>,
+}
+
+#[derive(Deserialize)]
+struct BoothJsonResponse {
+    #[serde(default)]
+    items: Vec<BoothJsonItem>,
+}
+
+/// Parsea la respuesta JSON de browse.json.
+/// Devuelve Some(vec) siempre que el JSON sea válido (incluso Some([]) si la
+/// lista está vacía), para que el caller no caiga al fallback HTML SSR por error.
+fn parse_json_results(json: &str) -> Option<Vec<BoothProduct>> {
+    let resp: BoothJsonResponse = serde_json::from_str(json).ok()?;
+    // Some aunque esté vacío: indica que el JSON fue correcto, no hacer fallback al SSR.
+    Some(
+        resp.items
+            .into_iter()
+            .filter(|item| {
+                item.name
+                    .as_deref()
+                    .map(|n| !n.trim().is_empty())
+                    .unwrap_or(false)
+            })
+            .map(|item| {
+                let name = item.name.unwrap(); // safe: filtrado arriba
+                let price_display = if item.price == 0 {
+                    "Free".to_string()
+                } else {
+                    format!("¥{}", item.price)
+                };
+                let author = item
+                    .shop
+                    .and_then(|s| s.name)
+                    .unwrap_or_default();
+                let thumbnail_url = item
+                    .images
+                    .into_iter()
+                    .find_map(|img| img.original)
+                    .unwrap_or_default();
+                BoothProduct {
+                    source_id: item.id.to_string(),
+                    name: name.trim().to_string(),
+                    author,
+                    thumbnail_url,
+                    price_display,
+                    url: format!("https://booth.pm/en/items/{}", item.id),
+                    source: "booth".to_string(),
+                }
+            })
+            .collect(),
     )
 }
 
@@ -38,7 +134,9 @@ pub fn parse_search_results(html: &str) -> Vec<BoothProduct> {
     let document = Html::parse_document(html);
 
     // <li data-product-id="..."> — un selector por atributo es suficiente
-    let card_sel = Selector::parse("li[data-product-id]").unwrap();
+    // Booth usa distintos elementos contenedor según la página (li, div, etc.).
+    // El selector genérico [data-product-id] cubre todos los casos.
+    let card_sel = Selector::parse("[data-product-id]").unwrap();
     // Primera imagen del carrusel (siempre visible, sin clase !hidden)
     let thumb_sel = Selector::parse("a.js-thumbnail-image[data-original]").unwrap();
 
@@ -93,9 +191,37 @@ pub async fn search(
     query: &str,
     page: u32,
 ) -> Result<Vec<BoothProduct>, String> {
-    let url = build_search_url(query, page);
+    // Intento 1 — JSON API (/en/browse.json).
+    // Booth renderiza los resultados con JS en el cliente, por lo que el scraping HTML
+    // solo obtiene 1 item del SSR. El endpoint JSON devuelve el conjunto completo.
+    // parse_json_results ahora devuelve Some(vec![]) cuando el JSON es válido pero vacío,
+    // con lo que sólo caemos al fallback HTML si hubo un error de red o de parseo real.
+    let json_url = build_json_search_url(query, page);
+    if let Ok(resp) = client
+        .get(&json_url)
+        .header("Accept", "application/json")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .header("Referer", "https://booth.pm/")
+        .send()
+        .await
+    {
+        if resp.status().is_success() {
+            if let Ok(body) = resp.text().await {
+                // Some(_) → JSON OK (puede ser lista vacía), retornamos sin ir al SSR.
+                // None    → JSON malformado, caemos al fallback HTML.
+                if let Some(products) = parse_json_results(&body) {
+                    return Ok(products);
+                }
+            }
+        }
+    }
+
+    // Intento 2 — fallback HTML (SSR).
+    // Solo llegamos aqui si browse.json fallo a nivel de red o devolvio JSON malformado.
+    // El HTML SSR de Booth solo hidrata 1 item, por lo que este fallback es de ultimo recurso.
+    let html_url = build_search_url(query, page);
     let html = client
-        .get(&url)
+        .get(&html_url)
         .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
         .header("Accept-Language", "en-US,en;q=0.9")
         .header("Referer", "https://booth.pm/")
@@ -106,12 +232,7 @@ pub async fn search(
         .await
         .map_err(|e| format!("Booth body read error: {}", e))?;
 
-    let results = parse_search_results(&html);
-    if results.is_empty() {
-        // Si el HTML vino pero no hay cards, puede ser un captcha o página vacía — no es error
-        return Ok(vec![]);
-    }
-    Ok(results)
+    Ok(parse_search_results(&html))
 }
 
 // ── Product detail ─────────────────────────────────────────────────────────────
@@ -188,7 +309,9 @@ pub fn parse_product_detail(html: &str, source_id: &str) -> BoothProductDetail {
 
     // ── Nombre, autor, precio — desde el <li data-product-id> del propio item ──
     // La detail page también incluye el li card del producto actual.
-    let card_sel = Selector::parse("li[data-product-id]").unwrap();
+    // Booth usa distintos elementos contenedor según la página (li, div, etc.).
+    // El selector genérico [data-product-id] cubre todos los casos.
+    let card_sel = Selector::parse("[data-product-id]").unwrap();
     let own_card = document
         .select(&card_sel)
         .find(|li| li.value().attr("data-product-id") == Some(source_id));
@@ -310,6 +433,155 @@ pub async fn get_download_url(client: &reqwest::Client, source_id: &str) -> Resu
         .text().await.map_err(|e| e.to_string())?;
     parse_download_url(&html)
         .ok_or_else(|| "Download URL not found (not purchased or not logged in)".to_string())
+}
+
+/// Obtiene la URL final de descarga de un item GRATUITO de Booth sin necesidad de
+/// autenticación. Pasos:
+///   1. GET https://booth.pm/en/items/{id}  → extrae /downloadables/XXXX
+///   2. GET https://booth.pm/downloadables/XXXX con redirect:follow → URL CDN final
+///
+/// Para items con age restriction "all": reintenta con ?age_confirmation=1.
+/// Devuelve Err si el item no es gratuito o si requiere autenticación.
+pub async fn fetch_free_download_url(source_id: &str) -> Result<String, String> {
+    // Cliente sin cookies — los items free son de descarga pública
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let item_url = format!("https://booth.pm/en/items/{}", source_id);
+
+    // Paso 1 — obtener HTML de la página del item.
+    // Guardamos la respuesta completa para poder inspeccionar la URL final
+    // tras los redirects (reqwest los sigue automáticamente).
+    let item_response = client
+        .get(&item_url)
+        .header("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .header("Referer", "https://booth.pm/")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Booth item page: {}", e))?;
+
+    // Detectar redirect a login comprobando la URL FINAL, no el contenido HTML.
+    // El HTML de CUALQUIER página de Booth incluye "sign_in" en la nav (botón de cabecera),
+    // lo que causaba un falso positivo. La URL final es la señal fiable.
+    let final_url = item_response.url().to_string();
+    if final_url.contains("accounts.booth.pm") {
+        return Err(
+            "This item requires Booth authentication. Please connect your Booth account first."
+                .to_string(),
+        );
+    }
+
+    let html = item_response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read Booth item page: {}", e))?;
+
+    // Detectar age gate y reintentar con ?age_confirmation=1
+    let html = if html.contains("age_confirmation") || html.contains("この商品は年齢確認") {
+        let age_url = format!("{}?age_confirmation=1", item_url);
+        client
+            .get(&age_url)
+            .header("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+            .header("Referer", "https://booth.pm/")
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch age-confirmed page: {}", e))?
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read age-confirmed page: {}", e))?
+    } else {
+        html
+    };
+
+    // Paso 2 — extraer el enlace /downloadables/XXXX
+    let downloadables_url = parse_download_url(&html).ok_or_else(|| {
+        if html.contains("Add to cart") || html.contains("購入する") {
+            "This item is not free to download. Please purchase it on Booth first.".to_string()
+        } else {
+            "No download link found. The item may require authentication or Booth changed its layout.".to_string()
+        }
+    })?;
+
+    // Construir URL absoluta si el href es relativo
+    let downloadables_url = if downloadables_url.starts_with('/') {
+        format!("https://booth.pm{}", downloadables_url)
+    } else {
+        downloadables_url
+    };
+
+    // Paso 3 — seguir el redirect de /downloadables/XXXX → URL CDN final
+    // reqwest sigue redirects automáticamente; la URL final está en response.url().
+    // IMPORTANTE: Booth puede redirigir a accounts.booth.pm/users/sign_in con HTTP 200
+    // (la página de login se carga correctamente), lo que causaba que se descargara
+    // el HTML de login guardándose como un archivo llamado "sign_in".
+    // Hay que verificar la URL final ANTES de asumir que es la URL del CDN.
+    let response = client
+        .get(&downloadables_url)
+        .header("Referer", &item_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to follow downloadables redirect: {}", e))?;
+
+    // Comprobar URL final ANTES del status: un redirect a login termina en 200 (no 401/403)
+    let cdn_url = response.url().to_string();
+    if cdn_url.contains("accounts.booth.pm") || cdn_url.contains("/sign_in") {
+        return Err(
+            "This free item requires Booth authentication to download. Please connect your Booth account."
+                .to_string(),
+        );
+    }
+
+    if !response.status().is_success() {
+        let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(
+                "This free item requires authentication to download. Please connect your Booth account."
+                    .to_string(),
+            );
+        }
+        return Err(format!(
+            "Booth returned HTTP {} when resolving download URL",
+            status
+        ));
+    }
+
+    Ok(cdn_url)
+}
+
+#[cfg(test)]
+mod free_download_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_download_url_finds_relative_href() {
+        let html = r#"<html><body>
+            <a href="/downloadables/12345678" class="download-btn">Free Download</a>
+        </body></html>"#;
+        let result = parse_download_url(html);
+        assert_eq!(result, Some("/downloadables/12345678".to_string()));
+    }
+
+    #[test]
+    fn test_parse_download_url_finds_absolute_href() {
+        let html = r#"<html><body>
+            <a href="https://booth.pm/downloadables/12345678">Download</a>
+        </body></html>"#;
+        let result = parse_download_url(html);
+        assert_eq!(result, Some("https://booth.pm/downloadables/12345678".to_string()));
+    }
+
+    #[test]
+    fn test_parse_download_url_returns_none_when_no_link() {
+        let html = r#"<html><body>
+            <a href="/en/items/12345678">Add to cart</a>
+        </body></html>"#;
+        let result = parse_download_url(html);
+        assert!(result.is_none());
+    }
 }
 
 // ── Supported avatars from item page ──────────────────────────────────────────
@@ -510,4 +782,99 @@ Line 2</p>
         assert_eq!(to_original_size(orig),  orig); // ya es original, no cambia
     }
 
+    #[test]
+    fn test_parse_free_download_url_with_downloadables_link() {
+        let html = r#"<html><body>
+          <a href="/en/items/12345/downloadables/67890">Download</a>
+        </body></html>"#;
+        let result = parse_free_download_url(html);
+        assert_eq!(result, Some("https://booth.pm/en/items/12345/downloadables/67890".to_string()));
+    }
+
+    #[test]
+    fn test_parse_free_download_url_absolute_url() {
+        let html = r#"<html><body>
+          <a href="https://booth.pm/en/items/12345/downloadables/67890">Free Download</a>
+        </body></html>"#;
+        let result = parse_free_download_url(html);
+        assert_eq!(result, Some("https://booth.pm/en/items/12345/downloadables/67890".to_string()));
+    }
+
+    #[test]
+    fn test_parse_free_download_url_no_link() {
+        let html = r#"<html><body>
+          <a href="/en/items/12345">View item</a>
+        </body></html>"#;
+        let result = parse_free_download_url(html);
+        assert_eq!(result, None);
+    }
+
+}
+
+/// Parsea la URL de descarga de un item **gratuito** de Booth desde el HTML de su página.
+/// A diferencia de `parse_download_url`, prueba múltiples selectores para cubrir
+/// los distintos layouts que usa Booth para los botones de descarga free.
+///
+/// Retorna `Some(url)` si se encuentra un enlace de descarga, `None` si el item
+/// no es descargable directamente (requiere compra o login).
+pub fn parse_free_download_url(html: &str) -> Option<String> {
+    let document = Html::parse_document(html);
+
+    // Selector 1: enlace directo a downloadables (mismo que items de pago ya comprados)
+    // Aparece en items free cuando el botón "Download" está en la página sin auth.
+    let sel1 = Selector::parse("a[href*='/downloadables/']").unwrap();
+    if let Some(el) = document.select(&sel1).next() {
+        if let Some(href) = el.value().attr("href") {
+            let url = if href.starts_with("http") {
+                href.to_string()
+            } else {
+                format!("https://booth.pm{}", href)
+            };
+            return Some(url);
+        }
+    }
+
+    // Selector 2: botón con data-product-id (algunos items gratuitos usan este patrón)
+    let sel2 = Selector::parse("a[data-product-id][href]").unwrap();
+    if let Some(el) = document.select(&sel2).next() {
+        if let Some(href) = el.value().attr("href") {
+            if href.contains("download") || href.contains("downloadables") {
+                let url = if href.starts_with("http") {
+                    href.to_string()
+                } else {
+                    format!("https://booth.pm{}", href)
+                };
+                return Some(url);
+            }
+        }
+    }
+
+    None
+}
+
+/// Obtiene la URL de descarga de un item **gratuito** de Booth haciendo
+/// un HTTP GET público (sin cookies de autenticación) a la página del producto.
+///
+/// Retorna `Err` si el item no tiene botón de descarga público
+/// (porque no es gratuito o la página cambió de estructura).
+pub async fn get_free_download_url(
+    client: &reqwest::Client,
+    source_id: &str,
+) -> Result<String, String> {
+    let url = format!("https://booth.pm/en/items/{}", source_id);
+    let html = client
+        .get(&url)
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .send()
+        .await
+        .map_err(|e| format!("Booth request failed: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("Booth body read error: {}", e))?;
+
+    parse_free_download_url(&html)
+        .ok_or_else(|| {
+            "No se encontró enlace de descarga directa. \
+             El item puede no ser gratuito o requerir login.".to_string()
+        })
 }

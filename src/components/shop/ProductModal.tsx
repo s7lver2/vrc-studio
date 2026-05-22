@@ -14,7 +14,7 @@ import {
   ShopProduct, BoothProductDetail, DownloadLinkContext,
   tauriStartDownload, tauriGetBoothProductDetail, tauriRipperGetTopicDetail,
   tauriRipperScrapeDeep, tauriRipperSearch, tauriRipperIsAuthenticated,
-  tauriRipperResolveHidelink, tauriDownloadDirectUrl,
+  tauriRipperResolveHidelink, tauriDownloadDirectUrl, tauriBoothDownloadFreeItem,
 } from "../../lib/tauri";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useT } from "@/i18n";
@@ -980,7 +980,10 @@ async function searchRiperstoreWithFallbacks(
 
 interface PanelProps {
   p: ShopProduct; detail: BoothProductDetail | null; loading: boolean;
-  isPurchased: boolean; isInInventory: boolean;
+  isPurchased: boolean;
+  isFreeBoothItem: boolean;
+  isInInventory: boolean;
+  onFreeDownload: () => void;
   riperstoreExperimental: boolean;
   ripperDescription: string;
   ripperLinks: DownloadLinkContext[];
@@ -989,7 +992,7 @@ interface PanelProps {
   dlPercentage: number; dlStatus: string | null;
 }
 
-function PurchasePanel({ p, detail, loading, isPurchased, isInInventory, riperstoreExperimental, ripperDescription, ripperLinks, onDownload, onOpenUrl, onGoToInventory, downloading, downloadDone, downloadError, dlPercentage, dlStatus }: PanelProps) {
+function PurchasePanel({ p, detail, loading, isPurchased, isFreeBoothItem, isInInventory, riperstoreExperimental, ripperDescription, ripperLinks, onDownload, onFreeDownload, onOpenUrl, onGoToInventory, downloading, downloadDone, downloadError, dlPercentage, dlStatus }: PanelProps) {
   const t = useT();
   const isBooth = p.source === "booth";
   const name    = detail?.name   || p.name;
@@ -1013,7 +1016,6 @@ function PurchasePanel({ p, detail, loading, isPurchased, isInInventory, riperst
     : null;
 
   // Callback: receives links + the riperstore thread info (from ScrapeButton or DeepIndexButton)
-  // This fixes the "hilo shows booth URL" bug — threadUrl is always the riperstore thread URL.
   const handleScrapeResult = (links: DownloadLinkContext[], threadName: string, threadUrl: string) => {
     setSheet({ links, threadName, threadUrl });
   };
@@ -1135,18 +1137,60 @@ function PurchasePanel({ p, detail, loading, isPurchased, isInInventory, riperst
                   {t("shop_card_view_in_inventory")}
                 </button>
               ) : (
-                <button
-                  onClick={isPurchased ? onDownload : () => onOpenUrl(p.url)}
-                  disabled={downloading}
-                  className={["flex items-center justify-center gap-2 w-full py-3 rounded-lg text-sm font-bold transition-all text-white",
-                    downloading ? "opacity-60 cursor-not-allowed bg-red-600" : "bg-red-600 hover:bg-red-500 active:scale-[0.98]"].join(" ")}>
-                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : isPurchased ? <Download className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
-                  {downloadDone ? t("shop_download_done") : isPurchased ? t("shop_card_download") : "Add to cart"}
-                  {!isPurchased && !downloading && <ExternalLink className="h-3.5 w-3.5 opacity-60" />}
-                </button>
+                /* 🔽 STEP 8: button replaced with free / paid conditional */
+                isFreeBoothItem ? (
+                  <button
+                    onClick={downloadDone ? undefined : onFreeDownload}
+                    disabled={downloading}
+                    className={[
+                      "flex items-center justify-center gap-2 w-full py-3 rounded-lg text-sm font-bold transition-all text-white",
+                      downloadDone
+                        ? "bg-emerald-600 cursor-default"
+                        : downloading
+                        ? "opacity-60 cursor-not-allowed bg-emerald-700"
+                        : "bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98]",
+                    ].join(" ")}
+                  >
+                    {downloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : downloadDone ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    {downloadDone ? t("shop_download_done") : t("shop_card_download")}
+                  </button>
+                ) : (
+                  <button
+                    onClick={isPurchased ? onDownload : () => onOpenUrl(p.url)}
+                    disabled={downloading}
+                    className={[
+                      "flex items-center justify-center gap-2 w-full py-3 rounded-lg text-sm font-bold transition-all text-white",
+                      downloading
+                        ? "opacity-60 cursor-not-allowed bg-red-600"
+                        : "bg-red-600 hover:bg-red-500 active:scale-[0.98]",
+                    ].join(" ")}
+                  >
+                    {downloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isPurchased ? (
+                      <Download className="h-4 w-4" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4" />
+                    )}
+                    {downloadDone
+                      ? t("shop_download_done")
+                      : isPurchased
+                      ? t("shop_card_download")
+                      : "Add to cart"}
+                    {!isPurchased && !downloading && (
+                      <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                    )}
+                  </button>
+                )
               )}
 
-              {/* Riperstore integration (experimental gate) */ }
+              {/* Riperstore integration (experimental gate) */}
               {riperstoreExperimental && (
                 <>
                   {ripperExtra && ripperProduct ? (
@@ -1211,8 +1255,11 @@ function PurchasePanel({ p, detail, loading, isPurchased, isInInventory, riperst
         </div>
       </div>
 
+      {/* 🔽 STEP 9: updated footer text */}
       <p className="text-[10px] text-zinc-600 leading-relaxed text-center px-2">
-        {isBooth && !isPurchased
+        {isBooth && isFreeBoothItem
+          ? "This item is free. It will be downloaded directly from Booth and added to your Inventory."
+          : isBooth && !isPurchased
           ? t("shop_modal_footer_booth_purchase")
           : isBooth
           ? t("shop_modal_footer_booth_redownload")
@@ -1239,6 +1286,7 @@ export function ProductModal() {
   const [downloadDone, setDownloadDone]           = useState(false);
   const [showTracker, setShowTracker] = useState(false);
   const [downloadError, setDownloadError]         = useState<string | null>(null);
+  
 
   const leftRef     = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -1255,6 +1303,10 @@ export function ProductModal() {
   const isPurchased = p ? (p.source === "booth" && boothOwnedIds.has(p.source_id)) : false;
   const isInInventory = p
     ? inventoryItems.some(i => i.source === p.source && i.source_id === p.source_id)
+    : false;
+  
+  const isFreeBoothItem = p
+    ? p.source === "booth" && (p.price_display === "Free" || p.price_display === "¥0")
     : false;
 
   const dl = p ? (downloads[p.source_id] ?? null) : null;
@@ -1338,6 +1390,22 @@ export function ProductModal() {
       await tauriStartDownload({
         source: p.source, source_id: p.source_id,
         name: p.name, author: p.author, thumbnail_url: p.thumbnail_url,
+      });
+      setDownloadDone(true);
+    } catch (err) { setDownloadError(String(err)); }
+    finally { setDownloading(false); }
+  };
+
+  /** Descarga un item gratuito de Booth directamente, sin requerir cuenta. */
+  const handleFreeDownload = async () => {
+    if (!p) return;
+    setDownloadError(null); setDownloading(true);
+    try {
+      await tauriBoothDownloadFreeItem({
+        source_id: p.source_id,
+        name: p.name,
+        author: p.author,
+        thumbnail_url: p.thumbnail_url,
       });
       setDownloadDone(true);
     } catch (err) { setDownloadError(String(err)); }
@@ -1457,11 +1525,14 @@ export function ProductModal() {
             <div className="p-8">
               <PurchasePanel
                 p={p} detail={detail} loading={loadingDetail}
-                isPurchased={isPurchased} isInInventory={isInInventory}
+                isPurchased={isPurchased} 
+                isInInventory={isInInventory}
+                isFreeBoothItem={isFreeBoothItem}
                 riperstoreExperimental={riperstoreExperimental}
                 ripperDescription={description}
                 ripperLinks={ripperLinks}
-                onDownload={handleDownload} onOpenUrl={handleOpenUrl}
+                onDownload={handleDownload}
+                onFreeDownload={handleFreeDownload} onOpenUrl={handleOpenUrl}
                 onGoToInventory={() => { selectProduct(null); setActiveSection("inventory"); }}
                 downloading={downloading} downloadDone={downloadDone} downloadError={downloadError}
                 dlPercentage={dlPercentage} dlStatus={dlStatus}

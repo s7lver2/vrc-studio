@@ -2,8 +2,10 @@
 import { MoreHorizontal, Tag, Shapes, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useAppearanceStore } from "@/store/appearanceStore";
+import { useT } from "@/i18n";
 
 export function InventoryOptionsMenu() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { showTagsInGrid, setShowTagsInGrid, showTypeIcons, setShowTypeIcons } = useAppearanceStore();
@@ -27,7 +29,7 @@ export function InventoryOptionsMenu() {
             ? "bg-zinc-700 border-zinc-600 text-zinc-200"
             : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
           }`}
-        title="Opciones de visualización"
+        title={t("inventory_options_title")}
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
@@ -37,18 +39,18 @@ export function InventoryOptionsMenu() {
                         bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl
                         animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
           <div className="px-3 py-2 border-b border-zinc-800">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Mostrar en el grid</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("inventory_options_show_in_grid")}</p>
           </div>
           <div className="p-1.5 flex flex-col gap-0.5">
             <ToggleRow
               icon={<Tag className="h-3.5 w-3.5" />}
-              label="Etiquetas en las tarjetas"
+              label={t("inventory_options_show_tags")}
               value={showTagsInGrid}
               onChange={setShowTagsInGrid}
             />
             <ToggleRow
               icon={<Shapes className="h-3.5 w-3.5" />}
-              label="Icono de tipo de item"
+              label={t("inventory_options_show_type_icons")}
               value={showTypeIcons}
               onChange={setShowTypeIcons}
             />

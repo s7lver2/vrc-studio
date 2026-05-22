@@ -8,22 +8,38 @@ const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 // ── GitHub API response types ─────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-struct DeviceCodeResponse {
+struct DeviceCodeOk {
     device_code: String,
     user_code: String,
     verification_uri: String,
     interval: u64,
     #[allow(dead_code)]
-    expires_in: u64,
+    expires_in: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
-struct TokenResponse {
+struct GithubApiError {
+    error: String,
+    #[allow(dead_code)]
+    error_description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum DeviceCodeResponse {
+    Ok(DeviceCodeOk),
+    Err(GithubApiError),
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenOk {
     access_token: Option<String>,
     error: Option<String>,
     #[allow(dead_code)]
     token_type: Option<String>,
 }
+
+type TokenResponse = TokenOk;
 
 #[derive(Debug, Deserialize)]
 struct GithubUser {
@@ -35,16 +51,13 @@ struct GithubUser {
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-/// Datos que el usuario necesita ver para completar la autenticación.
 #[derive(Debug, Serialize, Clone)]
 pub struct DevicePrompt {
     pub user_code: String,
     pub verification_uri: String,
-    /// Intervalo de polling recomendado por GitHub (segundos).
     pub interval: u64,
 }
 
-/// Información del usuario de GitHub autenticado.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GithubUserInfo {
     pub login: String,
@@ -55,36 +68,44 @@ pub struct GithubUserInfo {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Paso 1: solicitar device code a GitHub.
-/// Devuelve `(device_code_opaco, DevicePrompt)`.
-/// El `device_code` se pasa luego a `poll_for_token`; nunca se muestra al usuario.
 pub async fn request_device_code() -> Result<(String, DevicePrompt), String> {
     let client = Client::builder()
         .user_agent("vrc-studio/1.0")
         .build()
         .map_err(|e| e.to_string())?;
 
-    let res: DeviceCodeResponse = client
+    let raw = client
         .post(DEVICE_CODE_URL)
         .header("Accept", "application/json")
         .form(&[("client_id", GITHUB_CLIENT_ID), ("scope", "repo,user:email")])
         .send()
         .await
         .map_err(|e| format!("network error: {e}"))?
-        .json()
+        .text()
         .await
-        .map_err(|e| format!("parse error: {e}"))?;
+        .map_err(|e| format!("read error: {e}"))?;
+
+    let parsed: DeviceCodeResponse = serde_json::from_str(&raw)
+        .map_err(|e| format!("parse error (body: {raw:?}): {e}"))?;
+
+    let ok = match parsed {
+        DeviceCodeResponse::Ok(o) => o,
+        DeviceCodeResponse::Err(err) => {
+            return Err(format!(
+                "GitHub error: {} — check your GITHUB_OAUTH_CLIENT_ID",
+                err.error
+            ));
+        }
+    };
 
     let prompt = DevicePrompt {
-        user_code: res.user_code,
-        verification_uri: res.verification_uri,
-        interval: res.interval.max(5),
+        user_code: ok.user_code,
+        verification_uri: ok.verification_uri,
+        interval: ok.interval.max(5),
     };
-    Ok((res.device_code, prompt))
+    Ok((ok.device_code, prompt))
 }
 
-/// Paso 2: hacer polling hasta que el usuario autorice o expire el device code.
-/// Devuelve el access token de GitHub en caso de éxito.
 pub async fn poll_for_token(device_code: String, interval_secs: u64) -> Result<String, String> {
     let client = Client::builder()
         .user_agent("vrc-studio/1.0")
@@ -103,7 +124,7 @@ pub async fn poll_for_token(device_code: String, interval_secs: u64) -> Result<S
 
         let res: TokenResponse = client
             .post(TOKEN_URL)
-            .header("Accept", "application/json")
+            .header("Accept", "application/json")   // ← AÑADIR ESTA LÍNEA
             .form(&[
                 ("client_id", GITHUB_CLIENT_ID),
                 ("device_code", &device_code),
@@ -134,7 +155,6 @@ pub async fn poll_for_token(device_code: String, interval_secs: u64) -> Result<S
     }
 }
 
-/// Obtiene la información básica del usuario GitHub autenticado con `token`.
 pub async fn get_user_info(token: &str) -> Result<GithubUserInfo, String> {
     let client = Client::builder()
         .user_agent("vrc-studio/1.0")

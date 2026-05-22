@@ -5,6 +5,8 @@ import { InventoryFolder } from "@/lib/tauri";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { toAssetUrl } from "@/lib/utils";
+import { createPortal } from "react-dom";
+import { useT } from "@/i18n";
 
 const PRESET_COLORS = [
   "#f59e0b", "#ef4444", "#a855f7", "#3b82f6",
@@ -17,11 +19,13 @@ interface Props {
 }
 
 export function FolderCustomizeModal({ folder, onClose }: Props) {
+  const t = useT();
   const { updateFolder } = useInventoryStore();
   const [name, setName]         = useState(folder.name);
   const [color, setColor]       = useState(folder.color ?? "#f59e0b");
   const [imagePath, setImagePath] = useState<string | null>(null);
   const [imageCleared, setImageCleared] = useState(false);
+  const [imageFill, setImageFill] = useState<"icon" | "grid">(folder.custom_image_fill ?? "icon");
   const [imagePreview, setImagePreview] = useState<string | null>(
     toAssetUrl(folder.custom_image_path)
   );
@@ -45,6 +49,7 @@ export function FolderCustomizeModal({ folder, onClose }: Props) {
         color: color !== folder.color ? color : undefined,
         image_source_path: imagePath ?? undefined,
         clear_image: imageCleared ? true : undefined,
+        image_fill: imageFill !== (folder.custom_image_fill ?? "icon") ? imageFill : undefined,
       });
       onClose();
     } finally {
@@ -56,10 +61,11 @@ export function FolderCustomizeModal({ folder, onClose }: Props) {
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onPointerDown={(e) => e.stopPropagation()}  // ← prevent dnd-kit from capturing
     >
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-80 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-          <span className="text-sm font-semibold text-zinc-200">Personalizar carpeta</span>
+          <span className="text-sm font-semibold text-zinc-200">{t("folders_customize_title")}</span>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300"><X className="h-4 w-4" /></button>
         </div>
 
@@ -79,7 +85,7 @@ export function FolderCustomizeModal({ folder, onClose }: Props) {
 
           {/* Nombre */}
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Nombre</label>
+            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("folders_name_label")}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -90,7 +96,7 @@ export function FolderCustomizeModal({ folder, onClose }: Props) {
 
           {/* Color */}
           <div className="flex flex-col gap-2">
-            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Color del icono</label>
+            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("folders_color_label")}</label>
             <div className="flex flex-wrap gap-2">
               {PRESET_COLORS.map((c) => (
                 <button
@@ -107,36 +113,60 @@ export function FolderCustomizeModal({ folder, onClose }: Props) {
 
           {/* Imagen custom */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Imagen custom (opcional)</label>
+            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">{t("folders_custom_image_label")}</label>
             <button
               onClick={handlePickImage}
               className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-zinc-700
                          hover:border-zinc-500 text-zinc-500 hover:text-zinc-300 text-xs transition-colors"
             >
               <Upload className="h-3.5 w-3.5" />
-              {imagePreview ? "Cambiar imagen" : "Subir imagen"}
+              {imagePreview ? t("folders_change_image") : t("folders_upload_image")}
             </button>
             {imagePreview && (
-              <button
-                onClick={() => { setImagePreview(null); setImagePath(null); setImageCleared(true); }}
-                className="text-[10px] text-red-400 hover:text-red-300 text-left"
-              >
-                Eliminar imagen custom
-              </button>
+              <>
+                <button
+                  onClick={() => { setImagePreview(null); setImagePath(null); setImageCleared(true); }}
+                  className="text-[10px] text-red-400 hover:text-red-300 text-left"
+                >
+                  {t("folders_remove_image")}
+                </button>
+
+                {/* Toggle UI para image_fill - solo visible cuando hay imagen */}
+                <div className="flex flex-col gap-1.5 mt-1">
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
+                    {t("folders_image_fill_label")}
+                  </label>
+                  <div className="flex rounded-lg overflow-hidden border border-zinc-700 text-[11px]">
+                    {(["icon", "grid"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setImageFill(mode)}
+                        className={`flex-1 px-3 py-1.5 transition-colors ${
+                          imageFill === mode
+                            ? "bg-zinc-200 text-zinc-900 font-semibold"
+                            : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                        }`}
+                      >
+                        {mode === "icon" ? t("folders_image_fill_icon") : t("folders_image_fill_grid")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
 
         <div className="flex gap-2 px-4 pb-4">
           <button onClick={onClose} className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700">
-            Cancelar
+            {t("folders_cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="flex-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium disabled:opacity-50"
           >
-            {saving ? "Guardando…" : "Guardar"}
+            {saving ? t("folders_saving") : t("folders_save")}
           </button>
         </div>
       </div>

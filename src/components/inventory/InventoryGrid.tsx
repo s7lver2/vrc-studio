@@ -5,10 +5,10 @@ import {
   DragOverlay,
 } from "@dnd-kit/core";
 import {
-  SortableContext, rectSortingStrategy, arrayMove,
+  SortableContext, rectSortingStrategy, arrayMove, useSortable
 } from "@dnd-kit/sortable";
 import { Loader2 } from "lucide-react";
-import { useState, useCallback, useMemo, useRef, useEffect  } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { InventoryItemCard } from "./InventoryItemCard";
@@ -17,6 +17,9 @@ import { useAppearanceStore } from "@/store/appearanceStore";
 import { GridContextMenu } from "./GridContextMenu";
 import { useT } from "@/i18n";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { preloadImage } from "@/lib/imageCache";
+import { CSS } from "@dnd-kit/utilities";
+import type { InventoryFolder } from "@/lib/tauri";
 
 interface InventoryGridProps {
   tagFilter?: string | null;
@@ -37,6 +40,41 @@ const folderFirstCollision = (args: any) => {
   return [...folderCollisions, ...otherCollisions];
 };
 
+function SortableFolderCard({
+  folder,
+  itemCount,
+  onOpen,
+  isDragging: parentIsDragging,
+}: {
+  folder: InventoryFolder;
+  itemCount: number;
+  onOpen: (id: string) => void;
+  isDragging: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `folder-${folder.id}`,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    cursor: "grab",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <FolderCard
+        folder={folder}
+        itemCount={itemCount}
+        onOpen={onOpen}
+        isDragging={parentIsDragging || isDragging}
+        viewMode="grid"
+      />
+    </div>
+  );
+}
+
 export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProps = {}) {
   const t = useT();
   const inventoryItemSize = useAppearanceStore((s) => s.inventoryItemSize);
@@ -50,9 +88,12 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
     folders,
     moveItem,
     reorderItems,
+    reorderFolders,
     sortField,
     selectedItemIds,
     toggleSelectItem,
+    rangeSelectItems,
+    lastSelectedId,
     viewMode,
   } = useInventoryStore();
 
@@ -63,8 +104,9 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
   const rafRef = useRef<number>(0);
   const pendingOrderRef = useRef<string[] | null>(null);
 
+
   const pointerSensor = useSensor(PointerSensor, {
-    activationConstraint: { delay: 120, tolerance: 8 },
+    activationConstraint: { distance: 8 },
   });
   const sensors = useSensors(pointerSensor);
 
@@ -107,19 +149,29 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
     return localOrder ?? visibleItems.map((i) => i.id);
   }, [localOrder, visibleItems]);
 
-  // Card size mapping for auto-fill grid
-  const minCardWidths: Record<"compact" | "normal" | "large", number> = {
-    compact: 140,
-    normal: 180,
-    large: 220,
+  // Card size mapping for auto-fill grid — fixed range so cards don't stretch
+  const cardSizes: Record<"compact" | "normal" | "large", { min: number; max: number }> = {
+    compact: { min: 140, max: 164 },
+    normal: { min: 180, max: 210 },
+    large: { min: 220, max: 256 },
   };
-  const minCardWidth = minCardWidths[inventoryItemSize];
+  const { min: minCardWidth, max: maxCardWidth } = cardSizes[inventoryItemSize];
 
   const sortedItems = useMemo(() => {
     return displayOrder
       .map((id) => visibleItems.find((i) => i.id === id))
       .filter(Boolean) as typeof visibleItems;
   }, [displayOrder, visibleItems]);
+
+  // Pre-load thumbnails for visible items so they render instantly
+  useEffect(() => {
+    for (const item of visibleItems.slice(0, 80)) {
+      if (item.thumbnail_url) preloadImage(item.thumbnail_url);
+      for (const url of item.product_images ?? []) {
+        if (url) preloadImage(url);
+      }
+    }
+  }, [visibleItems]);
 
   // DnD handlers
   const handleDragStart = useCallback(
@@ -198,7 +250,6 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
   );
 
   const handleGridContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement) !== e.currentTarget) return;
     e.preventDefault();
     setGridMenu({ x: e.clientX, y: e.clientY });
   };
@@ -238,68 +289,84 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
   // LIST MODE (virtualized, no DnD for items)
   if (viewMode === "list") {
     return (
-      <div
-        className="relative flex-1 flex flex-col gap-3"
-        onContextMenu={handleGridContextMenu}
-        ref={gridContainerRef}
-        style={{ willChange: 'transform', contain: 'layout style' }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={folderFirstCollision}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
       >
-        {selectedFolderId && <GoUpZone isDragging={false} />}
-        {currentFolders.map((folder) => (
-          <FolderCard
-            key={folder.id}
-            folder={folder}
-            itemCount={folderItemCounts(folder.id)}
-            onOpen={(id) => selectFolder(id)}
-            isDragging={false}
-            viewMode="list"
-          />
-        ))}
         <div
-          ref={parentRef}
-          className="overflow-y-auto flex-1"
-          style={{ contain: "strict" }}
+          className="relative flex-1 flex flex-col gap-3"
+          onContextMenu={handleGridContextMenu}
+          ref={gridContainerRef}
+          style={{ willChange: 'transform', contain: 'layout style' }}
         >
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              position: "relative",
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const item = visibleItems[virtualRow.index];
+          {selectedFolderId && <GoUpZone isDragging={activeId !== null} />}
+          {currentFolders.map((folder) => (
+            <FolderCard
+              key={folder.id}
+              folder={folder}
+              itemCount={folderItemCounts(folder.id)}
+              onOpen={(id) => selectFolder(id)}
+              isDragging={false}
+              viewMode="list"
+            />
+          ))}
+          <SortableContext items={visibleItems.map((i) => i.id)} strategy={rectSortingStrategy}>
+            <div
+              ref={parentRef}
+              className="overflow-y-auto flex-1"
+              style={{ contain: "strict" }}
+            >
+              <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = visibleItems[virtualRow.index];
+                  return (
+                    <div
+                      key={item.id}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{ position: "absolute", top: virtualRow.start, left: 0, right: 0 }}
+                    >
+                      <InventoryItemCard
+                        item={item}
+                        viewMode="list"
+                        isSelected={selectedItemIds.has(item.id)}
+                        onCheckboxToggle={() => toggleSelectItem(item.id)}
+                        onShiftClick={(id) => rangeSelectItems(lastSelectedId ?? id, id, visibleItems.map(i => i.id))}
+                        isMultiSelectActive={selectedItemIds.size > 0}
+                        isDragging={activeId === item.id}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </SortableContext>
+
+          {/* DragOverlay for list mode */}
+          <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
+            {activeId && (() => {
+              const item = visibleItems.find((i) => i.id === activeId);
+              if (!item) return null;
               return (
-                <div
-                  key={item.id}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: virtualRow.start,
-                    left: 0,
-                    right: 0,
-                  }}
-                >
+                <div className="pointer-events-none opacity-90 shadow-xl">
                   <InventoryItemCard
                     item={item}
                     viewMode="list"
-                    isSelected={selectedItemIds.has(item.id)}
-                    onCheckboxToggle={() => toggleSelectItem(item.id)}
+                    isSelected={false}
+                    onCheckboxToggle={() => { }}
                     isDragging={false}
                   />
                 </div>
               );
-            })}
-          </div>
+            })()}
+          </DragOverlay>
+
+          {gridMenu && <GridContextMenu x={gridMenu.x} y={gridMenu.y} onClose={() => setGridMenu(null)} />}
         </div>
-        {gridMenu && (
-          <GridContextMenu
-            x={gridMenu.x}
-            y={gridMenu.y}
-            onClose={() => setGridMenu(null)}
-          />
-        )}
-      </div>
+      </DndContext>
     );
   }
 
@@ -317,26 +384,30 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
     >
       <div
         ref={gridContainerRef}
-        className="relative flex-1 flex flex-col gap-3"
+        className="relative flex-1 flex flex-col gap-3 overflow-y-auto min-h-0"
         onContextMenu={handleGridContextMenu}
       >
         <div
           className="grid gap-3"
           style={{
-            gridTemplateColumns: `repeat(auto-fill, minmax(${minCardWidth}px, 1fr))`,
+            gridTemplateColumns: `repeat(auto-fill, minmax(${minCardWidth}px, ${maxCardWidth}px))`,
           }}
         >
           {selectedFolderId && <GoUpZone isDragging={isDragging} />}
-          {currentFolders.map((folder) => (
-            <FolderCard
-              key={folder.id}
-              folder={folder}
-              itemCount={folderItemCounts(folder.id)}
-              onOpen={(id) => selectFolder(id)}
-              isDragging={isDragging}
-              viewMode="grid"
-            />
-          ))}
+          <SortableContext
+            items={currentFolders.map((f) => `folder-${f.id}`)}
+            strategy={rectSortingStrategy}
+          >
+            {currentFolders.map((folder) => (
+              <SortableFolderCard
+                key={folder.id}
+                folder={folder}
+                itemCount={folderItemCounts(folder.id)}
+                onOpen={(id) => selectFolder(id)}
+                isDragging={isDragging}
+              />
+            ))}
+          </SortableContext>
           <SortableContext items={displayOrder} strategy={rectSortingStrategy}>
             {sortedItems.map((item) => (
               <InventoryItemCard
@@ -345,7 +416,7 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
                 viewMode="grid"
                 isSelected={selectedItemIds.has(item.id)}
                 onCheckboxToggle={() => toggleSelectItem(item.id)}
-                isDragging={isDragging && activeId === item.id}
+                isDragging={activeId === item.id}
               />
             ))}
           </SortableContext>
@@ -370,7 +441,7 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
                 item={activeItem}
                 viewMode="grid"
                 isSelected={false}
-                onCheckboxToggle={() => {}}
+                onCheckboxToggle={() => { }}
                 isDragging={false}
               />
             </div>
@@ -387,3 +458,4 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
     </DndContext>
   );
 }
+

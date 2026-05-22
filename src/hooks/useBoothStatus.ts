@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   tauriBoothIsAuthenticated,
   tauriBoothOpenAuth,
+  tauriBoothCaptureSessionCookie,
   tauriBoothLogout,
   tauriBoothFetchPurchases,
 } from "@/lib/tauri";
@@ -49,7 +50,14 @@ export function useBoothStatus() {
     };
   }, [loadBoothOwnedIds]);
 
-  const connect = () => tauriBoothOpenAuth().catch(console.error);
+  const connect = async () => {
+    try {
+      await tauriBoothOpenAuth();
+      await tauriBoothCaptureSessionCookie();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const disconnect = () =>
     tauriBoothLogout()

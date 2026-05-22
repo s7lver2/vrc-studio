@@ -21,18 +21,22 @@ function ProductCardSkeleton() {
 }
 
 export function ProductGrid() {
-  const { results, loading, error, loadNextPage } = useShopStore();
+  const { results, loading, error, loadNextPage, page, ripperPageCount } = useShopStore();
+  const hasMore = page < ripperPageCount;
   const shopItemSize = useAppearanceStore((s) => s.shopItemSize);
 
-  const gridCols = {
-    compact: "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7",
-    normal:  "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
-    large:   "grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4",
+  const cardSizes = {
+    compact: { min: 120, max: 148 },
+    normal:  { min: 160, max: 196 },
+    large:   { min: 210, max: 256 },
   }[shopItemSize];
+  const gridStyle = {
+    gridTemplateColumns: `repeat(auto-fill, minmax(${cardSizes.min}px, ${cardSizes.max}px))`,
+  };
 
   if (loading && results.length === 0) {
     return (
-      <div className={`grid ${gridCols} gap-3`}>
+      <div className="grid gap-3" style={gridStyle}>
         {Array.from({ length: 18 }).map((_, i) => (
           <ProductCardSkeleton key={i} />
         ))}
@@ -58,22 +62,24 @@ export function ProductGrid() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className={`grid ${gridCols} gap-3`}>
+      <div className="grid gap-3" style={gridStyle}>
         {results.map((p) => (
           <ProductCard key={`${p.source}-${p.source_id}`} product={p} />
         ))}
       </div>
 
-      <div className="flex justify-center pb-4">
-        <button
-          className="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50 flex items-center gap-2"
-          onClick={loadNextPage}
-          disabled={loading}
-        >
-          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          Load more
-        </button>
-      </div>
+      {hasMore && (
+        <div className="flex justify-center pb-4">
+          <button
+            className="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50 flex items-center gap-2"
+            onClick={loadNextPage}
+            disabled={loading}
+          >
+            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Load more
+          </button>
+        </div>
+      )}
     </div>
   );
 }

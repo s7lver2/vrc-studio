@@ -1,12 +1,12 @@
 // src/components/sidebar/Sidebar.tsx
-import { Boxes, Package, ShoppingBag, Archive, Bell, FlaskConical, Settings, User } from "lucide-react";
+import { Boxes, Package, ShoppingBag, Archive, Bell, FlaskConical, Settings, User, GitBranch } from "lucide-react";
 import { useAppStore, Section } from "@/store/app";
 import { useState, useEffect } from 'react';
 import { useTrackerStore } from "@/store/trackerStore";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from "@/i18n";
-import { NavItem } from "./NavItem"; // Asumimos que NavItem está en el mismo directorio
+import { NavItem } from "./NavItem";
 
 export function Sidebar() {
   const t = useT();
@@ -20,18 +20,20 @@ export function Sidebar() {
     section: Exclude<Section, "settings" | "logs">;
     label: string;
     icon: typeof Boxes;
+    wip?: boolean;
   }[] = [
-    { section: "projects", label: t("nav_projects"), icon: Boxes },
-    { section: "packages", label: t("nav_packages"), icon: Package },
-    { section: "shop", label: t("nav_shop"), icon: ShoppingBag },
+    { section: "projects",  label: t("nav_projects"),  icon: Boxes },
+    { section: "packages",  label: t("nav_packages"),  icon: Package },
+    { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag, wip: true },
     { section: "inventory", label: t("nav_inventory"), icon: Archive },
-    { section: "tracker", label: t("nav_tracker"), icon: Bell },
-    { section: "sandbox", label: "Sandbox", icon: FlaskConical },
+    { section: "tracker",   label: t("nav_tracker"),   icon: Bell,        wip: true },
+    { section: "sandbox",   label: "Sandbox",          icon: FlaskConical, wip: true },
+    { section: "git",       label: "Git",              icon: GitBranch },
   ];
 
   useEffect(() => {
-    invoke('get_app_version')
-      .then((v: string) => setAppVersion(`v${v}`))
+    invoke<string>('get_app_version')
+      .then((v) => setAppVersion(`v${v}`))
       .catch(console.error);
   }, []);
 
@@ -40,17 +42,23 @@ export function Sidebar() {
       className="flex flex-col min-h-screen bg-[hsl(var(--sidebar-bg))] border-r border-zinc-800 px-3 py-5 gap-1 relative transition-[width] duration-200"
       style={{ width: "var(--sidebar-width)" }}
     >
-      {/* Logo — oculto en modo estrecho */}
-      {!isNarrow && (
-        <div className="flex items-center gap-2 px-3 mb-6">
-          <div className="w-6 h-6 bg-red-600 rounded-sm" />
-          <span className="font-semibold text-zinc-100 text-sm tracking-wide">VRC Studio</span>
-        </div>
-      )}
+      {/* Logo Section */}
+      <div className={`flex items-center mb-6 px-3 ${isNarrow ? "justify-center px-0" : "gap-2.5"}`}>
+        <img
+          src="/logo-mark-32.png"
+          alt="VRC Studio"
+          style={{ width: 22, height: 22, objectFit: "contain", filter: "drop-shadow(0 0 5px rgba(220,38,38,0.55))" }}
+        />
+        {!isNarrow && (
+          <span className="font-semibold text-zinc-100 text-sm tracking-wide animate-fade-in">
+            VRC Studio
+          </span>
+        )}
+      </div>
 
-      {/* Navegación principal */}
+      {/* Main Navigation Loop */}
       <nav className="flex flex-col gap-1 flex-1">
-        {navItems.map(({ section, label, icon }) => (
+        {navItems.map(({ section, label, icon, wip }) => (
           <NavItem
             key={section}
             icon={icon}
@@ -59,19 +67,23 @@ export function Sidebar() {
             onClick={() => setActiveSection(section)}
             badge={section === "tracker" && trackerUnread > 0 ? trackerUnread : undefined}
             compact={isNarrow}
+            wip={wip}
           />
         ))}
       </nav>
 
-      {/* Acciones inferiores */}
-      <div className="mt-auto pt-6 border-t border-zinc-800/60 flex items-center justify-between px-2">
+      {/* Bottom Actions Footer */}
+      <div className={`mt-auto pt-4 border-t border-zinc-800/60 flex items-center px-1 ${
+        isNarrow ? "flex-col gap-2 justify-center" : "flex-row justify-between"
+      }`}>
         <button
           onClick={() => setActiveSection("settings")}
           className={`p-2 rounded-lg transition-all ${
             activeSection === "settings"
-              ? "bg-zinc-800 text-violet-400"
+              ? "bg-zinc-800"
               : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
           }`}
+          style={activeSection === "settings" ? { color: "var(--accent-color)" } : {}}
           title={t("nav_settings")}
         >
           <Settings className="h-5 w-5" />
@@ -80,15 +92,22 @@ export function Sidebar() {
           onClick={() => setActiveSection("creators")}
           className={`p-2 rounded-lg transition-all ${
             activeSection === "creators"
-              ? "bg-zinc-800 text-violet-400"
+              ? "bg-zinc-800"
               : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
           }`}
+          style={activeSection === "creators" ? { color: "var(--accent-color)" } : {}}
           title={t("nav_creators")}
         >
           <User className="h-5 w-5" />
         </button>
       </div>
-      <p className="px-3 text-xs text-zinc-600 text-center mt-2">{appVersion}</p>
+      
+      {/* App Version - hidden when narrow to save space */}
+      {!isNarrow && (
+        <p className="px-3 text-xs text-zinc-600 text-center mt-2 tracking-wider">
+          {appVersion}
+        </p>
+      )}
     </aside>
   );
 }

@@ -2,14 +2,15 @@
 import { Check } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useInventoryStore, SortField, SortDir } from "@/store/inventoryStore";
+import { useT } from "../../i18n";
 
-const SORT_OPTIONS: { field: SortField; label: string; icon: string }[] = [
-  { field: "date",   label: "Fecha de descarga", icon: "📅" },
-  { field: "name",   label: "Nombre",            icon: "🔤" },
-  { field: "author", label: "Autor",              icon: "👤" },
-  { field: "size",   label: "Tamaño",             icon: "📦" },
-  { field: "custom", label: "Orden manual",       icon: "✋" },
-];
+const SORT_OPTIONS = [
+  { field: "date",   labelKey: "sort_date",   icon: "📅" },
+  { field: "name",   labelKey: "sort_name",   icon: "🔤" },
+  { field: "author", labelKey: "sort_author", icon: "👤" },
+  { field: "size",   labelKey: "sort_size",   icon: "📦" },
+  { field: "custom", labelKey: "sort_custom", icon: "✋" },
+] as const;
 
 interface SortDropdownProps {
   anchorRef: React.RefObject<HTMLButtonElement | null>;
@@ -17,6 +18,7 @@ interface SortDropdownProps {
 }
 
 export function SortModal({ anchorRef, onClose }: SortDropdownProps) {
+  const t = useT();
   const { sortField, sortDir, setSortField, setSortDir } = useInventoryStore();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +72,7 @@ export function SortModal({ anchorRef, onClose }: SortDropdownProps) {
                  animate-in fade-in zoom-in-95 duration-100 origin-top-right"
     >
       <div className="p-1.5 flex flex-col gap-0.5">
-        {SORT_OPTIONS.map(({ field, label, icon }) => {
+        {SORT_OPTIONS.map(({ field, labelKey, icon }) => {
           const active = sortField === field;
           return (
             <button
@@ -83,7 +85,7 @@ export function SortModal({ anchorRef, onClose }: SortDropdownProps) {
                 }`}
             >
               <span className="text-sm leading-none">{icon}</span>
-              <span className="flex-1">{label}</span>
+              <span className="flex-1">{t(labelKey)}</span>
               {active && field !== "custom" && (
                 <span className="text-[10px] text-zinc-500 font-mono">
                   {sortDir === "asc" ? "↑" : "↓"}
@@ -96,7 +98,7 @@ export function SortModal({ anchorRef, onClose }: SortDropdownProps) {
       </div>
       {sortField === "custom" && (
         <p className="px-3 pb-2.5 pt-0 text-[10px] text-zinc-600 leading-relaxed border-t border-zinc-800 mt-0.5 pt-2">
-          Mantén pulsado un ítem y arrástralo para cambiar su posición.
+              {t("sort_custom_hint")}
         </p>
       )}
     </div>

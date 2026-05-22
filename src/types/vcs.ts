@@ -13,11 +13,13 @@ export interface CommitEntry {
   message: string;
   author: string;
   timestamp: number; // Unix seconds
+  parent_ids: string[];
 }
 
 export interface BranchInfo {
   name: string;
   is_current: boolean;
+  tip_sha: string;
 }
 
 // Archivo cambiado dentro de un commit (con estadísticas)

@@ -9,6 +9,7 @@ interface VcsState {
   isLoading: boolean;
   error: string | null;
   activeProjectPath: string | null;
+  branchColors: Record<string, string>;
 
   loadStatus: (projectPath: string) => Promise<void>;
   loadLog: (projectPath: string) => Promise<void>;
@@ -17,6 +18,7 @@ interface VcsState {
   createBranch: (projectPath: string, name: string) => Promise<void>;
   switchBranch: (projectPath: string, name: string) => Promise<void>;
   clear: () => void;
+  setBranchColor: (branchName: string, color: string) => void;
 }
 
 export const useVcsStore = create<VcsState>((set, get) => ({
@@ -84,4 +86,7 @@ export const useVcsStore = create<VcsState>((set, get) => ({
 
   clear: () =>
     set({ status: null, log: [], branches: [], error: null, activeProjectPath: null }),
+  branchColors: {},
+setBranchColor: (branchName, color) =>
+  set((s) => ({ branchColors: { ...s.branchColors, [branchName]: color } })),
 }));

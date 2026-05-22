@@ -37,6 +37,7 @@ interface ShopState {
   selectedProduct: ShopProduct | null;
   filters: ShopFilters;
   boothOwnedIds: Set<string>;
+  recentSearches: string[];
   /** Total pages available in the last RipperStore search. Used by loadNextPage. */
   ripperPageCount: number;
   // ── Nuevos campos para autores ─────────────────────────────────────────────
@@ -283,6 +284,14 @@ export const useShopStore = create<ShopState>((set, get) => ({
   authorResults: [],
   selectedAuthor: null,
   setSelectedAuthor: (author) => set({ selectedAuthor: author }),
+  // ── Cargar historial reciente desde localStorage ──
+  recentSearches: (() => {
+    try {
+      return JSON.parse(localStorage.getItem("shop:recentSearches") ?? "[]");
+    } catch {
+      return [];
+    }
+  })(),
 
   setQuery: (q) => set({ query: q, page: 1, results: [], ripperPageCount: 1, authorResults: [], selectedAuthor: null }),
 
@@ -310,16 +319,30 @@ export const useShopStore = create<ShopState>((set, get) => ({
     try {
       const { products, ripperPageCount } = await fetchCombined(query, 1);
       const filtered = applyFilters(products, filters, boothOwnedIds);
-      
+
+      // ── Guardar búsqueda reciente ──
+      const { recentSearches } = get();
+      const trimmed = query.trim();
+      if (trimmed && !recentSearches.includes(trimmed)) {
+        const updated = [trimmed, ...recentSearches].slice(0, 20);
+        set({ recentSearches: updated });
+        try {
+          localStorage.setItem("shop:recentSearches", JSON.stringify(updated));
+        } catch {}
+      }
 
       // ── Agrupar por autor si estamos en modo "authors" ──
-      // Se usa la lista completa de productos SIN filtrar por priceType,
-      // para que el perfil del autor muestre todos sus productos.
       const allProducts = applyFilters(products, { ...filters, priceType: "all" }, boothOwnedIds);
-      const authorResults = filters.searchMode === "authors"
-        ? groupByAuthor(products) // sobre todos los productos, sin filtro de priceType
-        : [];
-      set({ results: filtered, loading: false, ripperPageCount, authorResults });
+      const authorResults =
+        filters.searchMode === "authors"
+          ? groupByAuthor(products) // sobre todos los productos, sin filtro de priceType
+          : [];
+      set({
+        results: filtered,
+        loading: false,
+        ripperPageCount,
+        authorResults,
+      });
     } catch (e) {
       set({ error: String(e), loading: false });
     }

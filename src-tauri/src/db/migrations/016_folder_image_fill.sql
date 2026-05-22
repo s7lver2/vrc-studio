@@ -1,0 +1,1 @@
+ALTER TABLE inventory_folders ADD COLUMN custom_image_fill TEXT NOT NULL DEFAULT 'icon';

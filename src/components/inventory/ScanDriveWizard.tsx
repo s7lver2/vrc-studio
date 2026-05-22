@@ -4,13 +4,13 @@
  * Paso 2: Escaneo + análisis en tiempo real + resolución de conflictos + import real
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   X, HardDrive, Search, FolderOpen, ChevronRight, Loader2,
   CheckCircle2, AlertTriangle, MoreHorizontal, Copy, Trash2,
   Layers, SkipForward, Pencil, Check, Plus, Tag, Image,
   FileText, Globe, RefreshCw, ChevronDown, ChevronUp,
-  TerminalSquare, Package, Upload, Store
+  TerminalSquare, Package, Upload, Store, User, Download
 } from "lucide-react";
 import { tauriGetBoothProductDetail, tauriSearchShop, tauriImportLocalPackage, tauriSetItemProductImages, ShopProduct, tauriCheckDuplicateItems, tauriDeleteInventoryItem, } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";
@@ -120,7 +120,7 @@ function extractBoothId(fileName: string): string | null {
 
   const anyMatches = [...base.matchAll(/(?:^|[^0-9])(\d{5,9})(?:[^0-9]|$)/g)];
   const candidates = anyMatches.map(m => m[1]);
-  return candidates.length > 0 ? candidates.sort((a,b)=> b.length - a.length)[0] : null;
+  return candidates.length > 0 ? candidates.sort((a, b) => b.length - a.length)[0] : null;
 }
 
 function cleanDisplayName(fileName: string): string {
@@ -243,11 +243,10 @@ function ExtBadge({ ext }: { ext: string }) {
 
 function AvatarPill({ name, included }: { name: string; included: boolean }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${
-      included
-        ? "bg-green-900/40 text-green-300 border-green-700/50"
-        : "bg-zinc-800 text-zinc-500 border-zinc-700/50 line-through"
-    }`}>
+    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${included
+      ? "bg-green-900/40 text-green-300 border-green-700/50"
+      : "bg-zinc-800 text-zinc-500 border-zinc-700/50 line-through"
+      }`}>
       {included && <Check className="h-2.5 w-2.5" />}
       {name}
     </span>
@@ -362,19 +361,37 @@ function ItemEditPopup({
   const [name, setName] = useState(item.name ?? "");
   const [author, setAuthor] = useState(item.author ?? "");
   const [boothId, setBoothId] = useState(item.boothId ?? "");
+  const [showAvatarSuggestions, setShowAvatarSuggestions] = useState(false);
   const [tags, setTags] = useState<string[]>(item.tags ?? []);
   const [avatars, setAvatars] = useState<string[]>(item.detectedAvatars ?? []);
   const [newAvatar, setNewAvatar] = useState("");
   const [showBoothSearch, setShowBoothSearch] = useState(false);
   const [lookingUpBooth, setLookingUpBooth] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const inventoryItems = useInventoryStore((s) => s.items);
+  const [localBoothFound, setLocalBoothFound] = useState<boolean | null>(null);
 
-  const effectiveThumbnail = item.customThumbnailUrl || item.thumbnailUrl;
+  const avatarSuggestions = useMemo(() => {
+    if (!newAvatar.trim()) return [];
+    const q = newAvatar.toLowerCase();
+    return inventoryItems
+      .filter((item) =>
+        item.tags.some((t) => ["avatar", "base", "vrchat_avatar", "avatar_base", "vrm"].includes(t.toLowerCase()))
+        && item.name.toLowerCase().includes(q)
+        && !avatars.includes(item.name)
+      )
+      .slice(0, 8);
+  }, [newAvatar, inventoryItems, avatars]);
+
   const [thumbnailUrl, setThumbnailUrl] = useState(item.customThumbnailUrl ?? "");
-  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(item.customThumbnailUrl || item.thumbnailUrl || null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(
+    item.customThumbnailUrl || item.thumbnailUrl || null
+  );
   const [thumbnailLoading, setThumbnailLoading] = useState(false);
   const [detailImages, setDetailImages] = useState<string[]>(item.productImages ?? []);
   const [fetchingImages, setFetchingImages] = useState(false);
 
+  // ── handlers ──────────────────────────────────────────────────────────────
   const fetchAndApplyBoothDetail = async (id: string) => {
     if (!id.trim()) return;
     setFetchingImages(true);
@@ -387,8 +404,9 @@ function ItemEditPopup({
         setThumbnailPreview(detail.images[0]);
       }
       setDetailImages(detail.images ?? []);
+      setLocalBoothFound(true);
     } catch {
-      // not found — keep existing data
+      setLocalBoothFound(false);
     } finally {
       setFetchingImages(false);
     }
@@ -405,9 +423,8 @@ function ItemEditPopup({
         setThumbnailLoading(true);
         try {
           const { convertFileSrc } = await import("@tauri-apps/api/core");
-          const assetUrl = convertFileSrc(selected);
-          setThumbnailUrl(assetUrl);
-          setThumbnailPreview(assetUrl);
+          setThumbnailUrl(convertFileSrc(selected));
+          setThumbnailPreview(convertFileSrc(selected));
         } catch {
           setThumbnailUrl(selected);
           setThumbnailPreview(selected);
@@ -423,6 +440,7 @@ function ItemEditPopup({
     setNewAvatar("");
   };
 
+  // ── render ──────────────────────────────────────────────────────────────────
   return (
     <>
       <div
@@ -430,16 +448,17 @@ function ItemEditPopup({
         onClick={onClose}
       >
         <div
-          className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto"
+          className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ── Header ── */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-900 z-10">
-            <div className="flex items-center gap-2">
+          {/* ── Header ────────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+            <div className="flex items-center gap-2.5">
               <Pencil className="h-4 w-4 text-zinc-400" />
-              <h3 className="text-sm font-semibold text-zinc-100">
-                {t("scan_wizard_edit_title")}
-              </h3>
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-100">{t("scan_wizard_edit_title")}</h3>
+                <p className="text-[10px] text-zinc-500 font-mono mt-px truncate max-w-xs">{item.fileName}</p>
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -449,316 +468,191 @@ function ItemEditPopup({
             </button>
           </div>
 
-          {/* ── Cuerpo ── */}
-          <div className="px-5 py-4 flex flex-col gap-4">
-            {/* Archivo */}
-            <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/50 rounded-lg px-3 py-2">
-              <Package className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate font-mono">{item.fileName}</span>
-              <ExtBadge ext={item.ext} />
-            </div>
+          {/* ── Body ──────────────────────────────────────────────────────── */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
 
-            {/* ── Thumbnail ── */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
-                <Image className="h-3 w-3" /> {t("scan_wizard_edit_thumbnail_label")}
-              </label>
-              <div className="flex gap-3 items-start">
-                {/* Previsualización */}
-                <div className="shrink-0 w-20 h-20 rounded-xl bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
-                  {thumbnailLoading ? (
-                    <Loader2 className="h-5 w-5 text-zinc-600 animate-spin" />
-                  ) : thumbnailPreview ? (
-                    <img
-                      src={thumbnailPreview}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      onError={() => setThumbnailPreview(null)}
-                    />
-                  ) : (
-                    <Package className="h-6 w-6 text-zinc-600" />
-                  )}
-                </div>
-                {/* Input + acciones */}
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <input
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-red-500 transition-colors"
-                    placeholder="Paste image URL…"
-                    value={thumbnailUrl}
-                    onChange={(e) => {
-                      setThumbnailUrl(e.target.value);
-                      setThumbnailPreview(e.target.value || null);
-                    }}
-                  />
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={pickLocalThumbnail}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
-                    >
-                      <Upload className="h-3 w-3" /> {t("scan_wizard_edit_pick_file")}
-                    </button>
-                    {thumbnailPreview && (
-                      <button
-                        onClick={() => {
-                          setThumbnailUrl("");
-                          setThumbnailPreview(null);
-                        }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-900/40 border border-zinc-700 hover:border-red-700/50 text-zinc-500 hover:text-red-400 text-xs transition-colors"
-                      >
-                        <X className="h-3 w-3" /> {t("scan_wizard_edit_clear")}
-                      </button>
-                    )}
-                  </div>
-                  {item.thumbnailUrl && thumbnailUrl !== item.thumbnailUrl && (
-                    <button
-                      onClick={() => {
-                        setThumbnailUrl(item.thumbnailUrl!);
-                        setThumbnailPreview(item.thumbnailUrl!);
-                      }}
-                      className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
-                    >
-                      {t("scan_wizard_edit_restore_booth")}
-                    </button>
-                  )}
-                </div>
+            {/* ① Thumbnail row */}
+            <div className="flex gap-4 items-start">
+              {/* Preview square */}
+              <div className="shrink-0 w-24 h-24 rounded-xl bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
+                {thumbnailLoading ? (
+                  <Loader2 className="h-5 w-5 text-zinc-600 animate-spin" />
+                ) : thumbnailPreview ? (
+                  <img src={thumbnailPreview} alt="" className="w-full h-full object-cover" onError={() => setThumbnailPreview(null)} />
+                ) : (
+                  <Package className="h-7 w-7 text-zinc-600" />
+                )}
               </div>
 
-              {/* ── Galería de imágenes del producto ── */}
-              {detailImages.length > 1 && (
-                <div className="flex flex-col gap-1.5 mt-3">
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">
-                    Product images ({detailImages.length})
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
+              {/* Thumbnail actions */}
+              <div className="flex-1 flex flex-col gap-2">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Thumbnail</p>
+                <input
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-zinc-500 transition-colors"
+                  placeholder="Paste image URL…"
+                  value={thumbnailUrl}
+                  onChange={(e) => { setThumbnailUrl(e.target.value); setThumbnailPreview(e.target.value || null); }}
+                />
+                <div className="flex gap-1.5 flex-wrap">
+                  <button onClick={pickLocalThumbnail} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors">
+                    <Upload className="h-3 w-3" /> Pick file
+                  </button>
+                  {thumbnailPreview && (
+                    <button onClick={() => { setThumbnailUrl(""); setThumbnailPreview(null); }} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-900/40 border border-zinc-700 hover:border-red-700/50 text-zinc-500 hover:text-red-400 text-xs transition-colors">
+                      <X className="h-3 w-3" /> Clear
+                    </button>
+                  )}
+                  {item.thumbnailUrl && thumbnailUrl !== item.thumbnailUrl && (
+                    <button onClick={() => { setThumbnailUrl(item.thumbnailUrl!); setThumbnailPreview(item.thumbnailUrl!); }} className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors px-2 py-1.5">
+                      ↺ Restore Booth
+                    </button>
+                  )}
+                </div>
+
+                {/* Product image strip (only if >1) */}
+                {detailImages.length > 1 && (
+                  <div className="flex gap-1.5 flex-wrap mt-1">
                     {detailImages.map((url, i) => (
                       <button
                         key={i}
-                        type="button"
-                        onClick={() => {
-                          setThumbnailUrl(url);
-                          setThumbnailPreview(url);
-                        }}
-                        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
-                          thumbnailUrl === url
-                            ? "border-red-500"
-                            : "border-zinc-700 hover:border-zinc-500"
-                        }`}
-                        title="Use as thumbnail"
+                        onClick={() => { setThumbnailUrl(url); setThumbnailPreview(url); }}
+                        className={`w-10 h-10 rounded-lg overflow-hidden border-2 transition-all ${thumbnailUrl === url ? "border-red-500" : "border-zinc-700 hover:border-zinc-500"}`}
                       >
-                        <img
-                          src={url}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
+                        <img src={url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── Nombre ── */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-medium">
-                {t("scan_wizard_edit_name")}
-              </label>
-              <input
-                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-
-            {/* ── Autor ── */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-medium">
-                {t("scan_wizard_edit_author")}
-              </label>
-              <input
-                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors"
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-              />
-            </div>
-
-            {/* ── Sugerencias de Booth ── */}
-            {!item.boothFound &&
-              item.boothSuggestions &&
-              item.boothSuggestions.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
-                    <Store className="h-3 w-3 text-pink-400" />
-                    <span>Possible Booth matches</span>
-                    <span className="text-[9px] text-zinc-600 font-normal">
-                      — click to apply
-                    </span>
-                  </label>
-                  <div className="flex flex-col gap-1.5">
-                    {item.boothSuggestions.map((product) => (
-                      <button
-                        key={product.source_id}
-                        type="button"
-                        onClick={() => {
-                          setBoothId(product.source_id);
-                          fetchAndApplyBoothDetail(product.source_id);
-                        }}
-                        className="flex items-center gap-3 px-3 py-2 rounded-xl border border-zinc-700/60 bg-zinc-800/40 hover:border-pink-600/50 hover:bg-pink-950/20 transition-all text-left group"
-                      >
-                        {product.thumbnail_url ? (
-                          <img
-                            src={product.thumbnail_url}
-                            alt=""
-                            className="w-10 h-10 rounded-lg object-cover border border-zinc-700 shrink-0"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 shrink-0 flex items-center justify-center">
-                            <Package className="h-4 w-4 text-zinc-600" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">
-                            {product.name}
-                          </p>
-                          <p className="text-[10px] text-zinc-500 truncate mt-0.5">
-                            {product.author}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[9px] text-pink-400 bg-pink-900/30 px-1.5 py-px rounded-full border border-pink-700/40 font-mono">
-                              #{product.source_id}
-                            </span>
-                            {product.price_display && (
-                              <span className="text-[9px] text-zinc-600">
-                                {product.price_display}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-zinc-600 group-hover:text-pink-400 transition-colors shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-            {/* ── Booth ID ── */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
-                <Globe className="h-3 w-3" /> {t("scan_wizard_edit_booth_id")}
-                {!item.boothFound && (
-                  <span className="text-[10px] text-amber-400 bg-amber-900/30 px-1.5 py-px rounded-full border border-amber-700/50">
-                    {t("scan_wizard_edit_booth_not_found")}
-                  </span>
                 )}
-              </label>
-              <div className="flex gap-1.5">
+              </div>
+            </div>
+
+            {/* ② Name + Author (2-column) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{t("scan_wizard_edit_name")}</label>
+                <input className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-zinc-500 transition-colors" value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{t("scan_wizard_edit_author")}</label>
+                <input className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-zinc-500 transition-colors" value={author} onChange={(e) => setAuthor(e.target.value)} />
+              </div>
+            </div>
+
+            {/* ③ Booth Association card */}
+            <div className="flex flex-col gap-2 p-3.5 rounded-xl border border-pink-900/40 bg-pink-950/10">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-pink-400/80 uppercase tracking-wider flex items-center gap-1.5">
+                  <Store className="h-3 w-3" /> Booth Association
+                  {!(localBoothFound ?? item.boothFound) && (
+                    <span className="text-[9px] text-amber-400 bg-amber-900/30 px-1.5 py-px rounded-full border border-amber-700/50 font-normal normal-case tracking-normal">
+                      not linked
+                    </span>
+                  )}
+                </p>
+              </div>
+              {/* Booth ID input + manual fetch */}
+              <div className="flex gap-2">
                 <input
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 outline-none focus:border-red-500 transition-colors font-mono"
-                  placeholder="e.g. 6082686"
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-pink-500 transition-colors"
+                  placeholder="Booth item ID (e.g., 1234567)"
                   value={boothId}
                   onChange={(e) => setBoothId(e.target.value)}
                 />
                 <button
-                  title={t("scan_wizard_edit_booth_manual_lookup")}
-                  disabled={!boothId.trim() || fetchingImages}
                   onClick={() => fetchAndApplyBoothDetail(boothId)}
-                  className="px-2.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-40"
+                  disabled={!boothId.trim() || fetchingImages}
+                  className="px-2 py-1.5 rounded-lg bg-pink-800 hover:bg-pink-700 disabled:opacity-40 text-white text-[10px] font-medium transition-colors flex items-center gap-1"
                 >
-                  {fetchingImages ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
+                  {fetchingImages ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />}
+                  Fetch
                 </button>
                 <button
-                  title={t("scan_wizard_edit_search_booth")}
                   onClick={() => setShowBoothSearch(true)}
-                  className="px-2.5 py-2 rounded-lg bg-pink-900/40 hover:bg-pink-900/60 border border-pink-700/50 text-pink-400 hover:text-pink-200 transition-colors text-xs font-medium flex items-center gap-1"
+                  className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-[10px] transition-colors"
                 >
-                  <Search className="h-3.5 w-3.5" />
+                  Search
                 </button>
               </div>
               {boothId && (
-                <a
-                  href={`https://booth.pm/en/items/${boothId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] text-pink-500 hover:text-pink-300 transition-colors"
-                >
+                <a href={`https://booth.pm/en/items/${boothId}`} target="_blank" rel="noreferrer" className="text-[10px] text-pink-500 hover:text-pink-300 transition-colors">
                   booth.pm/en/items/{boothId} ↗
                 </a>
               )}
+
+              {/* Suggestions accordion */}
+              {!item.boothFound && item.boothSuggestions && item.boothSuggestions.length > 0 && (
+                <div className="flex flex-col gap-2 pt-1 border-t border-pink-900/30">
+                  <button
+                    className="flex items-center gap-1.5 text-xs text-pink-400/70 hover:text-pink-300 transition-colors"
+                    onClick={() => setShowSuggestions((v) => !v)}
+                  >
+                    {showSuggestions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    {item.boothSuggestions.length} possible match{item.boothSuggestions.length !== 1 ? "es" : ""}
+                  </button>
+                  {showSuggestions && (
+                    <div className="flex flex-col gap-1.5">
+                      {item.boothSuggestions.map((product) => (
+                        <button
+                          key={product.source_id}
+                          type="button"
+                          onClick={() => { setBoothId(product.source_id); fetchAndApplyBoothDetail(product.source_id); setShowSuggestions(false); }}
+                          className="flex items-center gap-3 px-3 py-2 rounded-xl border border-zinc-700/60 bg-zinc-800/40 hover:border-pink-600/50 hover:bg-pink-950/20 transition-all text-left group"
+                        >
+                          {product.thumbnail_url ? (
+                            <img src={product.thumbnail_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-zinc-700 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-zinc-800 border border-zinc-700 shrink-0 flex items-center justify-center">
+                              <Package className="h-4 w-4 text-zinc-600" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-zinc-200 truncate">{product.name}</p>
+                            <p className="text-[10px] text-zinc-500 truncate">{product.author} · {product.price_display}</p>
+                          </div>
+                          <ChevronRight className="h-3.5 w-3.5 text-zinc-600 group-hover:text-pink-400 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* ── Avatares ── */}
+            {/* ④ Avatars */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-medium">
-                {t("scan_wizard_edit_avatar_label")}
-              </label>
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{t("scan_wizard_edit_avatar_label")}</label>
               <div className="flex flex-wrap gap-1.5 min-h-[28px]">
                 {avatars.map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => setAvatars(avatars.filter((x) => x !== a))}
-                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 text-green-300 border border-green-700/50 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700/50 transition-colors group"
-                  >
-                    {a}{" "}
-                    <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
+                  <button key={a} onClick={() => setAvatars(avatars.filter((x) => x !== a))} className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-900/40 text-green-300 border border-green-700/50 hover:bg-red-900/40 hover:text-red-300 hover:border-red-700/50 transition-colors group">
+                    {a} <X className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
                   </button>
                 ))}
-                {item.allAvatars
-                  ?.filter((a) => !avatars.includes(a))
-                  .map((a) => (
-                    <button
-                      key={a}
-                      onClick={() => setAvatars([...avatars, a])}
-                      className="text-[10px] px-2 py-0.5 rounded-full text-zinc-500 border border-dashed border-zinc-700 hover:border-zinc-500 hover:text-zinc-300 transition-colors"
-                    >
-                      + {a}
-                    </button>
-                  ))}
+                {item.allAvatars?.filter((a) => !avatars.includes(a)).map((a) => (
+                  <button key={a} onClick={() => setAvatars([...avatars, a])} className="text-[10px] px-2 py-0.5 rounded-full text-zinc-500 border border-dashed border-zinc-700 hover:border-zinc-500 hover:text-zinc-300 transition-colors">
+                    + {a}
+                  </button>
+                ))}
               </div>
               <div className="flex gap-1.5">
-                <input
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-red-500 transition-colors"
-                  placeholder={t("scan_wizard_edit_add_avatar")}
-                  value={newAvatar}
-                  onChange={(e) => setNewAvatar(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addAvatar()}
-                />
-                <button
-                  onClick={addAvatar}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
-                >
+                <input className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-500 transition-colors" placeholder={t("scan_wizard_edit_add_avatar")} value={newAvatar} onChange={(e) => setNewAvatar(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addAvatar()} />
+                <button onClick={addAvatar} className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition-colors">
                   <Plus className="h-3 w-3" />
                 </button>
               </div>
             </div>
 
-            {/* ── Tags ── */}
+            {/* ⑤ Tags */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-medium flex items-center gap-1">
+              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
                 <Tag className="h-3 w-3" /> {t("scan_wizard_edit_tags")}
               </label>
-              <TagInput
-                tags={tags}
-                onChange={setTags}
-                placeholder={t("scan_wizard_edit_add_tag")}
-              />
+              <TagInput tags={tags} onChange={setTags} placeholder={t("scan_wizard_edit_add_tag")} />
             </div>
           </div>
 
-          {/* ── Footer ── */}
-          <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-800 sticky bottom-0 bg-zinc-900">
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-            >
+          {/* ── Footer ───────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-800">
+            <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors">
               {t("scan_wizard_cancel")}
             </button>
             <button
@@ -770,7 +664,8 @@ function ItemEditPopup({
                   detectedAvatars: avatars,
                   tags,
                   customThumbnailUrl: thumbnailUrl || undefined,
-                  productImages: detailImages,           // <-- guardamos las imágenes de producto
+                  productImages: detailImages,
+                  boothFound: localBoothFound ?? item.boothFound,
                 });
                 onClose();
               }}
@@ -782,7 +677,6 @@ function ItemEditPopup({
         </div>
       </div>
 
-      {/* ── Popup de búsqueda en Booth ── */}
       {showBoothSearch && (
         <BoothSearchPopup
           onClose={() => setShowBoothSearch(false)}
@@ -790,10 +684,7 @@ function ItemEditPopup({
             setBoothId(product.source_id);
             if (product.name) setName(product.name);
             if (product.author) setAuthor(product.author);
-            if (product.thumbnail_url && !thumbnailUrl) {
-              setThumbnailUrl(product.thumbnail_url);
-              setThumbnailPreview(product.thumbnail_url);
-            }
+            if (product.thumbnail_url && !thumbnailUrl) { setThumbnailUrl(product.thumbnail_url); setThumbnailPreview(product.thumbnail_url); }
           }}
         />
       )}
@@ -866,9 +757,9 @@ function ConflictPopup({
   const t = useT();
   const OPTIONS: { id: ConflictResolution; icon: React.ReactNode; label: string; desc: string; danger?: boolean }[] = [
     { id: "keep_copy", icon: <Copy className="h-4 w-4" />, label: t("scan_wizard_keep_copy"), desc: t("scan_wizard_keep_copy_desc") },
-    { id: "combine",   icon: <Layers className="h-4 w-4" />, label: t("scan_wizard_combine"), desc: t("scan_wizard_combine_desc") },
-    { id: "delete",    icon: <Trash2 className="h-4 w-4" />, label: t("scan_wizard_delete_item"), desc: t("scan_wizard_delete_item_desc"), danger: true },
-    { id: "ignore",    icon: <SkipForward className="h-4 w-4" />, label: t("scan_wizard_ignore"), desc: t("scan_wizard_ignore_desc") },
+    { id: "combine", icon: <Layers className="h-4 w-4" />, label: t("scan_wizard_combine"), desc: t("scan_wizard_combine_desc") },
+    { id: "delete", icon: <Trash2 className="h-4 w-4" />, label: t("scan_wizard_delete_item"), desc: t("scan_wizard_delete_item_desc"), danger: true },
+    { id: "ignore", icon: <SkipForward className="h-4 w-4" />, label: t("scan_wizard_ignore"), desc: t("scan_wizard_ignore_desc") },
   ];
 
   return (
@@ -905,9 +796,8 @@ function ConflictPopup({
         <div className="px-5 pb-5 grid grid-cols-2 gap-2">
           {OPTIONS.map(({ id, icon, label, desc, danger }) => (
             <button key={id} onClick={() => onResolve(id, conflict.id)}
-              className={`flex flex-col gap-1.5 p-3 rounded-xl border text-left transition-all hover:scale-[1.02] ${
-                danger ? "bg-red-950/30 border-red-800/50 hover:bg-red-950/60 hover:border-red-700" : "bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800 hover:border-zinc-600"
-              }`}>
+              className={`flex flex-col gap-1.5 p-3 rounded-xl border text-left transition-all hover:scale-[1.02] ${danger ? "bg-red-950/30 border-red-800/50 hover:bg-red-950/60 hover:border-red-700" : "bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800 hover:border-zinc-600"
+                }`}>
               <div className={`${danger ? "text-red-400" : "text-zinc-300"}`}>{icon}</div>
               <span className={`text-xs font-medium ${danger ? "text-red-300" : "text-zinc-200"}`}>{label}</span>
               <span className="text-[10px] text-zinc-500 leading-relaxed">{desc}</span>
@@ -919,29 +809,62 @@ function ConflictPopup({
   );
 }
 
-// ── Scanned Item Row ──────────────────────────────────────────────────────────
+// ── Scanned Item Row (con checkbox) ───────────────────────────────────────────
 
-function ScannedItemRow({ item, onEdit, onRemove }: { item: ScannedItem; onEdit: () => void; onRemove: (id: string) => void }) {
+function ScannedItemRow({
+  item,
+  isSelected,
+  onToggleSelect,
+  onEdit,
+  onRemove,
+}: {
+  item: ScannedItem;
+  isSelected: boolean;
+  onToggleSelect: (id: string, shiftKey: boolean) => void;
+  onEdit: () => void;
+  onRemove: (id: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const t = useT();
 
+  const handleRowClick = (e: React.MouseEvent) => {
+    if (e.shiftKey) {
+      onToggleSelect(item.id, true);
+    } else {
+      onToggleSelect(item.id, false);
+    }
+  };
+
   return (
-    <div className={`rounded-xl border transition-all ${
-      item.phase === "conflict"
-        ? "border-amber-700/60 bg-amber-950/20"
-        : item.phase === "done"
+    <div className={`rounded-xl border transition-all ${item.phase === "conflict"
+      ? "border-amber-700/60 bg-amber-950/20"
+      : item.phase === "done"
         ? "border-zinc-800 bg-zinc-900/50"
         : "border-zinc-800/50 bg-zinc-900/30"
-    }`}>
+      }`}>
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <div className="shrink-0 w-5 flex items-center justify-center">
-          {item.phase === "detecting" && <Loader2 className="h-3.5 w-3.5 text-zinc-500 animate-spin" />}
-          {item.phase === "indexing"  && <Search className="h-3.5 w-3.5 text-blue-400 animate-pulse" />}
-          {item.phase === "done"      && <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />}
-          {item.phase === "conflict"  && <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />}
+        {/* Checkbox */}
+        <div
+          className={`shrink-0 w-4 h-4 rounded border transition-all ${isSelected
+            ? "bg-red-600 border-red-600"
+            : "bg-zinc-800 border-zinc-600 hover:border-zinc-400"
+            } flex items-center justify-center cursor-pointer`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect(item.id, false);
+          }}
+        >
+          {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
         </div>
 
-        <div className="shrink-0 w-9 h-9 rounded-lg bg-zinc-800 overflow-hidden">
+        <div className="shrink-0 w-5 flex items-center justify-center">
+          {item.phase === "detecting" && <Loader2 className="h-3.5 w-3.5 text-zinc-500 animate-spin" />}
+          {item.phase === "indexing" && <Search className="h-3.5 w-3.5 text-blue-400 animate-pulse" />}
+          {item.phase === "done" && <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />}
+          {item.phase === "conflict" && <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />}
+        </div>
+
+        <div className="shrink-0 w-9 h-9 rounded-lg bg-zinc-800 overflow-hidden cursor-pointer" onClick={handleRowClick}>
           {item.thumbnailUrl ? (
             <img src={item.thumbnailUrl} alt="" className="w-full h-full object-cover" />
           ) : item.phase === "indexing" ? (
@@ -951,7 +874,7 @@ function ScannedItemRow({ item, onEdit, onRemove }: { item: ScannedItem; onEdit:
           )}
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 cursor-pointer" onClick={handleRowClick}>
           {item.phase === "detecting" || item.phase === "indexing" ? (
             <div className="flex flex-col gap-1">
               {item.phase === "detecting" ? (
@@ -971,7 +894,7 @@ function ScannedItemRow({ item, onEdit, onRemove }: { item: ScannedItem; onEdit:
                 {item.boothId && (
                   <span className="text-[9px] text-pink-400 bg-pink-900/30 px-1.5 py-px rounded-full border border-pink-700/40">Booth #{item.boothId}</span>
                 )}
-                {!item.boothFound && item.phase === "done" && (
+                {!(item.boothFound) && item.phase === "done" && (
                   <span className="text-[9px] text-zinc-600 bg-zinc-800 px-1.5 py-px rounded-full border border-zinc-700">{t("scan_wizard_not_on_booth")}</span>
                 )}
               </div>
@@ -983,11 +906,10 @@ function ScannedItemRow({ item, onEdit, onRemove }: { item: ScannedItem; onEdit:
           <ExtBadge ext={item.ext} />
           <span className="text-[10px] text-zinc-600">{item.sizeMb}MB</span>
           {item.phase === "done" && item.detectedAvatars && item.allAvatars && (
-            <span className={`text-[9px] px-1.5 py-px rounded-full border ${
-              item.detectedAvatars.length < item.allAvatars.length
-                ? "text-amber-300 bg-amber-900/30 border-amber-700/50"
-                : "text-green-300 bg-green-900/30 border-green-700/50"
-            }`}>
+            <span className={`text-[9px] px-1.5 py-px rounded-full border ${item.detectedAvatars.length < item.allAvatars.length
+              ? "text-amber-300 bg-amber-900/30 border-amber-700/50"
+              : "text-green-300 bg-green-900/30 border-green-700/50"
+              }`}>
               {item.detectedAvatars.length}/{item.allAvatars.length} avatars
             </span>
           )}
@@ -1072,6 +994,43 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
   const [duplicateHandling, setDuplicateHandling] = useState<"skip" | "overwrite" | null>(null);
   const { fetchAll } = useInventoryStore();
 
+  // Multi‑selection state
+  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
+  const lastSelectedScanId = useRef<string | null>(null);
+
+  const toggleScanSelect = (id: string, shiftKey: boolean = false) => {
+    if (shiftKey && lastSelectedScanId.current !== null) {
+      // Shift+click range selection
+      const allIds = items.map(i => i.id);
+      const anchorIdx = allIds.indexOf(lastSelectedScanId.current);
+      const targetIdx = allIds.indexOf(id);
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const [start, end] = anchorIdx < targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+        const rangeIds = allIds.slice(start, end + 1);
+        setSelectedScanIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach(i => next.add(i));
+          return next;
+        });
+        lastSelectedScanId.current = id;
+        return;
+      }
+    }
+    // Normal toggle
+    setSelectedScanIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      lastSelectedScanId.current = id;
+      return next;
+    });
+  };
+
+  const clearScanSelection = () => {
+    setSelectedScanIds(new Set());
+    lastSelectedScanId.current = null;
+  };
+
   const addLog = useCallback((msg: string) => {
     setLogs((l) => [...l, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   }, []);
@@ -1106,6 +1065,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
     setDetectedFiles([]);
     setLogs([]);
     setProgress(0);
+    clearScanSelection();
 
     if (!rootDir) {
       setScanStatus("error");
@@ -1155,6 +1115,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
 
     setScanStatus("done");
     addLog(`Scan complete. ${detected.length} items ready to import.`);
+    clearScanSelection();
   };
 
   const handleConflictResolve = (resolution: ConflictResolution) => {
@@ -1164,18 +1125,25 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
   };
 
   const updateItem = (id: string, updates: Partial<ScannedItem>) => {
-    setItems((prev) => prev.map((it) => it.id === id ? { ...it, ...updates } : it));
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === id ? { ...it, ...updates } : it
+      )
+    );
   };
 
   const removeItem = useCallback((id: string) => {
     setItems((prev) => prev.filter((it) => it.id !== id));
+    setSelectedScanIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
-  const checkAllDuplicates = async (): Promise<{ name: string; existingIds: string[] }[]> => {
-    const readyItems = items.filter((i) => i.phase === "done");
+  const checkAllDuplicates = async (itemsToCheck: ScannedItem[]): Promise<{ name: string; existingIds: string[] }[]> => {
     const results: { name: string; existingIds: string[] }[] = [];
-
-    for (const item of readyItems) {
+    for (const item of itemsToCheck) {
       try {
         const check = await tauriCheckDuplicateItems(item.name ?? item.fileName, item.filePath);
         if (check.exists) {
@@ -1188,34 +1156,29 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
     return results;
   };
 
-  const importAll = async (skipDuplicates: boolean, overwrite: boolean) => {
-    const readyItems = items.filter((i) => i.phase === "done");
-    if (readyItems.length === 0) return;
-
-    const duplicateNames = skipDuplicates && duplicateBatch
-      ? new Set(duplicateBatch.map(d => d.name))
-      : new Set<string>();
+  const importSpecificItems = async (itemsToImport: ScannedItem[], skipDuplicates: boolean, overwrite: boolean) => {
+    if (itemsToImport.length === 0) return;
 
     setImportPhase("importing");
     setImportDone(0);
     setImportErrors([]);
 
     const errors: string[] = [];
-
-    for (let i = 0; i < readyItems.length; i++) {
-      const item = readyItems[i];
+    for (let i = 0; i < itemsToImport.length; i++) {
+      const item = itemsToImport[i];
       const itemName = item.name ?? item.fileName;
-
-      if (skipDuplicates && duplicateNames.has(itemName)) {
-        addLog(`⊘ Skipped duplicate: ${itemName}`);
-        setImportDone(i + 1);
-        continue;
-      }
 
       try {
         if (overwrite) {
-          const existingIds = duplicateBatch?.find(d => d.name === itemName)?.existingIds ?? [];
-          await Promise.all(existingIds.map(id => tauriDeleteInventoryItem(id, "InventoryOnly")));
+          // For overwrite we need to know existing IDs. We'll check duplicates again per item.
+          try {
+            const check = await tauriCheckDuplicateItems(itemName, item.filePath);
+            if (check.exists) {
+              await Promise.all(check.existing_item_ids.map(id => tauriDeleteInventoryItem(id, "InventoryOnly")));
+            }
+          } catch (e) {
+            addLog(`Overwrite check failed for ${item.fileName}: ${e}`);
+          }
         }
 
         const newId = await tauriImportLocalPackage({
@@ -1228,7 +1191,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
         });
 
         if (item.productImages && item.productImages.length > 0) {
-          await tauriSetItemProductImages(newId, item.productImages).catch(() => {});
+          await tauriSetItemProductImages(newId, item.productImages).catch(() => { });
         }
         addLog(`✓ Imported: ${itemName}`);
       } catch (e: any) {
@@ -1242,23 +1205,51 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
     setImportErrors(errors);
     setImportPhase(errors.length > 0 ? "error" : "done");
     await fetchAll();
-    onComplete?.(readyItems.length - errors.length);
-    setDuplicateBatch(null);
-    setDuplicateHandling(null);
+    onComplete?.(itemsToImport.length - errors.length);
+    clearScanSelection();
+    // Remove imported items from scan list
+    setItems((prev) => prev.filter(i => !itemsToImport.includes(i)));
   };
 
-  const handleImport = async () => {
-    setImportPhase("importing"); // provisional, para mostrar spinner
-    const dups = await checkAllDuplicates();
+  const handleImportAll = async () => {
+    const readyItems = items.filter(i => i.phase === "done");
+    if (readyItems.length === 0) return;
+    const dups = await checkAllDuplicates(readyItems);
     if (dups.length > 0) {
-      setImportPhase("idle");   // resetear, esperamos decisión del usuario
       setDuplicateBatch(dups);
+      // Store the items to import for later use after duplicate resolution
+      (window as any).__pendingImportItems = readyItems;
     } else {
-      await importAll(false, false);
+      await importSpecificItems(readyItems, false, false);
     }
   };
 
+  const handleImportSelected = async () => {
+    const selectedItems = items.filter(i => selectedScanIds.has(i.id) && i.phase === "done");
+    if (selectedItems.length === 0) return;
+    const dups = await checkAllDuplicates(selectedItems);
+    if (dups.length > 0) {
+      setDuplicateBatch(dups);
+      (window as any).__pendingImportItems = selectedItems;
+    } else {
+      await importSpecificItems(selectedItems, false, false);
+    }
+  };
+
+  const handleCancelSelected = () => {
+    setItems((prev) => prev.filter(i => !selectedScanIds.has(i.id)));
+    clearScanSelection();
+  };
+
   const doneCount = items.filter((i) => i.phase === "done").length;
+
+  // When duplicate batch is resolved, we resume with the stored items
+  useEffect(() => {
+    if (duplicateBatch === null && (window as any).__pendingImportItems) {
+      importSpecificItems((window as any).__pendingImportItems, true, false);
+      delete (window as any).__pendingImportItems;
+    }
+  }, [duplicateBatch]);
 
   return (
     <>
@@ -1279,13 +1270,12 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
 
             <div className="flex items-center gap-2">
               {[1, 2].map((s) => (
-                <div key={s} className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${
-                  step === s
-                    ? "bg-zinc-700 border-zinc-600 text-zinc-200"
-                    : s < step
+                <div key={s} className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${step === s
+                  ? "bg-zinc-700 border-zinc-600 text-zinc-200"
+                  : s < step
                     ? "bg-green-900/40 border-green-700/50 text-green-400"
                     : "bg-zinc-900 border-zinc-800 text-zinc-600"
-                }`}>
+                  }`}>
                   {s < step ? <CheckCircle2 className="h-3 w-3" /> : <span className="w-3 h-3 flex items-center justify-center text-[10px] font-mono">{s}</span>}
                   <span>{s === 1 ? t("scan_wizard_step1") : t("scan_wizard_step2")}</span>
                 </div>
@@ -1302,9 +1292,8 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                 <label className="text-xs font-semibold text-zinc-300">{t("scan_wizard_root_label")}</label>
                 <p className="text-[11px] text-zinc-500">{t("scan_wizard_recursive_desc")}</p>
                 <div className="flex gap-2">
-                  <div className={`flex-1 flex items-center gap-2 bg-zinc-800 border rounded-lg px-3 py-2 text-sm transition-colors ${
-                    rootDir ? "border-zinc-700 text-zinc-200" : "border-dashed border-zinc-600 text-zinc-600"
-                  }`}>
+                  <div className={`flex-1 flex items-center gap-2 bg-zinc-800 border rounded-lg px-3 py-2 text-sm transition-colors ${rootDir ? "border-zinc-700 text-zinc-200" : "border-dashed border-zinc-600 text-zinc-600"
+                    }`}>
                     {rootDir ? (
                       <span className="truncate font-mono text-xs">{rootDir}</span>
                     ) : (
@@ -1317,7 +1306,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                         const { open } = await import("@tauri-apps/plugin-dialog");
                         const selected = await open({ directory: true, multiple: false });
                         if (typeof selected === "string") setRootDir(selected);
-                      } catch {}
+                      } catch { }
                     }}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 text-zinc-200 text-xs font-medium transition-colors whitespace-nowrap"
                   >
@@ -1350,9 +1339,8 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                 <div className="flex flex-wrap gap-2">
                   {(["unitypackage", "zip", "fbx", "vrm", "glb"] as const).map((ext) => (
                     <button key={ext} onClick={() => toggleScanType(ext)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-all ${
-                        scanTypes.has(ext) ? "bg-red-900/40 border-red-700 text-red-300" : "bg-zinc-800 border-zinc-700 text-zinc-500"
-                      }`}>
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-all ${scanTypes.has(ext) ? "bg-red-900/40 border-red-700 text-red-300" : "bg-zinc-800 border-zinc-700 text-zinc-500"
+                        }`}>
                       {scanTypes.has(ext) && <Check className="h-3 w-3" />}
                       .{ext}
                     </button>
@@ -1411,9 +1399,39 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
               )}
 
               <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-2">
+                {/* Multiselect toolbar */}
+                {selectedScanIds.size > 0 && (
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800/80 border border-zinc-700 rounded-xl sticky top-0 z-10">
+                    <span className="text-xs text-zinc-300 flex-1">
+                      {selectedScanIds.size} selected
+                    </span>
+                    <button
+                      onClick={handleImportSelected}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium transition-colors"
+                    >
+                      <Download className="h-3 w-3" />
+                      Import selected
+                    </button>
+                    <button
+                      onClick={handleCancelSelected}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Cancel selected
+                    </button>
+                    <button
+                      onClick={clearScanSelection}
+                      className="h-6 w-6 flex items-center justify-center rounded hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+
                 {items.length === 0 && scanStatus === "detecting" && (
                   Array.from({ length: 4 }).map((_, i) => (
                     <div key={i} className="rounded-xl border border-zinc-800/50 bg-zinc-900/30 flex items-center gap-3 px-3 py-2.5">
+                      <div className="w-4 h-4 bg-zinc-800 rounded animate-pulse" />
                       <div className="w-5 h-5 bg-zinc-800 rounded animate-pulse" />
                       <div className="w-9 h-9 bg-zinc-800 rounded-lg animate-pulse" />
                       <div className="flex-1 flex flex-col gap-1.5">
@@ -1424,7 +1442,14 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                   ))
                 )}
                 {items.map((item) => (
-                  <ScannedItemRow key={item.id} item={item} onEdit={() => setEditItem(item)} onRemove={removeItem} />
+                  <ScannedItemRow
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedScanIds.has(item.id)}
+                    onToggleSelect={toggleScanSelect}
+                    onEdit={() => setEditItem(item)}
+                    onRemove={removeItem}
+                  />
                 ))}
               </div>
 
@@ -1473,7 +1498,7 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                   )}
                 </div>
                 {scanStatus === "done" && importPhase === "idle" && (
-                  <button onClick={handleImport} disabled={doneCount === 0} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors">
+                  <button onClick={handleImportAll} disabled={doneCount === 0} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors">
                     <CheckCircle2 className="h-4 w-4" />
                     {t("scan_wizard_import", { count: doneCount })}
                   </button>
@@ -1481,9 +1506,9 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
                 {importPhase === "importing" && (
                   <div className="flex items-center gap-3">
                     <div className="flex flex-col items-end gap-1">
-                      <span className="text-xs text-zinc-400">{t("scan_wizard_importing", { done: importDone, total: doneCount })}</span>
+                      <span className="text-xs text-zinc-400">{t("scan_wizard_importing", { done: importDone, total: importDone })}</span>
                       <div className="w-32 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-red-600 rounded-full transition-all duration-300" style={{ width: `${Math.round((importDone / doneCount) * 100)}%` }} />
+                        <div className="h-full bg-red-600 rounded-full transition-all duration-300" style={{ width: `${Math.round((importDone / (importDone || 1)) * 100)}%` }} />
                       </div>
                     </div>
                     <Loader2 className="h-4 w-4 text-red-400 animate-spin shrink-0" />
@@ -1525,9 +1550,21 @@ export function ScanDriveWizard({ onClose, onComplete }: Props) {
       {duplicateBatch && (
         <DuplicateBatchDialog
           duplicates={duplicateBatch}
-          onCancel={() => { setDuplicateBatch(null); setImportPhase("idle"); }}
-          onSkipAll={() => importAll(true, false)}
-          onOverwriteAll={() => importAll(false, true)}
+          onCancel={() => { setDuplicateBatch(null); delete (window as any).__pendingImportItems; setImportPhase("idle"); }}
+          onSkipAll={() => {
+            setDuplicateBatch(null);
+            if ((window as any).__pendingImportItems) {
+              importSpecificItems((window as any).__pendingImportItems, true, false);
+              delete (window as any).__pendingImportItems;
+            }
+          }}
+          onOverwriteAll={() => {
+            setDuplicateBatch(null);
+            if ((window as any).__pendingImportItems) {
+              importSpecificItems((window as any).__pendingImportItems, false, true);
+              delete (window as any).__pendingImportItems;
+            }
+          }}
         />
       )}
     </>

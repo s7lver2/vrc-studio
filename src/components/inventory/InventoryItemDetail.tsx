@@ -23,6 +23,7 @@ import { useT } from "@/i18n";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { GlobalBoothPickerModal, BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
 import { toAssetUrl } from "@/lib/utils";
+import { OpenInUnityModal } from "./OpenInUnityModal";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -378,6 +379,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
   const [model3DPaths, setModel3DPaths] = useState<string[]>([]);
   const [selectedUnityPkg, setSelectedUnityPkg] = useState<string | null>(null);
   const [fileCount, setFileCount] = useState<number | null>(null);
+  const [showOpenInUnity, setShowOpenInUnity] = useState(false);
 
   // Edit mode state – imágenes múltiples
   const [isEditing, setIsEditing] = useState(false);
@@ -581,7 +583,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                   ? "bg-red-600 border-red-600 text-white hover:bg-red-500"
                   : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
               }`}
-              title={isEditing ? "Guardar cambios" : "Editar item"}
+              title={isEditing ? t("inventory_detail_save_changes") : t("inventory_detail_edit_item")}
             >
               {isEditing
                 ? <CheckIcon className="h-4 w-4" />
@@ -593,7 +595,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
               onClick={() => setShowBoothPicker(true)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700
                         bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
-              title="Importar metadatos de Booth"
+              title={t("inventory_detail_import_booth")}
             >
               <Globe className="h-3.5 w-3.5 text-pink-400" />
               Importar Booth
@@ -681,7 +683,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                           />
                           {i === 0 && (
                             <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[8px] text-white text-center py-0.5">
-                              portada
+                              {t("inventory_detail_cover")}
                             </div>
                           )}
                           <button
@@ -716,6 +718,12 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                 <div className="flex items-center gap-2 flex-wrap">
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 text-zinc-300 text-xs transition-colors" onClick={() => tauriOpenItemLocation(item.local_path)}>
                     <FolderOpen className="h-3.5 w-3.5" /> {t("inventory_detail_actions_open")}
+                  </button>
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-900/20 hover:bg-violet-900/40 border border-violet-800/50 text-violet-300 text-xs transition-colors"
+                    onClick={() => setShowOpenInUnity(true)}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Abrir en Unity
                   </button>
                   {boothUrl && (
                     <a href={boothUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/50 text-zinc-300 text-xs transition-colors">
@@ -769,6 +777,13 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                       <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap line-clamp-10">{boothDetail.description}</p>
                     </div>
                   </div>
+                )}
+
+                {showOpenInUnity && (
+                  <OpenInUnityModal
+                    items={[item]}
+                    onClose={() => setShowOpenInUnity(false)}
+                  />
                 )}
 
                 {/* Booth ratings if available */}

@@ -11,6 +11,8 @@ pub mod updates;
 pub mod tracker;
 pub mod sandbox;
 pub mod app_settings;
+pub mod cart;
+pub mod collections;
 
 // TODO: pub mod vrchat_sdk; — vrchat_sdk_check_auth, vrchat_sdk_login,
 //   vrchat_sdk_validate, vrchat_sdk_upload. Mientras no existan, el

@@ -14,27 +14,30 @@ import { useT } from "../../i18n";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toAssetUrl } from "../../lib/utils";
+import { OpenInUnityModal } from "./OpenInUnityModal";
+import { ExternalLink } from "lucide-react";
 
 interface Props {
   item: InventoryItem;
   viewMode: "grid" | "list";
   isSelected: boolean;
   onCheckboxToggle: () => void;
+  onShiftClick?: (id: string) => void;
+  isMultiSelectActive?: boolean;
   isDragging: boolean;
 }
 
-// Type icon config (unchanged)
 type ItemBehavior = "base" | "outfit" | "accessory" | "material" | "shader" | null;
 
 const BEHAVIOR_ICON_CONFIG: Record<
   Exclude<ItemBehavior, null>,
   { icon: React.ElementType; color: string; bg: string; label: string }
 > = {
-  base:      { icon: User,     color: "text-amber-400",  bg: "bg-amber-900/30",  label: "Base" },
-  outfit:    { icon: Shirt,    color: "text-pink-400",   bg: "bg-pink-900/30",   label: "Outfit" },
+  base: { icon: User, color: "text-amber-400", bg: "bg-amber-900/30", label: "Base" },
+  outfit: { icon: Shirt, color: "text-pink-400", bg: "bg-pink-900/30", label: "Outfit" },
   accessory: { icon: Sparkles, color: "text-purple-400", bg: "bg-purple-900/30", label: "Accessory" },
-  material:  { icon: Layers,   color: "text-lime-400",   bg: "bg-lime-900/30",   label: "Material" },
-  shader:    { icon: Layers,   color: "text-green-400",  bg: "bg-green-900/30",  label: "Shader" },
+  material: { icon: Layers, color: "text-lime-400", bg: "bg-lime-900/30", label: "Material" },
+  shader: { icon: Layers, color: "text-green-400", bg: "bg-green-900/30", label: "Shader" },
 };
 
 function InfiniteCarousel({ images, compressed }: { images: string[]; compressed: boolean }) {
@@ -63,15 +66,10 @@ function InfiniteCarousel({ images, compressed }: { images: string[]; compressed
 
   const handleMouseLeave = useCallback(() => {
     setHovered(false);
-    // Slide back to first image
     setDirection("right");
     setPrev(active);
     setActive(0);
   }, [active]);
-
-  if (images.length === 0) {
-    return <TypePlaceholder behavior={null} size="full" />;
-  }
 
   return (
     <div
@@ -79,10 +77,10 @@ function InfiniteCarousel({ images, compressed }: { images: string[]; compressed
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={handleMouseLeave}
     >
+      {images.length === 0 && <TypePlaceholder behavior={null} size="full" />}
       {images.map((src, i) => {
         const isActive = i === active;
-        const isPrev   = i === prev;
-        // Active slides in from the right (direction=left) or left (direction=right)
+        const isPrev = i === prev;
         const translateActive = isActive
           ? "translateX(0%)"
           : isPrev
@@ -101,7 +99,6 @@ function InfiniteCarousel({ images, compressed }: { images: string[]; compressed
               transform: translateActive,
               transition: "transform 380ms cubic-bezier(0.4, 0, 0.2, 1)",
               willChange: "transform",
-              // Only the active and prev images need to be visible; hide others instantly
               visibility: isActive || isPrev ? "visible" : "hidden",
             }}
           />
@@ -144,7 +141,6 @@ function TypePlaceholder({ behavior, size = "full" }: { behavior: ItemBehavior; 
   );
 }
 
-// Context menu (unchanged)
 type SubView = null | "move" | "delete";
 
 function ContextMenu({
@@ -156,6 +152,7 @@ function ContextMenu({
   const t = useT();
   const { selectItem, folders, moveItem, removeItem } = useInventoryStore();
   const [sub, setSub] = useState<SubView>(null);
+  const [showOpenInUnity, setShowOpenInUnity] = useState(false);   // <-- NEW
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -170,87 +167,107 @@ function ContextMenu({
   const left = Math.min(x, window.innerWidth - 228);
 
   return (
-    <div
-      ref={menuRef}
-      style={{ position: "fixed", zIndex: 9999, top, left }}
-      className="bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl py-1.5 w-56 text-sm overflow-hidden"
-    >
-      {sub === null && (
-        <>
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
-            onClick={() => { selectItem(item); onClose(); }}>
-            <Info className="h-3.5 w-3.5 text-zinc-400 shrink-0" /> {t("ctx_view_details")}
-          </button>
-          <div className="my-1 border-t border-zinc-800" />
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-            onClick={() => setSub("move")}>
-            <FolderInput className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-            <span className="flex-1">{t("ctx_move_folder")}</span>
-            <span className="text-zinc-600 text-xs">›</span>
-          </button>
-          <div className="my-1 border-t border-zinc-800" />
-          {item.is_compressed ? (
-            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-blue-300 hover:bg-zinc-800"
-              onClick={() => { onCompress(); onClose(); }}>
-              <PackageOpen className="h-3.5 w-3.5 shrink-0" /> {t("ctx_decompress")}
+    <>
+      <div
+        ref={menuRef}
+        style={{ position: "fixed", zIndex: 9999, top, left }}
+        className="bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl py-1.5 w-56 text-sm overflow-hidden"
+      >
+        {sub === null && (
+          <>
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+              onClick={() => { selectItem(item); onClose(); }}>
+              <Info className="h-3.5 w-3.5 text-zinc-400 shrink-0" /> {t("ctx_view_details")}
             </button>
-          ) : (
-            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-amber-300 hover:bg-zinc-800"
-              onClick={() => { onCompress(); onClose(); }}>
-              <Archive className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1">{t("ctx_compress")}</span>
-              <span className="text-[9px] text-zinc-600 bg-zinc-800 rounded px-1 ml-auto">max</span>
+
+            {/* NEW "Open in Unity" button */}
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-violet-300 hover:bg-zinc-800"
+              onClick={() => { setShowOpenInUnity(true); }}>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" /> Abrir en Unity
             </button>
-          )}
-          <div className="my-1 border-t border-zinc-800" />
-          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-red-400 hover:bg-zinc-800"
-            onClick={() => setSub("delete")}>
-            <Trash2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="flex-1">{t("ctx_delete")}</span>
-            <span className="text-zinc-600 text-xs">›</span>
-          </button>
-        </>
-      )}
-      {sub === "move" && (
-        <>
-          <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
-          <div className="border-t border-zinc-800 mb-1" />
-          {folders.length === 0 ? (
-            <p className="px-3 py-2 text-[10px] text-zinc-600 italic">{t("ctx_no_folders")}</p>
-          ) : folders.map((f) => (
-            <button key={f.id} className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-              onClick={async () => { await moveItem(item.id, f.id); onClose(); }}>
-              <FolderOpen className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-              <span className="truncate">{f.name}</span>
+
+            <div className="my-1 border-t border-zinc-800" />
+
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-300 hover:bg-zinc-800"
+              onClick={() => setSub("move")}>
+              <FolderInput className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+              <span className="flex-1">{t("ctx_move_folder")}</span>
+              <span className="text-zinc-600 text-xs">›</span>
             </button>
-          ))}
-        </>
+            <div className="my-1 border-t border-zinc-800" />
+            {item.is_compressed ? (
+              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-blue-300 hover:bg-zinc-800"
+                onClick={() => { onCompress(); onClose(); }}>
+                <PackageOpen className="h-3.5 w-3.5 shrink-0" /> {t("ctx_decompress")}
+              </button>
+            ) : (
+              <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-amber-300 hover:bg-zinc-800"
+                onClick={() => { onCompress(); onClose(); }}>
+                <Archive className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1">{t("ctx_compress")}</span>
+                <span className="text-[9px] text-zinc-600 bg-zinc-800 rounded px-1 ml-auto">{t("ctx_compress_max")}</span>
+              </button>
+            )}
+            <div className="my-1 border-t border-zinc-800" />
+            <button className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs text-red-400 hover:bg-zinc-800"
+              onClick={() => setSub("delete")}>
+              <Trash2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1">{t("ctx_delete")}</span>
+              <span className="text-zinc-600 text-xs">›</span>
+            </button>
+          </>
+        )}
+        {sub === "move" && (
+          <>
+            <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
+            <div className="border-t border-zinc-800 mb-1" />
+            {folders.length === 0 ? (
+              <p className="px-3 py-2 text-[10px] text-zinc-600 italic">{t("ctx_no_folders")}</p>
+            ) : folders.map((f) => (
+              <button key={f.id} className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
+                onClick={async () => { await moveItem(item.id, f.id); onClose(); }}>
+                <FolderOpen className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                <span className="truncate">{f.name}</span>
+              </button>
+            ))}
+          </>
+        )}
+        {sub === "delete" && (
+          <>
+            <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
+            <div className="border-t border-zinc-800" />
+            <p className="text-[9px] text-zinc-600 uppercase tracking-wider px-3 pt-2 pb-1">{t("ctx_where_delete")}</p>
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
+              onClick={async () => { await removeItem(item.id, "InventoryOnly"); onClose(); }}>
+              <Trash2 className="h-3.5 w-3.5 text-zinc-500" /> {t("ctx_delete_inventory")}
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-orange-300 hover:bg-zinc-800"
+              onClick={async () => { await removeItem(item.id, "InventoryAndDisk"); onClose(); }}>
+              <Trash2 className="h-3.5 w-3.5" /> {t("ctx_delete_disk")}
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-red-400 hover:bg-zinc-800"
+              onClick={async () => { await removeItem(item.id, "InventoryDiskAndProjects"); onClose(); }}>
+              <Trash2 className="h-3.5 w-3.5" /> {t("ctx_delete_all")}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* NEW OpenInUnityModal */}
+      {showOpenInUnity && (
+        <OpenInUnityModal
+          items={[item]}
+          onClose={() => { setShowOpenInUnity(false); onClose(); }}
+        />
       )}
-      {sub === "delete" && (
-        <>
-          <button className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] text-zinc-500 hover:bg-zinc-800" onClick={() => setSub(null)}>{t("ctx_back")}</button>
-          <div className="border-t border-zinc-800" />
-          <p className="text-[9px] text-zinc-600 uppercase tracking-wider px-3 pt-2 pb-1">{t("ctx_where_delete")}</p>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-            onClick={async () => { await removeItem(item.id, "InventoryOnly"); onClose(); }}>
-            <Trash2 className="h-3.5 w-3.5 text-zinc-500" /> {t("ctx_delete_inventory")}
-          </button>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-orange-300 hover:bg-zinc-800"
-            onClick={async () => { await removeItem(item.id, "InventoryAndDisk"); onClose(); }}>
-            <Trash2 className="h-3.5 w-3.5" /> {t("ctx_delete_disk")}
-          </button>
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-red-400 hover:bg-zinc-800"
-            onClick={async () => { await removeItem(item.id, "InventoryDiskAndProjects"); onClose(); }}>
-            <Trash2 className="h-3.5 w-3.5" /> {t("ctx_delete_all")}
-          </button>
-        </>
-      )}
-    </div>
+    </>
   );
 }
 
 // Main card component (inner)
-const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSelected, onCheckboxToggle, isDragging }: Props) {
+const InventoryItemCardInner = function InventoryItemCard({ 
+  item, viewMode, isSelected, onCheckboxToggle, onShiftClick, isMultiSelectActive, isDragging 
+}: Props) {
   const t = useT();
   const { showTagsInGrid } = useAppearanceStore();
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -266,7 +283,6 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
     transition: transition ?? "transform 180ms cubic-bezier(0.25, 1, 0.5, 1)",
     opacity: isSortableDragging || isDragging ? 0.35 : 1,
     willChange: transform ? "transform" : undefined,
-    // Prevent layout shift jank while the ghost card repositions
     zIndex: isSortableDragging ? 1 : undefined,
     contain: "layout",
   };
@@ -281,8 +297,14 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
+
+    if (isMultiSelectActive && e.shiftKey && onShiftClick) {
+      onShiftClick(item.id);
+      return;
+    }
+
     selectItem(item);
-  }, [item, selectItem]);
+  }, [item, selectItem, isMultiSelectActive, onShiftClick]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -324,7 +346,7 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
     return imgs.filter(Boolean);
   }, [coverSrc, item.custom_images, item.product_images]);
 
-  // List mode render (add lazy loading)
+  // List mode render
   if (viewMode === "list") {
     return (
       <>
@@ -359,7 +381,7 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
             <p className="text-sm text-zinc-200 truncate">{item.display_name ?? item.name}</p>
             <p className="text-xs text-zinc-500 truncate flex items-center gap-1.5">
               {item.author ?? "Unknown"}{sizeMb ? ` · ${sizeMb}` : ""}
-              {item.is_compressed && <span className="text-[9px] text-amber-400/70 uppercase">zip</span>}
+              {item.is_compressed && <span className="text-[9px] text-amber-400/70 uppercase">{t("card_zip")}</span>}
             </p>
           </div>
         </div>
@@ -391,11 +413,10 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
 
         <button
           onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
-          className={`absolute top-2 left-2 z-10 rounded-md border transition-all ${
-            isSelected
+          className={`absolute top-2 left-2 z-10 rounded-md border transition-all ${isSelected
               ? "opacity-100 bg-red-600 border-red-600"
               : "opacity-0 group-hover:opacity-100 bg-zinc-900/80 border-zinc-600"
-          } w-5 h-5 flex items-center justify-center`}
+            } w-5 h-5 flex items-center justify-center`}
         >
           {isSelected && <Check className="h-3 w-3 text-white" />}
         </button>
@@ -404,7 +425,7 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
           <p className="text-[10px] font-medium text-zinc-200 truncate">
             {item.display_name ?? item.name}
           </p>
-          <p className="text-[9px] text-zinc-500 truncate">{item.author ?? "Unknown"}</p>
+          <p className="text-[9px] text-zinc-500 truncate">{item.author ?? t("inventory_detail_unknown")}</p>
           {showTagsInGrid && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-0.5 mt-0.5 max-h-4 overflow-hidden">
               {item.tags.slice(0, 2).map((tag) => (
@@ -421,6 +442,17 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
           <div className="h-6 w-6 flex items-center justify-center rounded bg-zinc-900/80 border border-zinc-700 text-zinc-400">
             <GripVertical className="h-3 w-3" />
           </div>
+          {isMultiSelectActive && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
+              className={`shrink-0 rounded border transition-all ${isSelected
+                  ? "bg-red-600 border-red-600"
+                  : "bg-zinc-800 border-zinc-600 hover:border-zinc-400"
+                } w-4 h-4 flex items-center justify-center`}
+            >
+              {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+            </button>
+          )}
         </div>
       </div>
 
@@ -441,15 +473,15 @@ const InventoryItemCardInner = function InventoryItemCard({ item, viewMode, isSe
 // Memoized export
 export const InventoryItemCard = React.memo(InventoryItemCardInner, (prev, next) => {
   return (
-    prev.item.id              === next.item.id              &&
-    prev.item.is_compressed   === next.item.is_compressed   &&
-    prev.item.display_name    === next.item.display_name    &&
+    prev.item.id === next.item.id &&
+    prev.item.is_compressed === next.item.is_compressed &&
+    prev.item.display_name === next.item.display_name &&
     prev.item.custom_cover_path === next.item.custom_cover_path &&
-    prev.item.thumbnail_url   === next.item.thumbnail_url   &&
-    prev.item.tags            === next.item.tags            &&
-    prev.item.folder_id       === next.item.folder_id       &&
-    prev.isSelected           === next.isSelected           &&
-    prev.viewMode             === next.viewMode             &&
-    prev.isDragging           === next.isDragging            // ← was missing
+    prev.item.thumbnail_url === next.item.thumbnail_url &&
+    prev.item.tags === next.item.tags &&
+    prev.item.folder_id === next.item.folder_id &&
+    prev.isSelected === next.isSelected &&
+    prev.viewMode === next.viewMode &&
+    prev.isDragging === next.isDragging
   );
 });

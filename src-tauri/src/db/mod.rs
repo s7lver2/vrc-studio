@@ -1,144 +1,122 @@
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool, Row};
+// src-tauri/src/db/mod.rs
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::params;
 use crate::error::AppError;
 
 pub mod packages_repo;
 
-pub async fn init_pool(app_data_dir: &str) -> Result<SqlitePool, AppError> {
+/// Newtype sobre r2d2::Pool para poder implementar traits de Tauri.
+#[derive(Clone)]
+pub struct DbPool(pub Pool<SqliteConnectionManager>);
+
+impl DbPool {
+    /// Obtiene una conexión del pool. Bloquea brevemente si todas están en uso.
+    pub fn get(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>, AppError> {
+        self.0.get().map_err(|e| AppError::Database(e.to_string()))
+    }
+}
+
+// Tauri necesita que el estado sea Send + Sync; Pool ya lo es.
+unsafe impl Send for DbPool {}
+unsafe impl Sync for DbPool {}
+
+/// Inicializa el pool y ejecuta las migraciones pendientes.
+pub fn init_pool(app_data_dir: &str) -> Result<DbPool, AppError> {
     let db_path = format!("{}/vrc-studio.db", app_data_dir);
-    let pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect(&format!("sqlite://{}?mode=rwc", db_path))
-        .await?;
-    run_migrations(&pool).await?;
-    Ok(pool)
+    let manager = SqliteConnectionManager::file(&db_path)
+        .with_flags(rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE)
+        .with_init(|conn| {
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+            Ok(())
+        });
+    let pool = Pool::builder()
+        .max_size(5)
+        .build(manager)
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    run_migrations(&pool)?;
+    Ok(DbPool(pool))
 }
 
-pub async fn run_migrations(pool: &SqlitePool) -> Result<(), AppError> {
-    // Pre‑repair: si las columnas de 010‑012 ya existen, las marcamos como
-    // aplicadas en _sqlx_migrations para que sqlx las omita.
-    ensure_columns_exist(pool).await?;
+// ── Migrador ─────────────────────────────────────────────────────────────────
 
-    match sqlx::migrate!("src/db/migrations").run(pool).await {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("was previously applied but has been modified")
-                || msg.contains("duplicate column name")
-            {
-                // Checksum mismatch o columna duplicada → forzamos el estado limpio
-                sqlx::query("DELETE FROM _sqlx_migrations WHERE version IN (11, 12)")
-                    .execute(pool)
-                    .await
-                    .map_err(|e| AppError::Database(e.to_string()))?;
-                // Reintentamos
-                return sqlx::migrate!("src/db/migrations")
-                    .run(pool)
-                    .await
-                    .map_err(|e| AppError::Database(e.to_string()));
-            }
-            Err(AppError::Database(msg))
-        }
-    }
-}
+/// Lista de migraciones (version, sql_content).
+/// El SQL se incluye en el binario en tiempo de compilación.
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1,  include_str!("migrations/001_initial.sql")),
+    (2,  include_str!("migrations/002_custom_package_assets.sql")),
+    (3,  include_str!("migrations/003_shop_inventory.sql")),
+    (4,  include_str!("migrations/004_inventory_images.sql")),
+    (5,  include_str!("migrations/005_compression.sql")),
+    (6,  include_str!("migrations/006_vcs.sql")),
+    (7,  include_str!("migrations/007_project_screenshots.sql")),
+    (8,  include_str!("migrations/008_journal.sql")),
+    (9,  include_str!("migrations/009_tracker.sql")),
+    (10, include_str!("migrations/010_inventory_v2.sql")),
+    (11, include_str!("migrations/011_item_custom_images.sql")),
+    (12, include_str!("migrations/012_folder_v2.sql")),
+    (13, include_str!("migrations/013_schema_repair.sql")),
+    (14, include_str!("migrations/014_folder_sort_order.sql")),
+    (15, include_str!("migrations/015_folder_emoji.sql")),
+    (16, include_str!("migrations/016_folder_image_fill.sql")),
+    (17, include_str!("migrations/017_shop_cart.sql")),
+    (18, include_str!("migrations/018_shop_collections.sql")),
+];
 
-// ── Pre‑reparación de columnas ──────────────────────────────────────────────
+fn run_migrations(pool: &Pool<SqliteConnectionManager>) -> Result<(), AppError> {
+    let conn = pool.get().map_err(|e| AppError::Database(e.to_string()))?;
 
-async fn ensure_columns_exist(pool: &SqlitePool) -> Result<(), AppError> {
-    async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool, AppError> {
-        let count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?",
-        )
-        .bind(table)
-        .bind(column)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(count > 0)
-    }
+    // Crear tabla de control de migraciones si no existe.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS _migrations (
+            version    INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );"
+    ).map_err(|e| AppError::Database(e.to_string()))?;
 
-    async fn mark_applied(pool: &SqlitePool, version: i64, description: &str, checksum: &[u8]) -> Result<(), AppError> {
-        let exists = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM _sqlx_migrations WHERE version = ?",
-        )
-        .bind(version)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        if exists == 0 {
-            sqlx::query(
-                "INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time) VALUES (?, ?, datetime('now'), 1, ?, 0)",
+    for (version, sql) in MIGRATIONS {
+        // Comprobar si ya está aplicada.
+        let already_applied: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE version = ?1",
+                params![version],
+                |row| row.get::<_, i64>(0),
             )
-            .bind(version)
-            .bind(description)
-            .bind(checksum)
-            .execute(pool)
-            .await
+            .map(|n| n > 0)
             .map_err(|e| AppError::Database(e.to_string()))?;
+
+        if already_applied {
+            continue;
         }
-        Ok(())
-    }
 
-    // Checksums pre‑calculados (SHA‑256 de los archivos de migración incrustados)
-    // Los obtenemos con include_str! para que funcionen en release.
-    let checksum_10 = checksum_of(include_str!("../db/migrations/010_inventory_v2.sql"));
-    let checksum_11 = checksum_of(include_str!("../db/migrations/011_item_custom_images.sql"));
-    let checksum_12 = checksum_of(include_str!("../db/migrations/012_folder_v2.sql"));
+        // Ejecutar el SQL de la migración (puede tener múltiples statements).
+        conn.execute_batch(sql)
+            .map_err(|e| AppError::Database(format!("migration {}: {}", version, e)))?;
 
-    if column_exists(pool, "inventory_items", "display_name").await? {
-        mark_applied(pool, 10, "inventory v2", &checksum_10).await?;
-    }
-    if column_exists(pool, "inventory_items", "custom_images").await? {
-        mark_applied(pool, 11, "item custom images", &checksum_11).await?;
-    }
-    if column_exists(pool, "inventory_folders", "color").await?
-        && column_exists(pool, "inventory_folders", "custom_image_path").await?
-    {
-        mark_applied(pool, 12, "folder v2", &checksum_12).await?;
+        // Registrar como aplicada.
+        conn.execute(
+            "INSERT INTO _migrations (version) VALUES (?1)",
+            params![version],
+        ).map_err(|e| AppError::Database(e.to_string()))?;
     }
 
     Ok(())
 }
 
-fn checksum_of(contents: &str) -> Vec<u8> {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(contents.as_bytes());
-    hasher.finalize().to_vec()
-}
+// ── Pool en memoria para tests ────────────────────────────────────────────────
 
-async fn compute_migration_checksum(version: i64) -> Result<Vec<u8>, AppError> {
-    // sqlx stores checksums as a SHA-256 of the migration file contents.
-    // We compute the same checksum by reading the file.
-    use sha2::{Digest, Sha256};
-    let path = format!("src/db/migrations/{:03}_*.sql", version);
-    // Since file names vary, we need to find the actual file
-    let dir = std::fs::read_dir("src/db/migrations")
-        .map_err(|e| AppError::External(e.to_string()))?;
-    let mut file_path = None;
-    for entry in dir {
-        let entry = entry.map_err(|e| AppError::External(e.to_string()))?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with(&format!("{:03}_", version)) {
-            file_path = Some(entry.path());
-            break;
-        }
-    }
-    let path = file_path.ok_or_else(|| AppError::External(format!("Migration file for version {} not found", version)))?;
-    let contents = tokio::fs::read(&path)
-        .await
-        .map_err(|e| AppError::External(e.to_string()))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&contents);
-    let result: Vec<u8> = hasher.finalize().to_vec();
-    Ok(result)
-}
-
-/// In-memory pool for tests only.
 #[cfg(test)]
-pub async fn create_test_pool() -> Result<SqlitePool, AppError> {
-    let pool = SqlitePoolOptions::new()
-        .connect("sqlite::memory:")
-        .await?;
-    run_migrations(&pool).await?;
-    Ok(pool)
+pub fn create_test_pool() -> Result<DbPool, AppError> {
+    let manager = SqliteConnectionManager::memory()
+        .with_init(|conn| {
+            conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+            Ok(())
+        });
+    let pool = Pool::builder()
+        .max_size(1)
+        .build(manager)
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    run_migrations(&pool)?;
+    Ok(DbPool(pool))
 }

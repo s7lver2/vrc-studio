@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAppearanceStore } from "./appearanceStore";
 import {
   InventoryItem,
   InventoryFolder,
@@ -19,6 +20,7 @@ import {
   tauriSetItemCustomImages,
   tauriUpdateFolder,
   tauriDeleteInventoryFolder,
+  tauriReorderFolders,
 } from "../lib/tauri";
 
 interface ImportLocalArgs {
@@ -118,6 +120,7 @@ export function matchesQuery(item: InventoryItem, parsed: ParsedQuery, folders: 
 // ── Store ──────────────────────────────────────────────────────
 interface InventoryState {
   items: InventoryItem[];
+  debugItems: InventoryItem[]; // ephemeral debug-only items, never fetched from DB
   folders: InventoryFolder[];
   selectedFolderId: string | null;
   selectedItem: InventoryItem | null;
@@ -128,6 +131,7 @@ interface InventoryState {
   sortField: SortField;
   sortDir: SortDir;
   selectedItemIds: Set<string>;
+  lastSelectedId: string | null;
 
   fetchAll: () => Promise<void>;
   setViewMode: (m: "grid" | "list") => void;
@@ -146,29 +150,36 @@ interface InventoryState {
   hasActiveFilters: () => boolean;
   setSortField: (f: SortField) => void;
   setSortDir: (d: SortDir) => void;
+  loadItems: () => Promise<void>;
   toggleSelectItem: (id: string) => void;
   selectAllItems: () => void;
   clearSelection: () => void;
+  addDebugItems: (items: InventoryItem[]) => void;
+  clearDebugItems: () => void;
   updateItemMetadata: (payload: UpdateItemMetadataPayload) => Promise<void>;
   setItemCustomCover: (itemId: string, sourcePath: string) => Promise<string>;
   reorderItems: (orderedIds: string[]) => Promise<void>;
   setItemCustomImages: (itemId: string, sourcePaths: string[]) => Promise<string[]>;
   updateFolder: (folderId: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean }) => Promise<void>;
   removeFolder: (folderId: string) => Promise<void>;
+  reorderFolders: (orderedIds: string[]) => Promise<void>;
+  rangeSelectItems: (anchorId: string, targetId: string, orderedIds: string[]) => void;
 }
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
   items: [],
+  debugItems: [],
   folders: [],
   selectedFolderId: null,
   selectedItem: null,
-  viewMode: "grid",
+  viewMode: (useAppearanceStore.getState().defaultView ?? "grid") as "grid" | "list",
   searchQuery: "",
   loading: false,
   error: null,
   sortField: "date" as SortField,
   sortDir: "desc" as SortDir,
   selectedItemIds: new Set<string>(),
+  lastSelectedId: null,
 
   fetchAll: async () => {
     set({ loading: true, error: null });
@@ -215,7 +226,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set((s) => ({
       folders: [
         ...s.folders,
-        { id, name, parent_id: parentId ?? null, color: null, custom_image_path: null },
+        { id, name, parent_id: parentId ?? null, color: null, custom_image_path: null, custom_image_fill: "icon", },
       ],
     }));
   },
@@ -265,11 +276,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   filteredItems: () => {
-    const { items, searchQuery, selectedFolderId, folders, sortField, sortDir } = get();
+    const { items, debugItems, searchQuery, selectedFolderId, folders, sortField, sortDir } = get();
+    const allItems = [...items, ...debugItems];
 
     let result = searchQuery.trim()
-      ? items.filter((i) => matchesQuery(i, parseSearchQuery(searchQuery), folders))
-      : items;
+      ? allItems.filter((i) => matchesQuery(i, parseSearchQuery(searchQuery), folders))
+      : allItems;
 
     if (selectedFolderId) {
       result = result.filter((i) => i.folder_id === selectedFolderId);
@@ -289,17 +301,23 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     }
     return result;
   },
+  loadItems: async () => {
+    await get().fetchAll();
+  },
 
   setSortField: (f) => set({ sortField: f }),
   setSortDir: (d) => set({ sortDir: d }),
+  addDebugItems: (newItems) => set((s) => ({ debugItems: [...s.debugItems, ...newItems] })),
+  clearDebugItems: () => set({ debugItems: [] }),
 
   toggleSelectItem: (id) => set((s) => {
     const next = new Set(s.selectedItemIds);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return { selectedItemIds: next };
+    if (next.has(id)) { next.delete(id); }
+    else { next.add(id); }
+    return { selectedItemIds: next, lastSelectedId: id };
   }),
   selectAllItems: () => set((s) => ({ selectedItemIds: new Set(s.items.map((i) => i.id)) })),
-  clearSelection: () => set({ selectedItemIds: new Set() }),
+  clearSelection: () => set({ selectedItemIds: new Set(), lastSelectedId: null }),
 
   updateItemMetadata: async (payload) => {
     await tauriUpdateItemMetadata(payload);
@@ -339,10 +357,34 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set((s) => ({ folders: s.folders.map((f) => (f.id === folderId ? updated : f)) }));
   },
 
+  rangeSelectItems: (anchorId, targetId, orderedIds) => set((s) => {
+    const anchorIdx = orderedIds.indexOf(anchorId);
+    const targetIdx = orderedIds.indexOf(targetId);
+    if (anchorIdx === -1 || targetIdx === -1) return {};
+    const [start, end] = anchorIdx < targetIdx
+      ? [anchorIdx, targetIdx]
+      : [targetIdx, anchorIdx];
+    const rangeIds = orderedIds.slice(start, end + 1);
+    const next = new Set(s.selectedItemIds);
+    rangeIds.forEach((id) => next.add(id));
+    return { selectedItemIds: next, lastSelectedId: targetId };
+  }),
+
   removeFolder: async (folderId) => {
     await tauriDeleteInventoryFolder(folderId);
     set((s) => ({ folders: s.folders.filter((f) => f.id !== folderId) }));
   },
+  reorderFolders: async (orderedIds) => {
+  await tauriReorderFolders(orderedIds);
+  // Optimistically update local folder order
+  set((s) => {
+    const idxMap = new Map(orderedIds.map((id, i) => [id, i]));
+    const sorted = [...s.folders].sort(
+      (a, b) => (idxMap.get(a.id) ?? 999) - (idxMap.get(b.id) ?? 999)
+    );
+    return { folders: sorted };
+  });
+},
 }));
 
 export type SortField = "date" | "name" | "author" | "size" | "custom";

@@ -6,18 +6,20 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Package, Download, Trash2, RefreshCw, Search,
   CheckCircle2, AlertTriangle, Loader2, ChevronDown,
-  Sparkles, Star,
+  Sparkles,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import {
-  Project, VpmPackage, VpmPackageVersion,
+  Project, VpmPackage,
   InstalledVpmPackage, PkgProgress,
   tauriGetInstalledVpmPackages,
   tauriFetchVpmIndex,
   tauriInstallVpmPackageToProject,
   tauriRemoveVpmPackageFromProject,
+  tauriGetAppSettings,
 } from "@/lib/tauri";
 import { useT } from "@/i18n";
+import { categorizePackage, CATEGORIES, type PkgCategory } from "@/lib/packageCategories";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -293,7 +295,6 @@ function BrowseTab({
     const installState = installing[pkg.id];
     const isInstalling = !!installState && !installState.error && installState.progress < 1;
     const hasError = installState?.error != null;
-    const isDone = !isInstalling && installState?.progress === 1;
     const expanded = expandedDesc[pkg.id];
 
     return (
@@ -390,8 +391,19 @@ function BrowseTab({
   const recIds = new Set(recommendations.map((r) => r.packageId));
   const nonRecFiltered = filtered.filter((p) => !recIds.has(p.id) || search.trim());
 
+  const byCategory = useMemo(() => {
+    const map = new Map<PkgCategory, VpmPackage[]>();
+    for (const cat of CATEGORIES) map.set(cat.id, []);
+    for (const pkg of nonRecFiltered) {
+      const cat = categorizePackage(pkg.id);
+      map.get(cat)!.push(pkg);
+    }
+    return map;
+  }, [nonRecFiltered]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Search bar */}
       <div className="p-3 border-b border-zinc-800/60">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
@@ -406,6 +418,7 @@ function BrowseTab({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        {/* Recommendations (only when no active search) */}
         {!search.trim() && recommendations.length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-2">
@@ -426,7 +439,6 @@ function BrowseTab({
                 );
               })}
             </div>
-
             {nonRecFiltered.length > 0 && (
               <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mt-4 mb-2">
                 {t("packages_tab_all_packages", { count: index.length })}
@@ -435,9 +447,23 @@ function BrowseTab({
           </div>
         )}
 
-        <div className="flex flex-col gap-2">
-          {nonRecFiltered.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} />)}
-        </div>
+        {/* Categorized packages (only non-recommended) */}
+        {CATEGORIES.map((cat) => {
+          const pkgs = byCategory.get(cat.id) ?? [];
+          if (pkgs.length === 0) return null;
+          return (
+            <div key={cat.id}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mt-3 mb-1.5 flex items-center gap-1.5">
+                <span>{cat.icon}</span>
+                {cat.label}
+                <span className="text-zinc-700">({pkgs.length})</span>
+              </p>
+              <div className="flex flex-col gap-2">
+                {pkgs.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} />)}
+              </div>
+            </div>
+          );
+        })}
 
         {filtered.length === 0 && search.trim() && (
           <div className="text-center py-8">
@@ -463,6 +489,7 @@ export function PackagesTab({ project }: { project: Project }) {
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [indexLoaded, setIndexLoaded] = useState(false);
+  const [indexUrls, setIndexUrls] = useState<string[]>([]);
 
   const [installing, setInstalling] = useState<
     Record<string, { step: string; progress: number; error: string | null }>
@@ -478,11 +505,20 @@ export function PackagesTab({ project }: { project: Project }) {
 
   useEffect(() => { loadInstalled(); }, [loadInstalled]);
 
+  // En loadIndex, guardar también las URLs
   const loadIndex = useCallback(() => {
     setLoadingIndex(true);
     setIndexError(null);
-    tauriFetchVpmIndex()
-      .then((pkgs) => { setIndex(pkgs); setIndexLoaded(true); })
+    // Primero cargar settings para saber qué URLs usar
+    Promise.all([
+      tauriFetchVpmIndex(),
+      tauriGetAppSettings(),
+    ])
+      .then(([pkgs, settings]) => {
+        setIndex(pkgs);
+        setIndexLoaded(true);
+        setIndexUrls(settings.extra_vpm_sources);
+      })
       .catch((e) => setIndexError(String(e)))
       .finally(() => setLoadingIndex(false));
   }, []);
@@ -512,14 +548,14 @@ export function PackagesTab({ project }: { project: Project }) {
       ...prev,
       [packageId]: { step: t("packages_tab_starting"), progress: 0, error: null },
     }));
-    tauriInstallVpmPackageToProject(project.path, packageId, version, [])
+    tauriInstallVpmPackageToProject(project.path, packageId, version, indexUrls)
       .catch((e) => {
         setInstalling((prev) => ({
           ...prev,
           [packageId]: { ...prev[packageId], error: String(e), progress: prev[packageId]?.progress ?? 0 },
         }));
       });
-  }, [project.path, t]);
+  }, [project.path, t, indexUrls]);
 
   const handleRemove = useCallback((packageId: string) => {
     setRemoving((prev) => new Set([...prev, packageId]));

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Project, tauriCompressProject, tauriDecompressProject } from "@/lib/tauri";
-import { Trash2, ExternalLink, Info, Archive, PackageOpen, Loader2 } from "lucide-react";
+import { Project, tauriCompressProject, tauriDecompressProject, tauriFocusUnityWindow } from "@/lib/tauri";
+import { Trash2, ExternalLink, Info, Archive, PackageOpen, Loader2, MonitorUp } from "lucide-react";
 import { toAssetUrl } from "@/lib/utils";
 import { ProjectCompressionPopup } from "./ProjectCompressionPopup";
 import { useT } from "@/i18n";
@@ -45,6 +45,20 @@ export function ProjectCard({ project, onOpen, onDelete, onDetail, onSelect, isS
     onUpdated?.(updated);
   };
 
+  // Badge de estado (abierto/cerrado) compartido para ambos casos
+  const statusBadge = (
+    <span
+      className={cn(
+        "absolute bottom-1.5 right-1.5 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
+        isOpen
+          ? "bg-green-950/80 text-green-400 border border-green-800/60"
+          : "bg-zinc-900/80 text-zinc-500 border border-zinc-700/60"
+      )}
+    >
+      {isOpen ? t("project_card_open") : t("project_card_closed")}
+    </span>
+  );
+
   return (
     <div
       className={cn(
@@ -63,17 +77,7 @@ export function ProjectCard({ project, onOpen, onDelete, onDetail, onSelect, isS
             style={isOpen ? undefined : { filter: "grayscale(1) brightness(0.6)" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
-          <span
-            className={cn(
-              "absolute bottom-1.5 right-1.5 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
-              isOpen
-                ? "bg-green-950/80 text-green-400 border border-green-800/60"
-                : "bg-zinc-900/80 text-zinc-500 border border-zinc-700/60"
-            )}
-          >
-            {isOpen ? t("project_card_open") : t("project_card_closed")}
-          </span>
-          {/* Compressed badge */}
+          {statusBadge}
           {project.is_compressed && (
             <span className="absolute top-1.5 left-1.5 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-blue-950/80 text-blue-400 border border-blue-800/60">
               {t("project_card_compressed")}
@@ -86,6 +90,7 @@ export function ProjectCard({ project, onOpen, onDelete, onDetail, onSelect, isS
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.91 11.672a.375.375 0 0 1 0 .656l-5.603 3.113a.375.375 0 0 1-.557-.328V8.887c0-.286.307-.466.557-.328l5.603 3.113Z" />
           </svg>
+          {statusBadge}
           {project.is_compressed && (
             <span className="absolute top-1.5 left-1.5 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-blue-950/80 text-blue-400 border border-blue-800/60">
               {t("project_card_compressed")}
@@ -100,7 +105,6 @@ export function ProjectCard({ project, onOpen, onDelete, onDetail, onSelect, isS
           <p className="mt-0.5 text-xs text-zinc-500">{project.unity_version}</p>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Compress / Decompress */}
           {project.is_compressed ? (
             <button
               aria-label={t("project_card_decompress")}
@@ -161,15 +165,28 @@ export function ProjectCard({ project, onOpen, onDelete, onDetail, onSelect, isS
         )}
       </div>
 
+      {/* Botón principal: "Abrir" o "Traer al frente" */}
       <button
-        aria-label={t("project_detail_open_unity")}
-        onClick={(e) => { e.stopPropagation(); onOpen(project); }}
+        aria-label={isOpen ? t("project_card_bring_to_front") : t("project_detail_open_unity")}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isOpen) {
+            tauriFocusUnityWindow(project.path).catch(console.error);
+          } else {
+            onOpen(project);
+          }
+        }}
         disabled={project.is_compressed}
         title={project.is_compressed ? t("project_card_decompress_hint") : undefined}
-        className="mt-1 flex items-center justify-center gap-2 rounded-md bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className={cn(
+          "mt-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+          isOpen
+            ? "bg-green-900/40 border border-green-800/60 text-green-300 hover:bg-green-900/60"
+            : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100"
+        )}
       >
-        <ExternalLink size={12} />
-        {t("project_detail_open_unity")}
+        {isOpen ? <MonitorUp size={12} /> : <ExternalLink size={12} />}
+        {isOpen ? t("project_card_bring_to_front") : t("project_detail_open_unity")}
       </button>
 
       {/* Compression popup */}

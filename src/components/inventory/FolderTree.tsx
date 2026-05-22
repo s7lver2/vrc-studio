@@ -53,13 +53,24 @@ export function FolderTree() {
     useInventoryStore();
   const [newFolderName, setNewFolderName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(false);
   const rootFolders = folders.filter((f) => f.parent_id === null);
   const t = useT();
 
   const handleCreate = async () => {
     const name = newFolderName.trim();
-    if (!name) return;
-    await addFolder(name);
+    if (!name || loading) return;
+    setLoading(true);
+    try {
+      await addFolder(name);
+      setNewFolderName("");
+      setCreating(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
     setNewFolderName("");
     setCreating(false);
   };
@@ -80,7 +91,7 @@ export function FolderTree() {
       </div>
 
       {creating && (
-        <div className="px-2 mb-1">
+        <div className="px-2 mb-1 flex flex-col gap-1">
           <input
             autoFocus
             className="w-full text-xs bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-500 transition-colors"
@@ -88,13 +99,26 @@ export function FolderTree() {
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreate();
-              if (e.key === "Escape") setCreating(false);
-            }}
-            onBlur={() => {
-              if (!newFolderName.trim()) setCreating(false);
+              if (e.key === "Enter")  handleCreate();
+              if (e.key === "Escape") handleCancel();
             }}
           />
+          <div className="flex gap-1">
+            {/* onMouseDown + preventDefault prevents input blur before action fires */}
+            <button
+              onMouseDown={(e) => { e.preventDefault(); handleCancel(); }}
+              className="flex-1 py-1 rounded-md text-[10px] text-zinc-500 bg-zinc-800 hover:bg-zinc-700 transition-colors"
+            >
+              {t("grid_ctx_cancel")}
+            </button>
+            <button
+              onMouseDown={(e) => { e.preventDefault(); handleCreate(); }}
+              disabled={!newFolderName.trim() || loading}
+              className="flex-1 py-1 rounded-md text-[10px] text-white bg-red-600 hover:bg-red-500 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loading ? "…" : t("grid_ctx_create")}
+            </button>
+          </div>
         </div>
       )}
 

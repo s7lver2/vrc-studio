@@ -12,6 +12,10 @@ pub fn is_unitypackage_path(path: &str) -> bool {
     path.to_lowercase().ends_with(".unitypackage")
 }
 
+pub fn is_rar_path(path: &str) -> bool {
+    path.to_lowercase().ends_with(".rar")
+}
+
 /// Extrae un .unitypackage (tar.gz con estructura GUID-based) a `dest_dir`.
 /// Reconstruye la jerarquía original usando los archivos `pathname` de cada entry.
 /// Los paths `Assets/...` se extraen como `<dest_dir>/...` (sin el prefijo Assets/).
@@ -131,6 +135,11 @@ pub async fn download_file(
         .send()
         .await
         .map_err(|e| e.to_string())?;
+    
+    let client = reqwest::Client::builder()
+    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    .build()
+    .map_err(|e| e.to_string())?;
 
     if !response.status().is_success() {
         return Err(format!("HTTP {} for {}", response.status(), url));
@@ -191,8 +200,8 @@ pub async fn download_file(
     Ok(dest_path)
 }
 
-/// Si el archivo descargado es un .zip o .unitypackage, lo extrae en `dest_dir`.
-/// Retorna el directorio de extracción (o el path del archivo si no era ninguno de los dos).
+/// Si el archivo descargado es un .zip, .rar o .unitypackage, lo extrae en `dest_dir`.
+/// Retorna el directorio de extracción (o el path del archivo si no era ninguno de los tres).
 pub async fn maybe_extract_zip(
     app: &AppHandle,
     item_id: &str,
@@ -200,10 +209,11 @@ pub async fn maybe_extract_zip(
     dest_dir: &Path,
 ) -> Result<PathBuf, String> {
     let path_str = file_path.to_string_lossy();
-    let is_zip = is_zip_path(&path_str);
+    let is_zip   = is_zip_path(&path_str);
     let is_unity = is_unitypackage_path(&path_str);
+    let is_rar   = is_rar_path(&path_str);
 
-    if !is_zip && !is_unity {
+    if !is_zip && !is_unity && !is_rar {
         return Ok(file_path.to_path_buf());
     }
 
@@ -219,13 +229,36 @@ pub async fn maybe_extract_zip(
     );
 
     let file_path_owned = file_path.to_path_buf();
-    let dest_dir_owned = dest_dir.to_path_buf();
+    let dest_dir_owned  = dest_dir.to_path_buf();
 
     tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
         if is_zip {
             let file = std::fs::File::open(&file_path_owned).map_err(|e| e.to_string())?;
             let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
             archive.extract(&dest_dir_owned).map_err(|e| e.to_string())?;
+            std::fs::remove_file(&file_path_owned).ok();
+        } else if is_rar {
+            std::fs::create_dir_all(&dest_dir_owned).map_err(|e| e.to_string())?;
+            // unrar 0.5: la extracción es iterativa a través del cursor.
+            // extract_to(base) vive en CursorBeforeFile, no en Archive.
+            let mut cursor = unrar::Archive::new(&file_path_owned)
+                .open_for_processing()
+                .map_err(|e| format!("RAR open error: {}", e))?;
+            while let Some(header) = cursor
+                .read_header()
+                .map_err(|e| format!("RAR read error: {}", e))?
+            {
+                // Pre-create the parent directory for this entry so the native
+                // unrar library doesn't fail with "Could not create file" when
+                // the archive contains nested folders.
+                let entry_path = dest_dir_owned.join(header.entry().filename.clone());
+                if let Some(parent) = entry_path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                cursor = header
+                    .extract_to(&dest_dir_owned)
+                    .map_err(|e| format!("RAR extract error: {}", e))?;
+            }
             std::fs::remove_file(&file_path_owned).ok();
         } else {
             // .unitypackage

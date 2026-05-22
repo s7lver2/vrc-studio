@@ -8,6 +8,18 @@ pub struct ProjectStructureOptions {
     pub vcs_enabled: bool,
 }
 
+/// Returns the default Packages/manifest.json content for new Unity 2022 projects.
+/// Includes built-in modules required by VRChat SDK 4.x and Oculus XR package.
+pub fn default_manifest_json() -> String {
+    serde_json::json!({
+        "dependencies": {
+            "com.unity.modules.androidjni": "1.0.0",
+            "com.unity.modules.video": "1.0.0"
+        }
+    })
+    .to_string()
+}
+
 pub async fn create_project_structure(
     project_dir: &Path,
     opts: &ProjectStructureOptions,
@@ -16,7 +28,10 @@ pub async fn create_project_structure(
         fs::create_dir_all(project_dir.join(dir)).await?;
     }
 
-    fs::write(project_dir.join("Packages/manifest.json"), "{\n  \"dependencies\": {}\n}\n").await?;
+    fs::write(
+        project_dir.join("Packages/manifest.json"),
+        default_manifest_json(),
+    ).await?;
     fs::write(project_dir.join("Packages/vpm-manifest.json"), "{\n  \"dependencies\": {},\n  \"locked\": {}\n}\n").await?;
 
     let version_content = format!(

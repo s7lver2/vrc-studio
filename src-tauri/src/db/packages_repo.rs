@@ -1,177 +1,134 @@
-use sqlx::SqlitePool;
+use rusqlite::{params, OptionalExtension};
 use uuid::Uuid;
+use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::CustomPackage;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/// Obtiene los IDs de inventory_items asociados a un paquete.
-async fn get_asset_ids(package_id: &str, pool: &SqlitePool) -> Result<Vec<String>, AppError> {
-    use sqlx::Row;
-    let rows = sqlx::query(
-        "SELECT inventory_item_id FROM custom_package_assets WHERE package_id = ?"
-    )
-    .bind(package_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().map(|r| r.get::<String, _>(0)).collect())
+fn get_asset_ids(conn: &rusqlite::Connection, package_id: &str) -> Result<Vec<String>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT inventory_item_id FROM custom_package_assets WHERE package_id = ?1"
+    )?;
+    let ids = stmt
+        .query_map(params![package_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
 }
 
-fn row_to_pkg(row: &sqlx::sqlite::SqliteRow, asset_ids: Vec<String>) -> CustomPackage {
-    use sqlx::Row;
-    CustomPackage {
-        id: row.get("id"),
-        name: row.get("name"),
-        display_name: row.get("display_name"),
-        version: row.get("version"),
-        description: row.get("description"),
-        json_path: row.get("json_path"),
-        zip_path: row.get("zip_path"),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+fn row_to_pkg(
+    row: &rusqlite::Row<'_>,
+    asset_ids: Vec<String>,
+) -> Result<CustomPackage, rusqlite::Error> {
+    Ok(CustomPackage {
+        id:           row.get("id")?,
+        name:         row.get("name")?,
+        display_name: row.get("display_name")?,
+        version:      row.get("version")?,
+        description:  row.get("description")?,
+        json_path:    row.get("json_path")?,
+        zip_path:     row.get("zip_path")?,
+        created_at:   row.get("created_at")?,
+        updated_at:   row.get("updated_at")?,
         asset_ids,
-    }
+    })
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
 
 /// Inserta un nuevo paquete y devuelve su UUID.
-pub async fn insert_package(
-    pool: &SqlitePool,
+pub fn insert_package(
+    pool: &DbPool,
     name: &str,
     display_name: &str,
     version: &str,
     description: &str,
 ) -> Result<String, AppError> {
+    let conn = pool.get()?;
     let id = Uuid::new_v4().to_string();
-    sqlx::query(
+    conn.execute(
         "INSERT INTO custom_packages (id, name, display_name, version, description, json_path, zip_path)
-         VALUES (?, ?, ?, ?, ?, '', NULL)"
-    )
-    .bind(&id)
-    .bind(name)
-    .bind(display_name)
-    .bind(version)
-    .bind(description)
-    .execute(pool)
-    .await?;
+         VALUES (?1, ?2, ?3, ?4, ?5, '', NULL)",
+        params![id, name, display_name, version, description],
+    )?;
     Ok(id)
 }
 
-/// Obtiene un paquete por ID (con asset_ids). Devuelve None si no existe.
-pub async fn get_package(pool: &SqlitePool, id: &str) -> Result<Option<CustomPackage>, AppError> {
-    use sqlx::Row;
-    let maybe_row = sqlx::query(
-        "SELECT id, name, display_name, version, description, json_path, zip_path, created_at, updated_at
-         FROM custom_packages WHERE id = ?"
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?;
+pub fn list_packages(pool: &DbPool) -> Result<Vec<CustomPackage>, AppError> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare("SELECT * FROM custom_packages ORDER BY created_at DESC")?;
+    let rows: Vec<_> = stmt.query_map([], |row| {
+        // asset_ids se rellenan después
+        row_to_pkg(row, vec![])
+    })?.collect::<Result<Vec<_>, _>>()?;
 
-    match maybe_row {
-        None => Ok(None),
-        Some(row) => {
-            let pkg_id: String = row.get("id");
-            let asset_ids = get_asset_ids(&pkg_id, pool).await?;
-            Ok(Some(row_to_pkg(&row, asset_ids)))
-        }
-    }
+    // Cargar asset_ids para cada paquete
+    rows.into_iter()
+        .map(|mut pkg| {
+            pkg.asset_ids = get_asset_ids(&conn, &pkg.id)?;
+            Ok(pkg)
+        })
+        .collect()
 }
 
-/// Lista todos los paquetes con sus asset_ids.
-pub async fn list_packages(pool: &SqlitePool) -> Result<Vec<CustomPackage>, AppError> {
-    use sqlx::Row;
-    let rows = sqlx::query(
-        "SELECT id, name, display_name, version, description, json_path, zip_path, created_at, updated_at
-         FROM custom_packages ORDER BY created_at DESC"
-    )
-    .fetch_all(pool)
-    .await?;
+pub fn get_package(pool: &DbPool, id: &str) -> Result<CustomPackage, AppError> {
+    let conn = pool.get()?;
+    let pkg = conn.query_row(
+        "SELECT * FROM custom_packages WHERE id = ?1",
+        params![id],
+        |row| row_to_pkg(row, vec![]),
+    ).optional()?.ok_or_else(|| AppError::NotFound(format!("package {}", id)))?;
 
-    let mut packages = Vec::new();
-    for row in rows {
-        let pkg_id: String = row.get("id");
-        let asset_ids = get_asset_ids(&pkg_id, pool).await?;
-        packages.push(row_to_pkg(&row, asset_ids));
-    }
-    Ok(packages)
+    let asset_ids = get_asset_ids(&conn, &pkg.id)?;
+    Ok(CustomPackage { asset_ids, ..pkg })
 }
 
 /// Actualiza los campos editables y updated_at de un paquete.
 pub async fn update_package(
-    pool: &SqlitePool,
+    pool: &DbPool,
     id: &str,
     display_name: &str,
     version: &str,
     description: &str,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "UPDATE custom_packages
+    let conn = pool.get()?;
+    conn.execute("UPDATE custom_packages
          SET display_name = ?, version = ?, description = ?, updated_at = datetime('now')
-         WHERE id = ?"
-    )
-    .bind(display_name)
-    .bind(version)
-    .bind(description)
-    .bind(id)
-    .execute(pool)
-    .await?;
+         WHERE id = ?", params![display_name, version, description, id])?;
     Ok(())
 }
 
 /// Actualiza json_path y zip_path tras el build del ZIP.
-pub async fn update_package_paths(
-    pool: &SqlitePool,
+pub fn update_package_paths(
+    pool: &DbPool,
     id: &str,
     json_path: &str,
-    zip_path: &str,
+    zip_path: Option<&str>,
 ) -> Result<(), AppError> {
-    sqlx::query(
-        "UPDATE custom_packages
-         SET json_path = ?, zip_path = ?, updated_at = datetime('now')
-         WHERE id = ?"
-    )
-    .bind(json_path)
-    .bind(zip_path)
-    .bind(id)
-    .execute(pool)
-    .await?;
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE custom_packages SET json_path = ?1, zip_path = ?2, updated_at = datetime('now') WHERE id = ?3",
+        params![json_path, zip_path, id],
+    )?;
     Ok(())
 }
 
 /// Elimina un paquete (CASCADE elimina sus custom_package_assets).
-pub async fn delete_package(pool: &SqlitePool, id: &str) -> Result<(), AppError> {
-    sqlx::query("DELETE FROM custom_packages WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
+pub fn delete_package(pool: &DbPool, id: &str) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute("DELETE FROM custom_packages WHERE id = ?1", params![id])?;
     Ok(())
 }
 
 /// Reemplaza todos los assets de un paquete (borra + inserta en una transacción).
-pub async fn set_package_assets(
-    pool: &SqlitePool,
-    package_id: &str,
-    asset_ids: &[String],
-) -> Result<(), AppError> {
-    let mut tx = pool.begin().await?;
-
-    sqlx::query("DELETE FROM custom_package_assets WHERE package_id = ?")
-        .bind(package_id)
-        .execute(&mut *tx)
-        .await?;
-
+pub fn set_package_assets(pool: &DbPool, package_id: &str, asset_ids: &[String]) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute("DELETE FROM custom_package_assets WHERE package_id = ?1", params![package_id])?;
     for asset_id in asset_ids {
-        sqlx::query(
-            "INSERT INTO custom_package_assets (package_id, inventory_item_id) VALUES (?, ?)"
-        )
-        .bind(package_id)
-        .bind(asset_id)
-        .execute(&mut *tx)
-        .await?;
+        conn.execute(
+            "INSERT OR IGNORE INTO custom_package_assets (package_id, inventory_item_id) VALUES (?1, ?2)",
+            params![package_id, asset_id],
+        )?;
     }
-
-    tx.commit().await?;
     Ok(())
 }

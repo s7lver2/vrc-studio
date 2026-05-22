@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import type { Project } from "@/lib/tauri";
 import { isUntrustedSourcesUnlocked, lockUntrustedSources } from "@/hooks/useUntrustedSources";
+import { isGetStartedDone, resetGetStarted } from "@/components/GetStarted";
 
-export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "sandbox" | "creators";
+export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "sandbox" | "creators" | "git";
 
 // ── Riperstore experimental flag ───────────────────────────────────────────────
 const RIPERSTORE_KEY = "app:riperstoreExperimental";
@@ -19,7 +20,7 @@ interface AppState {
   workspaceProject: Project | null;
   selectedProject: Project | null;
   untrustedSourcesUnlocked: boolean;
-  
+  showGetStarted: boolean;
 
   setActiveSection: (section: Section) => void;
   setLoading: (loading: boolean, message?: string) => void;
@@ -28,6 +29,8 @@ interface AppState {
   closeWorkspace: () => void;
   setSelectedProject: (project: Project | null) => void;
   setUntrustedSourcesUnlocked: (unlocked: boolean) => void;
+  openGetStarted: () => void;
+  closeGetStarted: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -38,6 +41,7 @@ export const useAppStore = create<AppState>((set) => ({
   workspaceProject: null,
   selectedProject: null,
   untrustedSourcesUnlocked: isUntrustedSourcesUnlocked(),
+  showGetStarted: !isGetStartedDone(),
 
   setActiveSection: (section) => set({ activeSection: section }),
   setLoading: (loading, message) =>
@@ -59,4 +63,9 @@ export const useAppStore = create<AppState>((set) => ({
       set({ untrustedSourcesUnlocked: true });
     }
   },
+  openGetStarted: () => {
+    resetGetStarted();
+    set({ showGetStarted: true });
+  },
+  closeGetStarted: () => set({ showGetStarted: false }),
 }));

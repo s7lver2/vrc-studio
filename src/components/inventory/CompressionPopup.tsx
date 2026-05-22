@@ -54,13 +54,13 @@ export function CompressionPopup({ itemId, itemName, mode, onDone, onError, queu
       if (event.payload.phase === "done") {
         setTimeout(() => { if (active) onDone(); }, 800);
       } else if (event.payload.phase === "error") {
-        onError("Compression error");
+        onError(t("compression_error"));
       }
     }).then((unlisten) => {
       unlistenRef.current = unlisten;
     });
     const watchdog = setTimeout(() => {
-      if (active) onError("Timeout waiting for compression progress");
+      if (active) onError(t("compression_timeout"));
     }, 30_000);
     return () => {
       active = false;
@@ -116,7 +116,7 @@ export function CompressionPopup({ itemId, itemName, mode, onDone, onError, queu
                 />
               </div>
               <div className="flex justify-between mt-1">
-                <span className="text-[10px] text-zinc-600">Cola</span>
+                <span className="text-[10px] text-zinc-600">{t("compression_queue")}</span>
                 <span className="text-[10px] text-zinc-500 tabular-nums">
                   {queueCurrent} / {queueTotal}
                 </span>

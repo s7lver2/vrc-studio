@@ -484,21 +484,7 @@ export function Preview3D({ modelPaths, inventoryItems, currentItem }: Props) {
   const [ready, setReady] = useState(false);
   const [shaderMode, setShaderMode] = useState<ShaderMode>("pbr");
 
-  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
-  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const setSandboxItem = useSandboxStore((s) => s.setBaseItem);
-
-  const isOutfit = useMemo(() => itemIsOutfit(currentItem, modelPaths), [currentItem, modelPaths]);
-  const supportedAvatarNames = useMemo(() => (isOutfit ? extractSupportedAvatarNames(modelPaths) : new Set<string>()), [isOutfit, modelPaths]);
-
-  const avatarItems = useMemo(
-    () => inventoryItems.filter((it) => {
-      if (it.id === currentItem.id) return false;
-      const lowerTags = it.tags.map((t) => t.toLowerCase());
-      return lowerTags.some((t) => AVATAR_TAG_KEYWORDS.includes(t));
-    }),
-    [inventoryItems, currentItem.id],
-  );
 
   const loadModel = useCallback(async (modelPath: string, mode: ShaderMode) => {
     if (!canvasRef.current) return;
@@ -541,7 +527,6 @@ export function Preview3D({ modelPaths, inventoryItems, currentItem }: Props) {
   const modelName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
   const setActiveSection = useAppStore((s) => s.setActiveSection);
-  const { setBaseItem } = useSandboxStore();
 
   return (
     <div className="flex flex-col gap-3">
@@ -584,91 +569,6 @@ export function Preview3D({ modelPaths, inventoryItems, currentItem }: Props) {
           <span className="text-[9px] text-zinc-600">{t("preview_3d_outline_hint")}</span>
         )}
       </div>
-
-      {isOutfit && (
-        <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-3 flex flex-col gap-2.5">
-          <div className="flex items-center gap-2">
-            <User className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-            <span className="text-xs font-semibold text-zinc-300">{t("preview_3d_outfit_header")}</span>
-            <span className="text-[9px] bg-amber-900/50 text-amber-300 border border-amber-800 rounded-full px-1.5 py-px ml-auto shrink-0">BETA</span>
-          </div>
-
-          <p className="text-[11px] text-zinc-500 leading-relaxed">
-            {t("preview_3d_outfit_desc")}
-            {supportedAvatarNames.size > 0 && (
-              <> {t("preview_3d_outfit_sizes", { avatars: [...supportedAvatarNames].map((n) => n.charAt(0).toUpperCase() + n.slice(1)).join(", ") })}</>
-            )}
-          </p>
-
-          <div className="relative">
-            <button
-              onClick={() => setAvatarMenuOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-xs text-zinc-300 transition-colors"
-            >
-              <span className="truncate">
-                {selectedAvatarId
-                  ? (avatarItems.find((i) => i.id === selectedAvatarId)?.name ?? t("preview_3d_outfit_select"))
-                  : t("preview_3d_outfit_select")}
-              </span>
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-            </button>
-
-            {avatarMenuOpen && (
-              <div className="absolute top-full mt-1 left-0 right-0 z-20 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 max-h-52 overflow-y-auto">
-                {avatarItems.length === 0 ? (
-                  <p className="text-xs text-zinc-600 px-3 py-2 text-center">{t("preview_3d_outfit_no_avatar")}</p>
-                ) : (
-                  avatarItems.map((it) => {
-                    const key = inventoryAvatarKey(it);
-                    const hasSize = supportedAvatarNames.size === 0 || supportedAvatarNames.has(key);
-                    return (
-                      <button
-                        key={it.id}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs hover:bg-zinc-800 transition-colors"
-                        onClick={() => { setSelectedAvatarId(it.id); setAvatarMenuOpen(false); }}
-                      >
-                        {it.thumbnail_url ? (
-                          <img src={it.thumbnail_url} alt="" className="w-7 h-7 rounded-md object-cover shrink-0" />
-                        ) : (
-                          <div className="w-7 h-7 rounded-md bg-zinc-700 shrink-0 flex items-center justify-center"><User className="h-3.5 w-3.5 text-zinc-500" /></div>
-                        )}
-                        <span className={`truncate flex-1 ${hasSize ? "text-zinc-300" : "text-zinc-500"}`}>{it.name}</span>
-                        {!hasSize && (
-                          <span className="flex items-center gap-1 shrink-0 text-[9px] text-amber-400 bg-amber-900/40 border border-amber-800/60 rounded-full px-1.5 py-0.5" title={t("preview_3d_outfit_no_size_warn", { name: it.name })}>
-                            <AlertTriangle className="h-2.5 w-2.5" /> {t("preview_3d_outfit_no_size")}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-
-          {selectedAvatarId && supportedAvatarNames.size > 0 && (() => {
-            const sel = avatarItems.find((i) => i.id === selectedAvatarId);
-            if (!sel) return null;
-            const hasSize = supportedAvatarNames.has(inventoryAvatarKey(sel));
-            if (hasSize) return null;
-            return (
-              <div className="flex items-start gap-2 rounded-lg bg-amber-950/40 border border-amber-800/50 px-3 py-2">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-px" />
-                <p className="text-[11px] text-amber-300 leading-snug">
-                  {t("preview_3d_outfit_no_size_warn", { name: sel.name })}
-                </p>
-              </div>
-            );
-          })()}
-
-          {selectedAvatarId && (
-            <div className="flex items-start gap-2 rounded-lg bg-zinc-800/60 border border-zinc-700/40 px-3 py-2">
-              <Info className="h-3.5 w-3.5 text-zinc-500 shrink-0 mt-px" />
-              <p className="text-[11px] text-zinc-500 leading-snug">{t("preview_3d_rig_note")}</p>
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="relative w-full rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800" style={{ height: 380 }}>
         <canvas ref={canvasRef} className="w-full h-full" style={{ display: "block" }} />

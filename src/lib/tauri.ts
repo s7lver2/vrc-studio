@@ -8,6 +8,23 @@ export async function tauriPing(msg: string): Promise<string> {
 
 // ── Types ──────────────────────────────────────────────────────
 
+export interface AppSettings {
+  custom_assets_dir: string | null;
+  unity_import_skip_dialog: boolean;
+  unity_import_sequential: boolean;
+  /** Segundos que se esperan a que Unity arranque. Por defecto 180, min 30, max 600. */
+  unity_boot_wait_secs: number;
+
+  /** Extra VPM repository URLs configured by the user. */
+  extra_vpm_sources: string[];
+
+  /** Si true, activa la caché en memoria de URLs de imágenes. Por defecto true. */
+  image_cache_enabled: boolean;
+
+  /** Número máximo de entradas en la caché. Rango 50–1000. Por defecto 300. */
+  image_cache_max_count: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -19,6 +36,7 @@ export interface Project {
   vcs_enabled: boolean;
   last_screenshot: string | null;
   is_compressed: boolean;
+  unity_path: string;
 }
 
 export interface UnityInstallation {
@@ -86,6 +104,20 @@ export interface CustomPackage {
   asset_ids: string[];
 }
 
+export interface GithubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  clone_url: string;
+  html_url: string;
+  private: boolean;
+  description: string | null;
+  updated_at: string | null;
+  stargazers_count: number | null;
+  topics: string[];
+}
+
+
 export interface CreatePackagePayload {
   name: string;
   display_name: string;
@@ -115,12 +147,21 @@ export interface InventoryItem {
   folder_id: string | null;
 }
 
+export interface ImportProgressPayload {
+  index: number;
+  total: number;
+  path: string;
+  done: boolean;
+}
+
 export interface InventoryFolder {
   id: string;
   name: string;
   parent_id: string | null;
   color: string | null;
   custom_image_path: string | null;
+  custom_image_fill: "icon" | "grid" | null;
+  sort_order?: number;
 }
 
 export type DeleteMode =
@@ -142,11 +183,21 @@ export const tauriDeleteProject = (id: string, alsoDeleteFiles = false): Promise
 export const tauriListUnityInstallations = (): Promise<UnityInstallation[]> =>
   invoke("list_unity_installations");
 
-export const tauriFetchVpmIndex = (url?: string): Promise<VpmPackage[]> =>
-  invoke("fetch_vpm_index", { url: url ?? null });
+export const tauriFetchVpmIndex = (): Promise<VpmPackage[]> =>
+  invoke("fetch_vpm_index");
 
 export const tauriCreateProject = (request: CreateProjectRequest): Promise<Project> =>
   invoke("create_project", { request });
+
+export const tauriGetRunningUnityProjects = (): Promise<RunningUnityProject[]> =>
+  invoke("get_running_unity_projects");
+
+/**
+ * Dado un unity_version string (ej. "2022.3.22f1"), devuelve la ruta al
+ * ejecutable Unity que coincide, o null si no se encuentra.
+ */
+export const tauriFindUnityForVersion = (version: string): Promise<string | null> =>
+  invoke("find_unity_for_version", { version });
 
 export const tauriOpenProjectInUnity = (projectId: string, projectPath: string, unityPath: string): Promise<void> =>
   invoke("open_project_in_unity", { projectId, projectPath, unityPath });
@@ -250,6 +301,20 @@ export const tauriStartDownload = (args: {
     thumbnailUrl: args.thumbnail_url,
   });
 
+/** Descarga un item GRATUITO de Booth sin autenticación. */
+export const tauriBoothDownloadFreeItem = (args: {
+  source_id: string;
+  name: string;
+  author: string;
+  thumbnail_url: string;
+}): Promise<string> =>
+  invoke("booth_download_free_item", {
+    sourceId: args.source_id,
+    name: args.name,
+    author: args.author,
+    thumbnailUrl: args.thumbnail_url,
+  });
+
 export const tauriLinkAccount = (provider: string, token: string): Promise<void> =>
   invoke("link_account", { provider, token });
 
@@ -317,6 +382,8 @@ export const tauriImportLocalPackage = (args: {
   thumbnail_url?: string;
   booth_id?: string;
   overwrite?: boolean;
+  tags?: string[];
+  detected_avatars?: string[];
 }): Promise<string> =>
   invoke("import_local_package", {
     zipPath: args.zip_path,
@@ -325,6 +392,8 @@ export const tauriImportLocalPackage = (args: {
     thumbnailUrl: args.thumbnail_url ?? null,
     boothId: args.booth_id ?? null,
     overwrite: args.overwrite ?? false,
+    tags: args.tags ?? null,
+    detectedAvatars: args.detected_avatars ?? null,
   });
 
 export const tauriRipperIsAuthenticated = (): Promise<boolean> =>
@@ -417,6 +486,25 @@ export const vcs = {
   getFileDiff: (projectPath: string, commitSha: string, filePath: string) => invoke<FileDiff>("vcs_get_file_diff", { projectPath, commitSha, filePath }),
   getConflicts: (projectPath: string) => invoke<ConflictFile[]>("vcs_get_conflicts", { projectPath }),
   resolveConflict: (projectPath: string, filePath: string, strategy: ConflictStrategy) => invoke<void>("vcs_resolve_conflict", { projectPath, filePath, strategy }),
+  createBranchFromCommit: (projectPath: string, branchName: string, commitSha: string) =>
+    invoke<void>("create_vcs_branch_from_commit", { projectPath, branchName, commitSha }),
+  listRepos: () => invoke<GithubRepo[]>("github_list_repos"),
+  createRepo: (name: string, isPrivate: boolean, description: string) =>
+    invoke<GithubRepo>("github_create_repo", { name, private: isPrivate, description }),
+  mergeBranch: (projectPath: string, branchName: string) =>
+    invoke<string>("vcs_merge_branch", { projectPath, branchName }),
+  mergeBySha: (projectPath: string, commitSha: string) =>
+    invoke<string>("vcs_merge_by_sha", { projectPath, commitSha }),
+  deleteBranch: (projectPath: string, branchName: string) =>
+    invoke<void>("vcs_delete_branch", { projectPath, branchName }),
+  createBranchWithInit: (projectPath: string, branchName: string, fromCommitSha: string) =>
+    invoke<string>("vcs_create_branch_with_init", { projectPath, branchName, fromCommitSha }),
+  readGitignore: (projectPath: string) =>
+    invoke<string>("vcs_read_gitignore", { projectPath }),
+  writeGitignore: (projectPath: string, content: string) =>
+    invoke<void>("vcs_write_gitignore", { projectPath, content }),
+  getCommitFiles: (projectPath: string, commitSha: string) =>
+    invoke<CommitDiffFile[]>("vcs_get_commit_files", { projectPath, commitSha }),
 };
 
 export interface ConflictFile {
@@ -589,7 +677,7 @@ export const tauriReorderItems = (item_ids: string[]): Promise<void> =>
 export const tauriSetItemCustomImages = (item_id: string, source_paths: string[]): Promise<string[]> =>
   invoke("set_item_custom_images", { itemId: item_id, sourcePaths: source_paths });
 
-export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean }): Promise<InventoryFolder> =>
+export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean; image_fill?: "icon" | "grid"; }): Promise<InventoryFolder> =>
   invoke("update_folder", {
     folderId: folder_id,
     name: opts.name ?? null,
@@ -618,28 +706,28 @@ export const tauriTrackerRunNow = (id?: string): Promise<void> =>
   invoke("tracker_run_now", { id: id ?? null });
 
 export interface ReclaimableFile {
-  path:         string;
-  size_bytes:   number;
-  category:     "source_art" | "blender" | "unity_cache" | "video" | "log";
-  description:  string;
-  source_name:  string;
+  path: string;
+  size_bytes: number;
+  category: "source_art" | "blender" | "unity_cache" | "video" | "log";
+  description: string;
+  source_name: string;
   can_compress: boolean;
   is_directory: boolean;
 }
 
 export interface ScanReclaimableOptions {
-  min_size_bytes?:      number;
+  min_size_bytes?: number;
   include_unity_cache?: boolean;
-  include_source_art?:  boolean;
-  include_blender?:     boolean;
-  include_logs?:        boolean;
-  include_videos?:      boolean;
+  include_source_art?: boolean;
+  include_blender?: boolean;
+  include_logs?: boolean;
+  include_videos?: boolean;
 }
 
 export interface DeleteReclaimableResult {
-  deleted:      number;
-  freed_bytes:  number;
-  errors:       string[];
+  deleted: number;
+  freed_bytes: number;
+  errors: string[];
 }
 
 export const tauriScanReclaimable = (
@@ -652,3 +740,145 @@ export const tauriDeleteReclaimable = (
   paths: string[],
 ): Promise<DeleteReclaimableResult> =>
   invoke("delete_reclaimable_files", { paths });
+
+// Add this near other command exports (e.g., after tauriListProjects)
+export const tauriSetAppSettings = (settings: AppSettings): Promise<void> =>
+  invoke("set_app_settings", { settings });
+
+export const tauriGetAppSettings = (): Promise<AppSettings> =>
+  invoke("get_app_settings");
+
+export interface RunningUnityProject {
+  pid: number;
+  /** Ruta al proyecto Unity en ejecución (separadores normalizados a '/'). */
+  project_path: string;
+}
+
+/**
+ * Lanza Unity para el proyecto indicado si no está ya corriendo.
+ * Retorna `true` si ya estaba corriendo (lockfile presente), `false` si se acaba de lanzar.
+ * Fire-and-forget: no espera a que Unity cargue completamente.
+ */
+export const tauriLaunchUnityForProject = (
+  projectPath: string,
+  unityPath: string
+): Promise<boolean> =>
+  invoke("launch_unity_for_project", { projectPath, unityPath });
+
+/**
+ * Comprueba si Unity tiene abierto el proyecto en `projectPath`.
+ * Usa el lockfile `Temp/UnityLockfile` como método primario.
+ * Llamar periódicamente para saber cuándo Unity está listo.
+ */
+export const tauriCheckUnityRunning = (projectPath: string): Promise<boolean> =>
+  invoke("check_unity_running", { projectPath });
+
+/**
+ * Importa una lista de `.unitypackage` en el Unity ya abierto.
+ * Emite eventos `inventory:import_progress` conforme avanza.
+ * Precondición: Unity debe estar corriendo (tauriCheckUnityRunning = true).
+ */
+export const tauriImportItemsInUnity = (
+  projectPath: string,
+  itemPaths: string[]
+): Promise<void> =>
+  invoke("import_items_in_unity", { projectPath, itemPaths });
+
+export const tauriOpenSingleItemInUnity = (
+  projectPath: string,
+  itemPath: string,
+): Promise<void> =>
+  invoke("open_single_item_in_unity", { projectPath, itemPath });
+
+export const tauriFocusUnityWindow = (projectPath: string): Promise<void> =>
+  invoke("focus_unity_window", { projectPath: projectPath });
+
+export const tauriReadVccRepos = (): Promise<string[]> =>
+  invoke("read_vcc_repos");
+
+/** Diagnostic: returns path + URLs for each config file checked. */
+export const tauriDebugVccSources = (): Promise<[string, string[]][]> =>
+  invoke("debug_vcc_sources");
+
+/** Fetches packages from a single VPM repository URL. */
+export const tauriFetchVpmRepo = (url: string): Promise<VpmPackage[]> =>
+  invoke("fetch_vpm_repo", { url });
+
+export const tauriDownloadToTemp = (url: string): Promise<string> =>
+  invoke("download_to_temp", { url });
+
+export const tauriBoothCaptureSessionCookie = (): Promise<boolean> =>
+  invoke("booth_capture_session_cookie");
+
+export const tauriReorderFolders = (orderedIds: string[]): Promise<void> =>
+  invoke("reorder_folders", { orderedIds });
+
+
+// ── Cart ──────────────────────────────────────────────────────────────────────
+export interface CartItem {
+  id: string;
+  source: string;
+  source_id: string;
+  name: string;
+  author: string;
+  thumbnail_url: string;
+  price_display: string;
+  url: string;
+  added_at: string;
+}
+
+export const tauriCartGetItems = () =>
+  invoke<CartItem[]>("cart_get_items");
+
+export const tauriCartAddItem = (item: {
+  source: string; source_id: string; name: string; author: string;
+  thumbnail_url: string; price_display: string; url: string;
+}) => invoke<CartItem>("cart_add_item", item);
+
+export const tauriCartRemoveItem = (source: string, source_id: string) =>
+  invoke<void>("cart_remove_item", { source, source_id });
+
+export const tauriCartClear = () =>
+  invoke<void>("cart_clear");
+
+export const tauriCartIsInCart = (source: string, source_id: string) =>
+  invoke<boolean>("cart_is_in_cart", { source, source_id });
+
+// ── Collections ───────────────────────────────────────────────────────────────
+export interface Collection {
+  id: string;
+  name: string;
+  cover_url: string;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+}
+
+export interface CollectionItem {
+  id: string;
+  collection_id: string;
+  source: string;
+  source_id: string;
+  name: string;
+  author: string;
+  thumbnail_url: string;
+  price_display: string;
+  url: string;
+  added_at: string;
+}
+
+export const tauriCollectionsList = () => invoke<Collection[]>("collections_list");
+export const tauriCollectionCreate = (name: string) => invoke<Collection>("collection_create", { name });
+export const tauriCollectionDelete = (collectionId: string) => invoke<void>("collection_delete", { collectionId });
+export const tauriCollectionRename = (collectionId: string, name: string) => invoke<void>("collection_rename", { collectionId, name });
+export const tauriCollectionSetCover = (collectionId: string, coverUrl: string) => invoke<void>("collection_set_cover", { collectionId, coverUrl });
+export const tauriCollectionAddItem = (collectionId: string, item: {
+  source: string; source_id: string; name: string; author: string;
+  thumbnail_url: string; price_display: string; url: string;
+}) => invoke<void>("collection_add_item", { collectionId, ...item });
+export const tauriCollectionRemoveItem = (collectionId: string, source: string, source_id: string) =>
+  invoke<void>("collection_remove_item", { collectionId, source, source_id });
+export const tauriCollectionGetItems = (collectionId: string) =>
+  invoke<CollectionItem[]>("collection_get_items", { collectionId });
+export const tauriCollectionGetItemCollections = (source: string, source_id: string) =>
+  invoke<string[]>("collection_get_item_collections", { source, source_id });

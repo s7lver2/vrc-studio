@@ -48,10 +48,12 @@ fn parse_packages_map(
                 Some(v) => v.to_owned(),
                 None => continue,
             };
-            let url = match get_str(ver_obj, &["url"]) {
-                Some(v) => v.to_owned(),
-                None => continue,
-            };
+            let url = get_str(ver_obj, &["url"])
+                .unwrap_or("")
+                .to_owned();
+            if url.is_empty() {
+                eprintln!("[VPM] warn: package '{}' version '{}' has no url — package will be listed but cannot be installed", pkg_id, ver_str);
+            }
             let version = get_str(ver_obj, &["version"])
                 .map(str::to_owned)
                 .unwrap_or_else(|| ver_str.clone());

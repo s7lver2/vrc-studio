@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   LayoutGrid, List, Upload, HardDrive, Search, X,
   Tag, User, FileText, ChevronDown, ChevronLeft,
-  SortAsc, Archive, Globe, Shapes, FolderOpen 
+  SortAsc, Archive, Globe, Shapes, FolderOpen
 } from "lucide-react";
 import { InventoryGrid } from "../components/inventory/InventoryGrid";
 import { InventoryItemDetail } from "../components/inventory/InventoryItemDetail";
@@ -15,6 +15,8 @@ import { useInventoryStore, parseSearchQuery } from "../store/inventoryStore";
 import { SortModal } from "@/components/inventory/SortModal";
 import { InventoryOptionsMenu } from "@/components/inventory/InventoryOptionsMenu";
 import { MultiSelectToolbar } from "@/components/inventory/MultiSelectToolbar";
+import { ImportSourcePicker, ImportSource } from "../components/inventory/ImportSourcePicker";
+import { ImportFromUrlDialog } from "../components/inventory/ImportFromUrlDialog";
 import { useTagStore } from "../store/tagStore";
 import { listen } from '@tauri-apps/api/event';
 import { useT } from "../i18n";
@@ -61,7 +63,7 @@ function AdvancedSearchBar({
 
   const parsed = parseSearchQuery(value);
   const allTagIds = allKnownTags().map((m) => m.id);
-  
+
   const buildSuggestions = (raw: string): Suggestion[] => {
     const lower = raw.toLowerCase();
     const syntaxSuggestions: Suggestion[] = [];
@@ -175,7 +177,7 @@ function AdvancedSearchBar({
         .filter((s) => s.text.startsWith(lower))
         .slice(0, 8);
     };
-    
+
     return syntaxSuggestions.slice(0, 5);
   };
 
@@ -282,16 +284,26 @@ export default function Inventory() {
   const t = useT();
   const { viewMode, setViewMode, searchQuery, setSearchQuery } = useInventory();
   const { selectedItem, selectItem, selectedFolderId, selectFolder, folders } = useInventoryStore();
-  const [showImport, setShowImport] = useState(false);
-  const [showScan, setShowScan] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const { sortField, sortDir } = useInventoryStore();
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const [importMode, setImportMode] = useState<ImportSource | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [showScan, setShowScan] = useState(false);
+  const [showUrlImport, setShowUrlImport] = useState(false);
   const dragCounter = useRef(0);
 
   const currentFolder = folders.find((f) => f.id === selectedFolderId);
   const [preselectedImportFile, setPreselectedImportFile] = useState<string | null>(null);
+
+  const handleSourceSelect = (source: ImportSource) => {
+    setShowSourcePicker(false);
+    if (source === "scan") setShowScan(true);
+    else if (source === "local") setShowImport(true);
+    else if (source === "url") setShowUrlImport(true);
+  };
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -344,13 +356,13 @@ export default function Inventory() {
   }, []);
 
   return (
-      <div
-        className="flex h-full overflow-hidden relative"
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
+    <div
+      className="flex h-full overflow-hidden relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       {/* Overlay de drop */}
       {dragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
@@ -373,39 +385,31 @@ export default function Inventory() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowScan(true)}
-              className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
-            >
-              <HardDrive className="h-4 w-4" />
-              {t("inventory_scan_drive")}
-            </button>
-            <button
-              onClick={() => setShowImport(true)}
-              className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+              onClick={() => setShowSourcePicker(true)}
+              className="flex items-center gap-2 rounded-md bg-red-600 hover:bg-red-500 px-4 py-2
+             text-sm font-medium text-white transition-colors"
             >
               <Upload className="h-4 w-4" />
-              {t("inventory_import_local")}
+              Import
             </button>
             <div className="flex items-center gap-1 ml-1">
               <button
-                className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
-                  viewMode === "grid"
-                    ? "bg-red-600 border-red-600 text-white"
-                    : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                }`}
+                className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${viewMode === "grid"
+                  ? "bg-red-600 border-red-600 text-white"
+                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  }`}
                 onClick={() => setViewMode("grid")}
-                title="Grid view"
+                title={t("inventory_view_grid")}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
               <button
-                className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
-                  viewMode === "list"
-                    ? "bg-red-600 border-red-600 text-white"
-                    : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                }`}
+                className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${viewMode === "list"
+                  ? "bg-red-600 border-red-600 text-white"
+                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+                  }`}
                 onClick={() => setViewMode("list")}
-                title="List view"
+                title={t("inventory_view_list")}
               >
                 <List className="h-4 w-4" />
               </button>
@@ -430,11 +434,11 @@ export default function Inventory() {
             >
               <SortAsc className="h-4 w-4" />
               <span className="hidden sm:inline">
-                {sortField === "date"   && "Fecha"}
-                {sortField === "name"   && "Nombre"}
-                {sortField === "author" && "Autor"}
-                {sortField === "size"   && "Tamaño"}
-                {sortField === "custom" && "Manual"}
+                {sortField === "date" && t("sort_date")}
+                {sortField === "name" && t("sort_name")}
+                {sortField === "author" && t("sort_author")}
+                {sortField === "size" && t("sort_size")}
+                {sortField === "custom" && t("sort_custom")}
               </span>
             </button>
           </div>
@@ -466,6 +470,20 @@ export default function Inventory() {
           onClose={() => { setShowImport(false); setPreselectedImportFile(null); }}
           onImported={() => { setShowImport(false); setPreselectedImportFile(null); }}
           preselectedFile={preselectedImportFile}
+        />
+      )}
+
+      {showSourcePicker && (
+        <ImportSourcePicker
+          onSelect={handleSourceSelect}
+          onClose={() => setShowSourcePicker(false)}
+        />
+      )}
+
+      {showUrlImport && (
+        <ImportFromUrlDialog
+          onClose={() => setShowUrlImport(false)}
+          onImported={() => setShowUrlImport(false)}
         />
       )}
 

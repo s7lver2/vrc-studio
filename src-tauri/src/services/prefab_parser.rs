@@ -5,7 +5,6 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use anyhow::Result;
 
 use crate::models::{
     AnimLayerInfo, AnimStateInfo, AvatarInfo, PrefabNode, PrefabScene,

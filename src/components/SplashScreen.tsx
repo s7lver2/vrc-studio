@@ -93,16 +93,16 @@ export function SplashScreen({ onDone }: Props) {
           transition: "opacity 0.45s ease-out, transform 0.55s cubic-bezier(0.34,1.56,0.64,1)",
         }}
       >
-        {/* Logo: cuadrado rojo + texto */}
+        {/* Logo: mark sin texto + wordmark manual */}
         <div className="flex items-center gap-4">
-          {/* El cuadrado rojo — igual que el de la sidebar */}
-          <div
+          <img
+            src="/logo-mark-256.png"
+            alt="VRC Studio"
             style={{
-              width: 48,
-              height: 48,
-              borderRadius: 10,
-              background: "linear-gradient(135deg, #dc2626 0%, #ef4444 100%)",
-              boxShadow: "0 0 32px rgba(220,38,38,0.45), 0 0 8px rgba(220,38,38,0.3)",
+              width: 76,
+              height: 76,
+              objectFit: "contain",
+              filter: "drop-shadow(0 0 18px rgba(220,38,38,0.75)) drop-shadow(0 0 5px rgba(220,38,38,0.5))",
               transform: visible ? "scale(1) rotate(0deg)" : "scale(0.5) rotate(-12deg)",
               transition: "transform 0.6s cubic-bezier(0.34,1.56,0.64,1)",
               flexShrink: 0,

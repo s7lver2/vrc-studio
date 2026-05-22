@@ -22,6 +22,7 @@ import {
   AlertTriangle, RefreshCw, X,
 } from "lucide-react";
 import { useT } from "@/i18n";
+import { categorizePackage, CATEGORIES } from "@/lib/packageCategories";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,7 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
   }
 
   const recIds = new Set(recommendations.map((r) => r.packageId));
+  const nonRecFiltered = filtered.filter((p) => !recIds.has(p.id) || search.trim());
 
   const PkgRow = ({ pkg, recLabel }: { pkg: VpmPackage; recLabel?: string }) => {
     const versions = sortedVersions(pkg);
@@ -266,8 +268,6 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
     );
   };
 
-  const nonRecFiltered = filtered.filter((p) => !recIds.has(p.id) || search.trim());
-
   return (
     <div className="flex-1 flex flex-col min-h-0 gap-3">
       {/* Search */}
@@ -314,16 +314,23 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
           </div>
         )}
 
-        {/* All other packages */}
-        {nonRecFiltered.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            {!search.trim() && (
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mt-1">
-                All packages ({index.length})
-              </p>
-            )}
-            {nonRecFiltered.map((pkg) => <PkgRow key={pkg.id} pkg={pkg} />)}
-          </div>
+        {/* Categorized packages (when no search) */}
+        {!search.trim() ? (
+          CATEGORIES.map((cat) => {
+            const pkgs = nonRecFiltered.filter((p) => categorizePackage(p.id) === cat.id);
+            if (pkgs.length === 0) return null;
+            return (
+              <div key={cat.id} className="flex flex-col gap-1.5 mt-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 flex items-center gap-1">
+                  {cat.icon} {cat.label} <span className="text-zinc-700">({pkgs.length})</span>
+                </p>
+                {pkgs.map((pkg) => <PkgRow key={pkg.id} pkg={pkg} />)}
+              </div>
+            );
+          })
+        ) : (
+          // Flat list when searching
+          nonRecFiltered.map((pkg) => <PkgRow key={pkg.id} pkg={pkg} />)
         )}
 
         {filtered.length === 0 && search.trim() && (

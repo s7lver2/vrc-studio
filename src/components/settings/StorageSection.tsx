@@ -1,21 +1,32 @@
 /**
  * StorageSection — ajustes de almacenamiento:
- *  • Estadísticas de disco (assets, thumbnails, DB, huérfanos)
- *  • Botón "Limpiar caché" con breakdown del espacio que liberará
- *  • Configuración de la ruta raíz de assets + migración
+ * • Estadísticas de disco (assets, thumbnails, DB, huérfanos)
+ * • Botón "Limpiar caché" con breakdown del espacio que liberará
+ * • Configuración de la ruta raíz de assets + migración
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   HardDrive, FolderOpen, Trash2, RefreshCw,
   AlertTriangle, CheckCircle2, Loader2, ArrowRight,
   Database, Image, Package, FolderArchive, X,
-  Sparkles, FileImage, Layers, Video,
+  Sparkles, FileImage, Layers, Video, Zap,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { SpaceReclaimerModal } from "./SpaceReclaimerModal";
 import { useT } from "@/i18n";
+import {
+  tauriGetAppSettings,
+  tauriSetAppSettings,
+  type AppSettings,
+} from "@/lib/tauri";
+import {
+  setImageCacheEnabled,
+  setImageCacheMaxCount,
+  clearImageCache,
+  getImageCacheStats,
+} from "@/lib/imageCache";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -231,6 +242,77 @@ function MigrateDialog({
   );
 }
 
+// ── Detail modal ───────────────────────────────────────────────────────────────
+
+function StorageDetailModal({ stats, onClose }: { stats: StorageStats; onClose: () => void }) {
+  const entries = [
+    { label: "Assets (inventario)", bytes: stats.assets_bytes, color: "#8b5cf6", icon: Package },
+    { label: "Thumbnails", bytes: stats.thumbnails_bytes, color: "#38bdf8", icon: Image },
+    { label: "Base de datos SQLite", bytes: stats.db_bytes, color: "#34d399", icon: Database },
+    ...(stats.orphaned_bytes > 0 ? [{ label: `Archivos huérfanos (${stats.orphaned_count})`, bytes: stats.orphaned_bytes, color: "#f59e0b", icon: FolderArchive }] : []),
+  ];
+  const total = stats.total_bytes;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800">
+          <HardDrive className="h-5 w-5 text-zinc-400" />
+          <h2 className="text-sm font-bold text-zinc-100 flex-1">Uso de disco detallado</h2>
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 flex flex-col gap-4">
+          {/* Stacked bar */}
+          <div className="h-4 rounded-full overflow-hidden flex gap-0.5 bg-zinc-900">
+            {entries.map((e) => (
+              <div
+                key={e.label}
+                style={{
+                  width: total > 0 ? `${(e.bytes / total) * 100}%` : "0%",
+                  background: e.color,
+                  transition: "width 0.5s ease",
+                }}
+                title={`${e.label}: ${fmtBytes(e.bytes)}`}
+              />
+            ))}
+          </div>
+
+          {/* Lista detallada */}
+          <div className="flex flex-col gap-2">
+            {entries.map((e) => {
+              const Icon = e.icon;
+              const pct = total > 0 ? ((e.bytes / total) * 100).toFixed(1) : "0.0";
+              return (
+                <div key={e.label} className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: e.color }} />
+                  <Icon className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                  <span className="flex-1 text-xs text-zinc-400 truncate">{e.label}</span>
+                  <span className="text-[10px] text-zinc-600 font-mono shrink-0">{pct}%</span>
+                  <span className="text-xs font-mono font-semibold text-zinc-200 shrink-0 w-20 text-right">
+                    {fmtBytes(e.bytes)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+            <span className="text-xs text-zinc-500">Total</span>
+            <span className="text-sm font-semibold text-zinc-200 font-mono">
+              {fmtBytes(stats.total_bytes)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Migration progress ─────────────────────────────────────────────────────────
 
 function MigrationProgress({
@@ -298,6 +380,14 @@ export function StorageSection() {
   const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
   const [showMigrationResult, setShowMigrationResult] = useState(false);
   const [showReclaimer, setShowReclaimer] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // Image cache settings
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [cacheEnabled, setCacheEnabled] = useState(true);
+  const [cacheMaxCount, setCacheMaxCount] = useState(300);
+  const [cacheSaving, setCacheSaving] = useState(false);
+  const [cacheStats, setCacheStats] = useState(getImageCacheStats());
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -315,12 +405,48 @@ export function StorageSection() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
-  // ── Load current settings path on mount ─────────────────────────────────────
+  // ── Load app settings (path + image cache) on mount ─────────────────────────
   useEffect(() => {
-    invoke<{ custom_assets_dir: string | null }>("get_app_settings").then((s) => {
+    tauriGetAppSettings().then((s) => {
+      setAppSettings(s);
       if (s.custom_assets_dir) setCustomPath(s.custom_assets_dir);
-    }).catch(() => {});
+      const enabled = s.image_cache_enabled ?? true;
+      const maxCnt = s.image_cache_max_count ?? 300;
+      setCacheEnabled(enabled);
+      setCacheMaxCount(maxCnt);
+      setImageCacheEnabled(enabled);
+      setImageCacheMaxCount(maxCnt);
+    }).catch(() => { });
   }, []);
+
+  const saveCacheSettings = async (enabled: boolean, maxCount: number) => {
+    if (!appSettings) return;
+    setCacheSaving(true);
+    try {
+      const next: AppSettings = { ...appSettings, image_cache_enabled: enabled, image_cache_max_count: maxCount };
+      await tauriSetAppSettings(next);
+      setAppSettings(next);
+      setImageCacheEnabled(enabled);
+      setImageCacheMaxCount(maxCount);
+      setCacheStats(getImageCacheStats());
+    } catch { }
+    setCacheSaving(false);
+  };
+
+  const handleToggleCache = (v: boolean) => {
+    setCacheEnabled(v);
+    saveCacheSettings(v, cacheMaxCount);
+  };
+
+  const handleMaxCountChange = (v: number) => {
+    setCacheMaxCount(v);
+    saveCacheSettings(cacheEnabled, v);
+  };
+
+  const handleClearMemoryCache = () => {
+    clearImageCache();
+    setCacheStats(getImageCacheStats());
+  };
 
   // ── Browse folder ────────────────────────────────────────────────────────────
   const handleBrowse = async () => {
@@ -374,8 +500,6 @@ export function StorageSection() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────────
-
   return (
     <>
       {/* Dialogs */}
@@ -395,6 +519,10 @@ export function StorageSection() {
           onSkip={() => handleMigrate(pendingPath, false)}
           onCancel={() => setPendingPath(null)}
         />
+      )}
+
+      {showDetailModal && stats && (
+        <StorageDetailModal stats={stats} onClose={() => setShowDetailModal(false)} />
       )}
 
       {/* Header */}
@@ -472,12 +600,20 @@ export function StorageSection() {
                     color="text-amber-400"
                   />
                 )}
-                <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between">
-                  <span className="text-xs text-zinc-500">Total</span>
+                
+                {/* Total click triggers detail modal */}
+                <button
+                  onClick={() => setShowDetailModal(true)}
+                  className="pt-2 border-t border-zinc-800/60 flex items-center justify-between w-full hover:opacity-80 transition-opacity"
+                >
+                  <span className="text-xs text-zinc-500 flex items-center gap-1">
+                    Total
+                    <span className="text-[9px] text-zinc-600 font-normal">· ver detalles</span>
+                  </span>
                   <span className="text-sm font-semibold text-zinc-200 font-mono">
                     {fmtBytes(stats.total_bytes)}
                   </span>
-                </div>
+                </button>
               </div>
             ) : null}
           </div>
@@ -544,7 +680,7 @@ export function StorageSection() {
           </div>
         </div>
 
-        {/* ── Free Up Space ──────────────────────────────────────────────────────── */}
+        {/* ── Space Recovery ───────────────────────────────────────────────────── */}
         {showReclaimer && (
           <SpaceReclaimerModal onClose={() => { setShowReclaimer(false); loadStats(); }} />
         )}
@@ -565,10 +701,10 @@ export function StorageSection() {
                   </p>
                   <div className="flex items-center gap-3 mt-2.5 flex-wrap">
                     {[
-                      { icon: FileImage, label: "PSD/AI",   color: "text-sky-400"     },
-                      { icon: Layers,    label: "Blender",   color: "text-orange-400"  },
-                      { icon: Package,   label: "Unity cache", color: "text-violet-400" },
-                      { icon: Video,     label: "Videos",    color: "text-pink-400"    },
+                      { icon: FileImage, label: "PSD/AI", color: "text-sky-400" },
+                      { icon: Layers, label: "Blender", color: "text-orange-400" },
+                      { icon: Package, label: "Unity cache", color: "text-violet-400" },
+                      { icon: Video, label: "Videos", color: "text-pink-400" },
                     ].map(({ icon: Icon, label, color }) => (
                       <span key={label} className="flex items-center gap-1 text-[10px] text-zinc-600">
                         <Icon className={`h-3 w-3 ${color}`} /> {label}
@@ -629,15 +765,91 @@ export function StorageSection() {
               {/* Reset to default */}
               {customPath && stats && customPath !== stats.assets_root && !migrating && (
                 <button
-                  onClick={() => setPendingPath(
-                    /* default cache dir — backend resolves if custom_assets_dir is null */
-                    ""
-                  )}
+                  onClick={() => setPendingPath("")}
                   className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
                 >
                   Reset to default location
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Image cache ────────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+            <Zap className="h-3.5 w-3.5" />
+            Image Cache
+          </p>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+            {/* Toggle */}
+            <div className="px-5 py-4 border-b border-zinc-800/80 flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-zinc-200">Enable image cache</p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Keeps computed asset URLs and pre-loads remote thumbnails in memory.
+                  Speeds up browsing large libraries.
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={cacheEnabled}
+                onClick={() => handleToggleCache(!cacheEnabled)}
+                disabled={cacheSaving}
+                className={cn(
+                  "relative flex-shrink-0 w-11 h-6 rounded-full border transition-all duration-200 disabled:opacity-50",
+                  cacheEnabled ? "bg-violet-600 border-violet-500/60" : "bg-zinc-800 border-zinc-700"
+                )}
+              >
+                <span className={cn(
+                  "absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all duration-200",
+                  cacheEnabled ? "left-[calc(100%-22px)]" : "left-0.5"
+                )} />
+              </button>
+            </div>
+
+            {/* Max entries slider */}
+            <div className="px-5 py-4 border-b border-zinc-800/80">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-zinc-200">Max cached entries</p>
+                <span className="text-xs font-mono text-violet-400">{cacheMaxCount}</span>
+              </div>
+              <p className="text-xs text-zinc-500 mb-3">
+                Maximum number of URLs kept in memory. Higher values use more RAM but reduce re-fetches.
+              </p>
+              <input
+                type="range"
+                min={50} max={1000} step={50}
+                value={cacheMaxCount}
+                disabled={!cacheEnabled || cacheSaving}
+                onChange={(e) => setCacheMaxCount(Number(e.target.value))}
+                onMouseUp={(e) => handleMaxCountChange(Number((e.target as HTMLInputElement).value))}
+                onKeyUp={(e) => handleMaxCountChange(Number((e.target as HTMLInputElement).value))}
+                className="w-full accent-violet-500 disabled:opacity-40 cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+                <span>50</span><span>500</span><span>1000</span>
+              </div>
+            </div>
+
+            {/* Stats + clear */}
+            <div className="px-5 py-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4 text-xs text-zinc-500">
+                <span>
+                  <span className="text-zinc-300 font-mono">{cacheStats.assetUrls}</span> asset URLs
+                </span>
+                <span>
+                  <span className="text-zinc-300 font-mono">{cacheStats.preloaded}</span> preloaded
+                </span>
+              </div>
+              <button
+                onClick={handleClearMemoryCache}
+                disabled={!cacheEnabled}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Clear memory cache
+              </button>
             </div>
           </div>
         </div>

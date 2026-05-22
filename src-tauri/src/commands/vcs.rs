@@ -182,3 +182,177 @@ pub async fn vcs_get_file_diff(project_path: String, commit_sha: String, file_pa
         .await
         .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn create_vcs_branch_from_commit(
+    project_path: String,
+    branch_name: String,
+    commit_sha: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || {
+        git_service::create_branch_from_commit(&path, &branch_name, &commit_sha)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// src-tauri/src/commands/vcs.rs
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct GithubRepo {
+    pub id: u64,
+    pub name: String,
+    pub full_name: String,
+    pub clone_url: String,
+    pub html_url: String,          // para abrir en browser
+    pub private: bool,
+    pub description: Option<String>,
+    pub updated_at: Option<String>,
+    pub stargazers_count: Option<u32>,
+    #[serde(default)]
+    pub topics: Vec<String>,       // tags/topics del repo
+}
+
+#[tauri::command]
+pub async fn github_list_repos() -> Result<Vec<GithubRepo>, String> {
+    let token = auth_store::get_token(GITHUB_PROVIDER)?
+        .ok_or("No GitHub token")?;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://api.github.com/user/repos?sort=updated&per_page=100&affiliation=owner")
+        .bearer_auth(&token)
+        .header("User-Agent", "vrc-studio")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API error: {}", resp.status()));
+    }
+
+    resp.json::<Vec<GithubRepo>>()
+        .await
+        .map_err(|e| format!("parse error: {e}"))
+}
+
+// src-tauri/src/commands/vcs.rs
+#[tauri::command]
+pub async fn vcs_merge_branch(
+    project_path: String,
+    branch_name: String,
+) -> Result<String, String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || {
+        git_service::merge_branch(&path, &branch_name, "VRC Studio User", "user@vrcstudio")
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// src-tauri/src/commands/vcs.rs
+#[tauri::command]
+pub async fn github_create_repo(
+    name: String,
+    private: bool,
+    description: String,
+) -> Result<GithubRepo, String> {
+    let token = auth_store::get_token(GITHUB_PROVIDER)?
+        .ok_or("No GitHub token")?;
+
+    let client = reqwest::Client::new();
+    // Incluir topic "vrcstudio" desde la creación
+    let body = serde_json::json!({
+        "name": name,
+        "private": private,
+        "description": description,
+        "has_issues": true,
+        "auto_init": false,
+    });
+
+    let resp = client
+        .post("https://api.github.com/user/repos")
+        .bearer_auth(&token)
+        .header("User-Agent", "vrc-studio")
+        .header("Accept", "application/vnd.github+json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        return Err(format!("GitHub API error: {err}"));
+    }
+
+    let repo: GithubRepo = resp.json().await.map_err(|e| format!("parse error: {e}"))?;
+
+    // Añadir topic "vrcstudio" via endpoint separado (más compatible)
+    let _topic_resp = client
+        .put(&format!("https://api.github.com/repos/{}/topics", repo.full_name))
+        .bearer_auth(&token)
+        .header("User-Agent", "vrc-studio")
+        .header("Accept", "application/vnd.github+json")
+        .json(&serde_json::json!({ "names": ["vrcstudio"] }))
+        .send()
+        .await
+        .ok(); // Si falla no es crítico
+
+    Ok(repo)
+}
+
+#[tauri::command]
+pub async fn vcs_delete_branch(project_path: String, branch_name: String) -> Result<(), String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || git_service::delete_branch(&path, &branch_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn vcs_create_branch_with_init(
+    project_path: String,
+    branch_name: String,
+    from_commit_sha: String,
+) -> Result<String, String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || {
+        git_service::create_branch_with_init_commit(
+            &path, &branch_name, &from_commit_sha,
+            "VRC Studio User", "user@vrcstudio",
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn vcs_read_gitignore(project_path: String) -> Result<String, String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || git_service::read_gitignore(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn vcs_write_gitignore(project_path: String, content: String) -> Result<(), String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || git_service::write_gitignore(&path, &content))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn vcs_merge_by_sha(
+    project_path: String,
+    commit_sha: String,
+) -> Result<String, String> {
+    let path = std::path::PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || {
+        git_service::merge_by_sha(&path, &commit_sha, "VRC Studio User", "user@vrcstudio")
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

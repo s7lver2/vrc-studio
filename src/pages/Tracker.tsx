@@ -6,8 +6,10 @@ import { TrackerDetailModal } from "@/components/tracker/TrackerDetailModal";
 import { AddTrackerModal } from "@/components/tracker/AddTrackerModal";
 import { listen } from "@tauri-apps/api/event";
 import type { TrackerItem } from "@/lib/tauri";
+import { useT } from "../i18n"
 
 export default function TrackerPage() {
+  const t = useT();
   const { items, events, unreadCount, load, loadEvents, markRead, runNow, scanning } = useTrackerStore();
   const [showAdd, setShowAdd] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "items" | "authors">("all");
@@ -51,7 +53,7 @@ export default function TrackerPage() {
               onClick={() => markRead(unreadEventIds)}
               className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
             >
-              Mark all read
+              {t("tracker_mark_all_read")}
             </button>
           )}
           <button
@@ -67,14 +69,14 @@ export default function TrackerPage() {
             title="Scan all tracked items now"
           >
             <RefreshCw className={`w-4 h-4 ${scanning ? "animate-spin" : ""}`} />
-            {scanning ? "Scanning…" : "Scan All"}
+            {scanning ? "Scanning…" : t("tracker_scan_all")}
           </button>
           <button
             onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Add
+            {t("tracker_add")}
           </button>
         </div>
       </div>
@@ -102,15 +104,15 @@ export default function TrackerPage() {
               <AlertCircle className="w-8 h-8 text-zinc-600" />
             </div>
             <div className="text-center">
-              <p className="text-sm font-medium text-zinc-400">No items tracked yet</p>
-              <p className="text-xs text-zinc-600 mt-1">Add your first tracker to start monitoring prices and availability.</p>
+              <p className="text-sm font-medium text-zinc-400">{t("tracker_empty")}</p>
+              <p className="text-xs text-zinc-600 mt-1">{t("tracker_empty_desc")}</p>
             </div>
             <button
               onClick={() => setShowAdd(true)}
               className="flex items-center gap-2 rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              Add tracker
+              {t("tracker_add_button")}
             </button>
           </div>
         ) : (

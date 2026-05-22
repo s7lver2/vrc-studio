@@ -4,7 +4,10 @@ import { useShopStore } from "../../store/shopStore";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { useAppStore } from "../../store/app";
 import { useDownloadProgress } from "../../hooks/useDownloadProgress";
-import { Download, CheckCircle2, Package, Loader2 } from "lucide-react";
+import { useCollectionsStore } from "../../store/collectionsStore";
+import { Bookmark } from "lucide-react";
+import { useCartStore } from "../../store/cartStore";
+import { Download, CheckCircle2, Package, Loader2, ShoppingCart, BookmarkPlus } from "lucide-react";
 import { useT } from "@/i18n";
 
 interface Props {
@@ -22,6 +25,9 @@ export function ProductCard({ product }: Props) {
   const { items: inventoryItems } = useInventoryStore();
   const setActiveSection = useAppStore((s) => s.setActiveSection);
   const { downloads } = useDownloadProgress();
+  const { addItem: addToCart, isInCart, setOpen: setCartOpen } = useCartStore();
+  const alreadyInCart = isInCart(product.source, product.source_id);
+  const { openPicker } = useCollectionsStore();
   const [imgError, setImgError] = useState(false);
 
   const isPurchased =
@@ -30,6 +36,16 @@ export function ProductCard({ product }: Props) {
   const isInInventory = inventoryItems.some(
     (i) => i.source === product.source && i.source_id === product.source_id
   );
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    addToCart(product);
+  };
+
+  const handleBookmark = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openPicker(product);
+  };
 
   const dl = downloads[product.source_id] ?? null;
   const isDownloading =
@@ -117,6 +133,15 @@ export function ProductCard({ product }: Props) {
             {t("shop_card_purchased")}
           </span>
         ) : null}
+
+        {/* ── Bookmark button (bottom‑right of image) ── */}
+        <button
+          className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 rounded bg-zinc-900/80 border border-zinc-700/50 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 transition-all"
+          onClick={handleBookmark}
+          title="Save to collection"
+        >
+          <Bookmark className="h-3 w-3" />
+        </button>
       </div>
 
       {(isDownloading || isDone) && (
@@ -181,6 +206,7 @@ export function ProductCard({ product }: Props) {
         </div>
       </div>
 
+      {/* ─── Top-right action buttons (cart + download) ─── */}
       <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {isInInventory ? (
           <button
@@ -201,13 +227,43 @@ export function ProductCard({ product }: Props) {
           </div>
         ) : (
           <>
+            {/* ── Add to cart button ── */}
+            <button
+              className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold border transition-colors ${
+                alreadyInCart
+                  ? "bg-amber-900/80 border-amber-500/50 text-amber-300 hover:bg-amber-800/80"
+                  : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300"
+              }`}
+              onClick={
+                alreadyInCart
+                  ? (e) => {
+                      e.stopPropagation();
+                      setCartOpen(true);
+                    }
+                  : handleAddToCart
+              }
+              title={alreadyInCart ? "View in cart" : "Add to cart"}
+            >
+              <ShoppingCart className="h-3 w-3" />
+              {alreadyInCart ? "In cart" : "Add to cart"}
+            </button>
+
+            {/* ── Download button (Booth / original source) ── */}
             <button
               className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md p-1.5"
               onClick={handleDownload}
-              title={product.source === "booth" ? (isPurchased ? t("shop_card_download") : t("shop_card_open_booth")) : t("shop_card_download")}
+              title={
+                product.source === "booth"
+                  ? isPurchased
+                    ? t("shop_card_download")
+                    : t("shop_card_open_booth")
+                  : t("shop_card_download")
+              }
             >
               <Download className="h-3.5 w-3.5 text-zinc-300" />
             </button>
+
+            {/* ── Ripper alternative download button ── */}
             {ripperExtra && (
               <button
                 className="bg-blue-900/70 hover:bg-blue-800/80 border border-blue-500/40 rounded-md p-1.5"

@@ -72,64 +72,61 @@ pub fn build_fetch_purchases_js(page: u32) -> String {
     format!(
         r#"
 (async () => {{
-  try {{
-    // Esperar a que la página cargue completamente (máx 8s)
-    if (document.readyState !== 'complete') {{
-      await new Promise((resolve, reject) => {{
-        const t = setTimeout(() => reject(new Error('timeout')), 8000);
-        window.addEventListener('load', () => {{ clearTimeout(t); resolve(); }}, {{ once: true }});
-      }});
+    try {{
+        await new Promise(r => setTimeout(r, 2000)); // Esperar carga inicial
+        const currentUrl = window.location.href;
+        if (currentUrl.includes('sign_in') || currentUrl.includes('sign_up')) {{
+            await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
+                event: 'booth:purchases-page',
+                target: {{ kind: 'Any' }},
+                payload: {{ ok: false, error: 'redirected_to_login', page: {page}, has_more: false }}
+            }});
+            return;
+        }}
+
+        // Buscar enlaces que contengan /items/ (tanto en /orders como /library)
+        const links = Array.from(document.querySelectorAll('a[href*="/items/"]'));
+        const ids = [];
+        const seen = new Set();
+        for (const a of links) {{
+            const match = a.href.match(/\/items\/(\d+)/);
+            if (match && !seen.has(match[1])) {{
+                seen.add(match[1]);
+                ids.push(match[1]);
+            }}
+        }}
+
+        // También buscar elementos con data-product-id
+        const cards = Array.from(document.querySelectorAll('[data-product-id]'));
+        for (const card of cards) {{
+            const id = card.getAttribute('data-product-id');
+            if (id && !seen.has(id)) {{
+                seen.add(id);
+                ids.push(id);
+            }}
+        }}
+
+        const has_more = !!(
+          document.querySelector('.pagination .next') ||
+          document.querySelector('a[rel="next"]') ||
+          document.querySelector('.next_page') ||
+          document.querySelector('[data-next-page]')
+        );
+        await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
+            event: 'booth:purchases-page',
+            target: {{ kind: 'Any' }},
+            payload: {{ ok: true, ids, page: {page}, has_more }}
+        }});
+    }} catch (e) {{
+        await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
+            event: 'booth:purchases-page',
+            target: {{ kind: 'Any' }},
+            payload: {{ ok: false, error: e.message, page: {page}, has_more: false }}
+        }});
     }}
-    // 400ms extra para hidratación JS de la página
-    await new Promise(r => setTimeout(r, 400));
-
-    const currentUrl = window.location.href;
-    console.log('[VRCStudio] booth scrape | url:', currentUrl, '| page: {page}');
-
-    // Si nos redirigieron al login, abortar
-    if (currentUrl.includes('sign_in') || currentUrl.includes('sign_up')) {{
-      console.warn('[VRCStudio] booth scrape aborted — redirigido a login');
-      await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
-        event: 'booth:purchases-page',
-        target: {{ kind: 'Any' }},
-        payload: {{ ok: false, error: 'redirected_to_login', page: {page}, has_more: false }}
-      }});
-      return;
-    }}
-
-    // Buscar links a items (funcionan en /orders y en /library)
-    const itemLinks = Array.from(document.querySelectorAll('a[href*="/items/"]'));
-    console.log('[VRCStudio] booth scrape | links encontrados:', itemLinks.length);
-
-    const seen = new Set();
-    const ids = itemLinks
-      .map(a => {{
-        const m = (a.href || '').match(/\/items\/(\d+)/);
-        return m ? m[1] : null;
-      }})
-      .filter(id => id && !seen.has(id) && seen.add(id));
-
-    console.log('[VRCStudio] booth scrape | IDs únicos:', ids.length, ids.slice(0, 5));
-
-    // Si esta página tiene items, puede haber más en la siguiente
-    const has_more = ids.length >= 1;
-
-    await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
-      event: 'booth:purchases-page',
-      target: {{ kind: 'Any' }},
-      payload: {{ ok: true, ids, page: {page}, has_more }}
-    }});
-  }} catch (e) {{
-    console.error('[VRCStudio] booth scrape error:', e.message);
-    await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
-      event: 'booth:purchases-page',
-      target: {{ kind: 'Any' }},
-      payload: {{ ok: false, error: e.message, page: {page}, has_more: false }}
-    }});
-  }}
 }})();
-        "#,
-        page = page,
+"#,
+        page = page
     )
 }
 /// Construye el JS que obtiene la URL de descarga de un item de Booth.
@@ -145,6 +142,8 @@ pub fn build_fetch_purchases_js(page: u32) -> String {
 ///
 ///   El WebView puede estar en CUALQUIER página de booth.pm — no importa.
 ///   No se produce ninguna navegación visible ni cambio de URL.
+/// Construye el JS que obtiene la URL de descarga de un item de Booth.
+/// Construye el JS que obtiene la URL de descarga de un item de Booth.
 pub fn build_get_download_url_js(source_id: &str) -> String {
     format!(
         r#"
@@ -161,105 +160,145 @@ pub fn build_get_download_url_js(source_id: &str) -> String {
     }} catch(e) {{ console.error('[booth-dl] emit error:', e); }}
   }}
 
-  async function emitDebug(msg, extra) {{
+  async function emitDebug(level, msg, extra) {{
     try {{
       await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
         event: 'booth:download-debug',
         target: {{ kind: 'Any' }},
-        payload: {{ msg, ...(extra || {{}}) }}
+        payload: {{ level, msg, ...(extra || {{}}) }}
       }});
     }} catch(_) {{}}
   }}
 
-  /// Extrae el link de downloadables del HTML de la página del item.
-  /// Booth incrusta la URL en el atributo href de un <a> o dentro de un
-  /// bloque JSON embebido en el HTML (Stimulus/Turbo).
   function parseDownloadablesUrl(html) {{
-    // Patrón 1: href="/downloadables/XXXX" o href="https://booth.pm/downloadables/XXXX"
-    const rel = html.match(/href="(\/downloadables\/[^"]+)"/);
-    if (rel) return 'https://booth.pm' + rel[1];
-
-    const abs = html.match(/href="(https?:\/\/booth\.pm\/downloadables\/[^"]+)"/);
-    if (abs) return abs[1];
-
-    // Patrón 2: "url":"https://booth.pm/downloadables/..." (JSON en data-controller o similar)
-    const jsonAbs = html.match(/"url"\s*:\s*"(https?:\/\/[^"]*downloadables[^"]*)"/);
-    if (jsonAbs) return jsonAbs[1];
-
-    const jsonRel = html.match(/"url"\s*:\s*"(\/downloadables\/[^"]*)"/);
-    if (jsonRel) return 'https://booth.pm' + jsonRel[1];
-
-    // Patrón 3: cualquier ocurrencia de /downloadables/ fuera de atributo href
-    const any = html.match(/["'](https?:\/\/booth\.pm\/downloadables\/[^"']+)["']/);
-    if (any) return any[1];
-
-    const anyRel = html.match(/["'](\/downloadables\/[^"'?#]+)["']/);
-    if (anyRel) return 'https://booth.pm' + anyRel[1];
-
+    let m = html.match(/href="(\/downloadables\/[^"]+)"/);
+    if (m) return 'https://booth.pm' + m[1];
+    m = html.match(/href="(https?:\/\/booth\.pm\/downloadables\/[^"]+)"/);
+    if (m) return m[1];
+    m = html.match(/"url"\s*:\s*"(https?:\/\/[^"]*downloadables[^"]*)"/);
+    if (m) return m[1];
+    m = html.match(/"url"\s*:\s*"(\/downloadables\/[^"]*)"/);
+    if (m) return 'https://booth.pm' + m[1];
     return null;
   }}
 
   try {{
     const itemUrl = 'https://booth.pm/en/items/' + SOURCE_ID;
-    console.log('[booth-dl] fetching item page:', itemUrl);
-    await emitDebug('fetch al item page', {{ url: itemUrl }});
+    await emitDebug('info', 'Fetching item page', {{ url: itemUrl }});
 
-    const resp = await fetch(itemUrl, {{
+    let resp = await fetch(itemUrl, {{
       credentials: 'include',
-      headers: {{
-        'Accept': 'text/html,application/xhtml+xml,*/*;q=0.9',
-        'Accept-Language': 'ja,en;q=0.9',
-      }},
-      redirect: 'follow',
+      headers: {{ 'Accept': 'text/html' }},
     }});
 
-    await emitDebug('respuesta recibida', {{ status: resp.status, finalUrl: resp.url }});
+    await emitDebug('info', 'Response received', {{ status: resp.status, finalUrl: resp.url }});
 
     if (!resp.ok) {{
-      await emit({{ ok: false, error: 'Item page returned HTTP ' + resp.status }});
+      await emit({{ ok: false, error: `HTTP ${{resp.status}}` }});
       return;
     }}
 
-    const html = await resp.text();
-    await emitDebug('HTML recibido', {{ length: html.length, hasDownloadables: html.includes('downloadables') }});
+    let html = await resp.text();
+
+    // Manejar age gate (items con age_restriction)
+    if (html.includes('age_confirmation') || html.includes('この商品は年齢確認')) {{
+      await emitDebug('info', 'Age gate detected, fetching with age_confirmation=1', {{}});
+      try {{
+        const ageResp = await fetch(itemUrl + '?age_confirmation=1', {{
+          credentials: 'include',
+          headers: {{ 'Accept': 'text/html' }},
+        }});
+        if (ageResp.ok) html = await ageResp.text();
+      }} catch(ageErr) {{
+        await emitDebug('warn', 'Age gate bypass failed', {{ error: String(ageErr) }});
+      }}
+    }}
+
+    const snippet = html.substring(0, 2000);
+    await emitDebug('debug', 'HTML snippet', {{ snippet }});
+
+    // Detectar si la página es de login
+    if (html.includes('sign_in') || html.includes('accounts.booth.pm/sign')) {{
+      await emit({{ ok: false, error: 'Not authenticated with Booth.pm' }});
+      return;
+    }}
+
+    // Detectar si el item existe
+    if (html.includes('This item is not available') || html.includes('404')) {{
+      await emit({{ ok: false, error: 'Item not found (maybe removed or private)' }});
+      return;
+    }}
 
     const downloadablesUrl = parseDownloadablesUrl(html);
-
     if (!downloadablesUrl) {{
-      // Diagnóstico: emitir fragmento del HTML para ver qué devolvió Booth
-      const snippet = html.substring(0, 8000);
-      const hasLogin = html.includes('sign_in') || html.includes('login');
-      await emitDebug('no downloadables en HTML — posible falta de sesión o no comprado', {{
-        snippet,
-        hasLogin,
-        hasDownloadText: html.includes('download') || html.includes('\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9'),
-      }});
-      await emit({{ ok: false, error: 'No downloadables link found in item page — item may not be purchased' }});
+      const hasBuyButton = html.includes('Add to cart') || html.includes('購入する');
+      const msg = hasBuyButton
+        ? 'You have not purchased this item. Please buy it on Booth first.'
+        : 'No download link found. The item may not be purchased, or Booth changed its layout.';
+      await emit({{ ok: false, error: msg }});
       return;
     }}
 
-    console.log('[booth-dl] downloadables URL encontrada:', downloadablesUrl);
-    await emitDebug('downloadables URL encontrada', {{ url: downloadablesUrl }});
-
-    // Resolver el redirect CDN: /downloadables/ID → 302 → URL firmada S3
-    // Si fetch falla (p.ej. CORS en el CDN), devolver la URL directa para que Rust la siga.
-    let finalUrl = downloadablesUrl;
-    try {{
-      const dlResp = await fetch(downloadablesUrl, {{ credentials: 'include', redirect: 'follow' }});
-      if (dlResp.url && dlResp.url !== downloadablesUrl) {{
-        finalUrl = dlResp.url;
-        await emitDebug('URL CDN resuelta', {{ url: finalUrl }});
-      }}
-    }} catch (fetchErr) {{
-      await emitDebug('CDN fetch falló, usando URL directa', {{ error: fetchErr.message }});
-    }}
-
-    await emit({{ ok: true, url: finalUrl }});
-
+    await emit({{ ok: true, url: downloadablesUrl }});
   }} catch(e) {{
-    console.error('[booth-dl] unhandled error:', e.message || String(e));
     await emit({{ ok: false, error: e.message || String(e) }});
   }}
+}})();
+"#,
+        source_id = source_id
+    )
+}
+
+/// JS que se ejecuta en una ventana efímera para obtener la URL final de descarga.
+pub fn build_ephemeral_download_js(source_id: &str) -> String {
+    format!(
+        r#"
+(async () => {{
+    const sourceId = '{source_id}';
+    const itemUrl = 'https://booth.pm/en/items/' + sourceId;
+
+    async function emit(payload) {{
+        await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
+            event: 'booth:ephemeral-dl',
+            target: {{ kind: 'Any' }},
+            payload
+        }});
+    }}
+
+    try {{
+        // 1. Obtener HTML del item
+        let resp = await fetch(itemUrl, {{ credentials: 'include' }});
+        if (!resp.ok) throw new Error(`HTTP ${{resp.status}}`);
+        let html = await resp.text();
+
+        // 2. Manejar age gate si el item tiene age restriction
+        if (html.includes('age_confirmation') || html.includes('age-confirmation') ||
+            html.includes('この商品は年齢確認')) {{
+            const ageUrl = itemUrl + (itemUrl.includes('?') ? '&' : '?') + 'age_confirmation=1';
+            const ageResp = await fetch(ageUrl, {{
+                credentials: 'include',
+                headers: {{ 'Accept': 'text/html' }},
+            }});
+            if (ageResp.ok) {{
+                html = await ageResp.text();
+            }}
+        }}
+
+        // 3. Extraer URL de downloadables
+        let match = html.match(/href="(\/downloadables\/[^"]+)"/);
+        if (!match) match = html.match(/href="(https?:\/\/booth\.pm\/downloadables\/[^"]+)"/);
+        if (!match) throw new Error('No downloadables link found');
+        let dlUrl = match[1];
+        if (dlUrl.startsWith('/')) dlUrl = 'https://booth.pm' + dlUrl;
+
+        // 4. Seguir redirect (evita CORS porque usamos fetch con redirect)
+        const dlResp = await fetch(dlUrl, {{ credentials: 'include', redirect: 'follow' }});
+        const finalUrl = dlResp.url;
+
+        await emit({{ ok: true, url: finalUrl }});
+    }} catch (e) {{
+        await emit({{ ok: false, error: e.message || String(e) }});
+    }}
 }})();
 "#,
         source_id = source_id

@@ -15,3 +15,4 @@ pub mod github_oauth;
 pub mod tracker_service;
 pub mod prefab_parser;
 pub mod tray;
+pub mod vcc_reader;

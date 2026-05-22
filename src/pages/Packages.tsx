@@ -21,12 +21,13 @@ import {
   type Project, type VpmPackage, type VpmPackageVersion,
   type InstalledVpmPackage, type PkgProgress,
   tauriGetInstalledVpmPackages,
-  tauriFetchVpmIndex,
+  tauriFetchVpmRepo,
   tauriInstallVpmPackageToProject,
   tauriRemoveVpmPackageFromProject,
   tauriGetVpmPackageFiles,
   type VpmPackageSample,
 } from "@/lib/tauri";
+import {useT} from "../i18n";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ interface PackageDetailModalProps {
 function PackageDetailModal({
   pkg, installedVersion, isLocked, installing, onInstall, onRemove, onClose,
 }: PackageDetailModalProps) {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [selectedVer, setSelectedVer] = useState<string>(() => sortedVersions(pkg)[0] ?? "");
   const [files, setFiles] = useState<string[] | null>(null);
@@ -139,9 +141,9 @@ function PackageDetailModal({
 
   const TABS: { id: DetailTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: "overview", label: "Info",         icon: Info },
-    { id: "versions", label: "Versiones",    icon: GitBranch,  badge: versions.length },
-    { id: "deps",     label: "Dependencias", icon: Layers,     badge: depCount || undefined },
-    { id: "files",    label: "Archivos",     icon: FileText },  // ← NEW
+    { id: "versions", label: "Versions",    icon: GitBranch,  badge: versions.length },
+    { id: "deps",     label: "Dependences", icon: Layers,     badge: depCount || undefined },
+    { id: "files",    label: "Files",     icon: FileText },  // ← NEW
   ];
 
   return (
@@ -231,27 +233,27 @@ function PackageDetailModal({
             <div className="p-5 flex flex-col gap-4">
               {pkgVer?.description ? (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Descripción</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">{t("shop_modal_description")}</p>
                   <p className="text-sm text-zinc-400 leading-relaxed">{pkgVer.description}</p>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 py-4 text-zinc-600">
                   <Info className="h-4 w-4 shrink-0" />
-                  <p className="text-xs">Sin descripción disponible.</p>
+                  <p className="text-xs">{t("shop_modal_no_description")}</p>
                 </div>
               )}
 
               {/* Meta grid */}
               <div className="grid grid-cols-2 gap-2">
-                <MetaCard label="Package ID" value={pkg.id} mono />
-                <MetaCard label="Última versión" value={latestVer ?? "—"} mono />
-                {pkgVer?.unity && <MetaCard label="Unity mínimo" value={pkgVer.unity} mono />}
-                <MetaCard label="Versiones" value={String(versions.length)} />
-                <MetaCard label="Dependencias" value={String(Object.keys(pkgVer?.dependencies ?? {}).length)} />
+                <MetaCard label={t("packages_tab_pkg_id")} value={pkg.id} mono />
+                <MetaCard label="Last Version" value={latestVer ?? "—"} mono />
+                {pkgVer?.unity && <MetaCard label="Required Unity" value={pkgVer.unity} mono />}
+                <MetaCard label="Versions" value={String(versions.length)} />
+                <MetaCard label="Dependences" value={String(Object.keys(pkgVer?.dependencies ?? {}).length)} />
                 {installedVersion && (
                   <MetaCard
-                    label="Estado"
-                    value={isLocked ? "Dependencia transitiva" : "Instalado directamente"}
+                    label="State"
+                    value={isLocked ? "Transitive depencence" : "Directly Installable"}
                     icon={isLocked ? Lock : Unlock}
                   />
                 )}
@@ -260,7 +262,7 @@ function PackageDetailModal({
               {/* Download URL */}
               {pkgVer?.url && (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">URL de descarga</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">Download Url</p>
                   <div className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2">
                     <Link2 className="h-3 w-3 text-zinc-600 shrink-0" />
                     <p className="text-[10px] font-mono text-zinc-500 truncate flex-1">{pkgVer.url}</p>
@@ -318,8 +320,7 @@ function PackageDetailModal({
                         onClick={() => { setSelectedVer(v); onInstall(v); }}
                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-700 border border-zinc-600/50 text-[10px] font-semibold text-zinc-300 transition-colors"
                       >
-                        <Download className="h-3 w-3" />
-                        Instalar
+                        <Download className="h-3 w-3" /> {t("packages_tab_install")}
                       </button>
                     )}
                     {isInstalled && !isLocked && (
@@ -328,7 +329,7 @@ function PackageDetailModal({
                         className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-700/50 text-[10px] font-semibold text-zinc-600 hover:text-red-400 hover:border-red-900/50 hover:bg-red-950/20 transition-colors"
                       >
                         <Trash2 className="h-3 w-3" />
-                        Quitar
+                        <Trash2 className="h-3 w-3" /> {t("packages_tab_remove")}
                       </button>
                     )}
                   </div>
@@ -342,7 +343,7 @@ function PackageDetailModal({
             <div className="p-5 flex flex-col gap-3">
               {/* Version picker for deps */}
               <div className="flex items-center gap-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">Ver dependencias de</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">{t("packages_tab_view_deps_of")}</p>
                 <div className="relative">
                   <select
                     value={selectedVer}
@@ -350,7 +351,7 @@ function PackageDetailModal({
                     className="appearance-none bg-zinc-800 border border-zinc-700/60 rounded-lg text-[11px] text-zinc-300 pl-2.5 pr-6 py-1 focus:outline-none focus:border-zinc-500 cursor-pointer"
                   >
                     {versions.map((v, i) => (
-                      <option key={v} value={v}>{v}{i === 0 ? " (latest)" : ""}</option>
+                      <option key={v} value={v}>{v}{i === 0 ? ` ${t("packages_tab_latest")}` : ""}</option>
                     ))}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500" />
@@ -362,8 +363,8 @@ function PackageDetailModal({
                   <div className="rounded-2xl bg-zinc-800/50 border border-zinc-700/30 p-4">
                     <Layers className="h-6 w-6 text-zinc-600" />
                   </div>
-                  <p className="text-xs text-zinc-500">Sin dependencias</p>
-                  <p className="text-[10px] text-zinc-700">Este paquete no requiere otros paquetes.</p>
+                  <p className="text-xs text-zinc-500">No dependences</p>
+                  <p className="text-[10px] text-zinc-700">This package does not contain dependences</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
@@ -399,7 +400,7 @@ function PackageDetailModal({
               {(pkgVer?.changelogUrl || pkgVer?.documentationUrl || pkgVer?.licensesUrl) && (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">
-                    Links
+                    {t("packages_tab_links")}
                   </p>
                   {pkgVer.changelogUrl && (
                     <a
@@ -409,7 +410,7 @@ function PackageDetailModal({
                       className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 transition-colors"
                     >
                       <FileText className="h-3 w-3 shrink-0" />
-                      Changelog
+                      {t("packages_tab_changelog")}
                     </a>
                   )}
                   {pkgVer.documentationUrl && (
@@ -431,7 +432,7 @@ function PackageDetailModal({
                       className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 transition-colors"
                     >
                       <FileText className="h-3 w-3 shrink-0" />
-                      Licencia
+                      {t("packages_tab_license")}
                     </a>
                   )}
                 </div>
@@ -462,14 +463,11 @@ function PackageDetailModal({
 
               {/* ZIP file listing */}
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-2">
-                  Contenido del paquete
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-2">{t("packages_tab_package_contents")}</p>
 
                 {loadingFiles && (
                   <div className="flex items-center gap-2 py-4 text-zinc-600">
-                    <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                    <p className="text-xs">Leyendo manifiesto ZIP…</p>
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" /> {t("packages_tab_reading_zip")}
                   </div>
                 )}
 
@@ -477,13 +475,13 @@ function PackageDetailModal({
                   <div className="flex items-start gap-2 rounded-xl bg-zinc-800/40 border border-zinc-700/30 px-3 py-2.5">
                     <AlertTriangle className="h-4 w-4 text-zinc-600 shrink-0 mt-px" />
                     <p className="text-[10px] text-zinc-500">
-                      No se pudo leer el contenido: {filesError}
+                      {t("packages_tab_cant_read_content")} {filesError}
                     </p>
                   </div>
                 )}
 
                 {files !== null && !loadingFiles && !filesError && files.length === 0 && (
-                  <p className="text-xs text-zinc-600 py-4 text-center">Sin archivos encontrados en el ZIP.</p>
+                  <p className="text-xs text-zinc-600 py-4 text-center">{t("packages_tab_no_files_in_zip")}</p>
                 )}
 
                 {files !== null && files.length > 0 && (
@@ -511,7 +509,7 @@ function PackageDetailModal({
               className="appearance-none bg-zinc-800 border border-zinc-700/60 rounded-lg text-[11px] text-zinc-400 pl-2.5 pr-6 py-1.5 focus:outline-none focus:border-zinc-500 cursor-pointer hover:border-zinc-600 transition-colors"
             >
               {versions.map((v, i) => (
-                <option key={v} value={v}>{v}{i === 0 ? " (latest)" : ""}</option>
+                <option key={v} value={v}>{v}{i === 0 ? ` ${t("packages_tab_latest")}` : ""}</option>
               ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500" />
@@ -566,13 +564,13 @@ function PackageDetailModal({
             )}
           >
             {isInstalling ? (
-              <><Loader2 className="h-3 w-3 animate-spin" /> Instalando…</>
+              <><Loader2 className="h-3 w-3 animate-spin" /> {t("packages_tab_installing")}</>
             ) : installedVersion && !hasError && !hasUpdate ? (
               <><CheckCircle2 className="h-3 w-3" /> Instalado</>
             ) : hasUpdate ? (
               <><ArrowUpCircle className="h-3 w-3" /> Actualizar</>
             ) : (
-              <><Download className="h-3 w-3" /> Instalar</>
+              <><Download className="h-3 w-3" /> {t("packages_tab_install")}</>
             )}
           </button>
         </div>
@@ -607,8 +605,8 @@ function SubTabBar({ active, onChange, installedCount, indexCount }: {
   return (
     <div className="flex items-center gap-1 px-3 py-2 border-b border-zinc-800/80 bg-zinc-950/60 shrink-0">
       {([
-        { id: "installed" as SubTab, label: "Instalados", count: installedCount, icon: Database },
-        { id: "browse"    as SubTab, label: "Catálogo",   count: indexCount,     icon: Globe },
+        { id: "installed" as SubTab, label: "Installed", count: installedCount, icon: Database },
+        { id: "browse"    as SubTab, label: "Catalog",   count: indexCount,     icon: Globe },
       ]).map((t) => (
         <button key={t.id} onClick={() => onChange(t.id)}
           className={cn(
@@ -676,7 +674,7 @@ function InstalledTab({
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 rounded-full border-2 border-zinc-700 border-t-zinc-400 animate-spin" />
-          <p className="text-xs text-zinc-500">Cargando paquetes…</p>
+          <p className="text-xs text-zinc-500">Loading Packages…</p>
         </div>
       </div>
     );
@@ -689,8 +687,8 @@ function InstalledTab({
           <Boxes className="h-9 w-9 text-zinc-600" />
         </div>
         <div>
-          <p className="text-sm font-medium text-zinc-300">Sin paquetes instalados</p>
-          <p className="text-xs text-zinc-600 mt-1">Ve al Catálogo para instalar paquetes VPM.</p>
+          <p className="text-sm font-medium text-zinc-300">No Installed Packages</p>
+          <p className="text-xs text-zinc-600 mt-1">Go to the catalog and install some</p>
         </div>
       </div>
     );
@@ -763,11 +761,11 @@ function InstalledTab({
   );
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/60 shrink-0 bg-zinc-950/30">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-600" />
-          <input type="text" placeholder="Buscar paquete…" value={search}
+          <input type="text" placeholder="Search Package…" value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-lg text-[11px] text-zinc-300 pl-7 pr-7 py-1.5 focus:outline-none focus:border-zinc-500 focus:bg-zinc-800 placeholder-zinc-600 transition-colors"
           />
@@ -786,14 +784,14 @@ function InstalledTab({
 
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
         {filtered.direct.length > 0 && (
-          <Section title="Directos" items={filtered.direct}
-            badge={updatesCount > 0 && !search ? `${updatesCount} con actualización` : undefined} />
+          <Section title="Direct" items={filtered.direct}
+            badge={updatesCount > 0 && !search ? `${updatesCount} With Update` : undefined} />
         )}
         {filtered.transitive.length > 0 && <Section title="Dependencias" items={filtered.transitive} />}
         {filtered.direct.length === 0 && filtered.transitive.length === 0 && (
           <div className="flex flex-col items-center justify-center h-24 text-zinc-600 gap-2">
             <Search className="h-5 w-5 opacity-40" />
-            <p className="text-xs">Sin resultados para "{search}"</p>
+            <p className="text-xs">No results for "{search}"</p>
           </div>
         )}
       </div>
@@ -817,20 +815,35 @@ function BrowseTab({
 }) {
   const [search, setSearch] = useState("");
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
+  const [filterSource, setFilterSource] = useState<string | null>(null);   // ← NEW
+  const t = useT();
 
   const installedMap = useMemo(
     () => Object.fromEntries(installed.map((p) => [p.name, p.version])), [installed]);
 
+  const availableSources = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { key: string; label: string; dot: string }[] = [];
+    for (const pkg of index) {
+      const s = getSourceStyle(pkg.id);
+      if (!seen.has(s.label)) { seen.add(s.label); out.push({ key: s.label, label: s.label, dot: s.dot }); }
+    }
+    return out;
+  }, [index]);
+
+  // Filter by both search and source pill
   const filtered = useMemo(() => {
-    if (!search.trim()) return index;
+    let list = index;
+    if (filterSource) list = list.filter((p) => getSourceStyle(p.id).label === filterSource);
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return index.filter((p) => {
+    return list.filter((p) => {
       const latest = p.versions[sortedVersions(p)[0]];
       return p.id.toLowerCase().includes(q) ||
         latest?.display_name?.toLowerCase().includes(q) ||
         latest?.description?.toLowerCase().includes(q);
     });
-  }, [index, search]);
+  }, [index, search, filterSource]);
 
   const getSelectedVersion = (pkg: VpmPackage) => selectedVersions[pkg.id] ?? sortedVersions(pkg)[0];
 
@@ -872,10 +885,11 @@ function BrowseTab({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Search toolbar */}
-      <div className="px-3 py-2.5 border-b border-zinc-800/60 shrink-0 bg-zinc-950/30">
+      <div className="px-3 pt-2.5 pb-2 border-b border-zinc-800/60 shrink-0 bg-zinc-950/30 flex flex-col gap-2">
+        {/* Search row */}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
-          <input type="text" placeholder="Buscar en el catálogo…" value={search}
+          <input type="text" placeholder="Search on the catalog…" value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl text-xs text-zinc-300 pl-8 pr-8 py-2 focus:outline-none focus:border-zinc-500 focus:bg-zinc-800 placeholder-zinc-600 transition-colors"
           />
@@ -885,142 +899,193 @@ function BrowseTab({
             </button>
           )}
         </div>
-        <div className="flex items-center justify-between mt-1.5 px-0.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            {sources.map((src) => (
-              <span key={src.id} className="flex items-center gap-1 text-[9px] text-zinc-600">
-                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", src.isOfficial ? "bg-red-500" : "bg-zinc-500")} />
-                {src.name}
-              </span>
-            ))}
-          </div>
-          <p className="text-[10px] text-zinc-700 shrink-0">
-            {search ? `${filtered.length} resultados` : `${index.length} paquetes`}
+
+        {/* Source filter pills */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setFilterSource(null)}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all border",
+              filterSource === null
+                ? "bg-zinc-700 text-zinc-100 border-zinc-600"
+                : "bg-zinc-800/60 text-zinc-500 border-zinc-700/40 hover:border-zinc-600/60 hover:text-zinc-300"
+            )}
+          >
+            All
+            <span className="text-[9px] opacity-60">{index.length}</span>
+          </button>
+          {availableSources.map((src) => {
+            const count = index.filter((p) => getSourceStyle(p.id).label === src.label).length;
+            return (
+              <button
+                key={src.key}
+                onClick={() => setFilterSource(filterSource === src.label ? null : src.label)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all border",
+                  filterSource === src.label
+                    ? "bg-zinc-700 text-zinc-100 border-zinc-600"
+                    : "bg-zinc-800/60 text-zinc-500 border-zinc-700/40 hover:border-zinc-600/60 hover:text-zinc-300"
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", src.dot)} />
+                {src.label}
+                <span className="text-[9px] opacity-60">{count}</span>
+              </button>
+            );
+          })}
+          <p className="ml-auto text-[10px] text-zinc-700 shrink-0">
+            {search || filterSource ? `${filtered.length} {t("packages_tab_results")}` : `${index.length} packages`}
           </p>
         </div>
       </div>
 
-      {/* Package list */}
-      <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2">
-        {filtered.map((pkg) => {
-          const versions = sortedVersions(pkg);
-          const selectedVer = getSelectedVersion(pkg);
-          const pkgVersion = pkg.versions[selectedVer];
-          if (!pkgVersion) return null;
+      {/* Package list — grouped by source */}
+      <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-4">
+        {(() => {
+          // Group filtered packages by source label
+          const groups = new Map<string, VpmPackage[]>();
+          for (const pkg of filtered) {
+            const label = getSourceStyle(pkg.id).label;
+            if (!groups.has(label)) groups.set(label, []);
+            groups.get(label)!.push(pkg);
+          }
 
-          const installedVer = installedMap[pkg.id];
-          const isInstalled = !!installedVer;
-          const installState = installing[pkg.id];
-          const isInstalling = !!installState && !installState.error && installState.progress < 1;
-          const hasError = installState?.error != null;
-          const src = getSourceStyle(pkg.id);
-
-          return (
-            <div key={pkg.id}
-              className={cn(
-                "rounded-xl border overflow-hidden transition-all duration-150 cursor-pointer",
-                isInstalled && !hasError
-                  ? "border-zinc-700/60 bg-zinc-900/40 hover:border-zinc-600/60"
-                  : "border-zinc-800/80 bg-zinc-900/60 hover:border-zinc-700/60 hover:bg-zinc-900/80"
-              )}
-              onClick={() => onSelect(pkg)}
-            >
-              {/* Source strip */}
-              <div className="flex items-center gap-2 px-3 pt-2.5">
-                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", src.dot)} />
-                <span className={cn("text-[9px] font-bold uppercase tracking-wider", src.text)}>{src.label}</span>
-              </div>
-
-              <div className="flex items-start gap-3 px-3 pt-2 pb-2">
-                <div className={cn("shrink-0 rounded-xl p-2 border mt-0.5",
-                  isInstalled && !hasError ? "bg-emerald-950/50 border-emerald-900/40" : cn(src.bg, src.border))}>
-                  <Package className={cn("h-3.5 w-3.5", isInstalled && !hasError ? "text-emerald-400" : src.iconColor)} />
+          if (groups.size === 0) {
+            return search || filterSource ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-zinc-600">
+                <Search className="h-7 w-7 opacity-30" />
+                <div className="text-center">
+                  <p className="text-xs font-medium text-zinc-500">{t("packages_tab_no_results")}</p>
+                  <p className="text-[10px] mt-0.5">{t("packages_tab_no_search_results", { search })}</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-xs font-bold text-zinc-100">{pkgVersion.display_name ?? pkg.id}</p>
-                    {isInstalled && !hasError && (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-900/50 rounded-full px-1.5 py-px">
-                        <CheckCircle2 className="h-2.5 w-2.5" />v{installedVer}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-zinc-600 font-mono mt-0.5 truncate">{pkg.id}</p>
-                  {pkgVersion.description && (
-                    <p className="text-[11px] text-zinc-500 mt-1.5 leading-relaxed line-clamp-2">{pkgVersion.description}</p>
-                  )}
-                  {isInstalling && (
-                    <div className="mt-2.5">
-                      <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.round(installState.progress * 100)}%` }} />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Globe className="h-7 w-7 text-zinc-700" />
+                <div className="text-center">
+                  <p className="text-xs font-medium text-zinc-500">Catálogo vacío</p>
+                  <p className="text-[10px] text-zinc-700 mt-0.5">Añade fuentes VPM en Ajustes → Packages</p>
+                </div>
+              </div>
+            );
+          }
+
+          return Array.from(groups.entries()).map(([sourceLabel, pkgs]) => {
+            const srcStyle = getSourceStyle(pkgs[0].id);
+            return (
+              <div key={sourceLabel} className="flex flex-col gap-1.5">
+                {/* Section header */}
+                <div className="flex items-center gap-2 px-1 pb-0.5">
+                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", srcStyle.dot)} />
+                  <p className={cn("text-[10px] font-bold uppercase tracking-wider", srcStyle.text)}>
+                    {sourceLabel}
+                  </p>
+                  <span className="text-[9px] text-zinc-700 bg-zinc-800/60 rounded-full px-1.5 py-px border border-zinc-700/40">
+                    {pkgs.length}
+                  </span>
+                </div>
+
+                {/* Cards — uniform 2-column grid with fixed height */}
+                <div className="grid grid-cols-2 gap-2">
+                {pkgs.map((pkg) => {
+                  const versions = sortedVersions(pkg);
+                  const selectedVer = getSelectedVersion(pkg);
+                  const pkgVersion = pkg.versions[selectedVer];
+                  if (!pkgVersion) return null;
+
+                  const installedVer = installedMap[pkg.id];
+                  const isInstalled = !!installedVer;
+                  const installState = installing[pkg.id];
+                  const isInstalling = !!installState && !installState.error && installState.progress < 1;
+                  const hasError = installState?.error != null;
+
+                  return (
+                    <div key={pkg.id}
+                      className={cn(
+                        "rounded-xl border overflow-hidden transition-all duration-150 cursor-pointer flex flex-col",
+                        "h-[156px]",   // ← altura fija, todos los cards idénticos
+                        isInstalled && !hasError
+                          ? "border-zinc-700/60 bg-zinc-900/40 hover:border-zinc-600/60"
+                          : "border-zinc-800/80 bg-zinc-900/60 hover:border-zinc-700/60 hover:bg-zinc-900/80"
+                      )}
+                      onClick={() => onSelect(pkg)}
+                    >
+                      {/* Content area — flex-1 so it fills available space */}
+                      <div className="flex items-start gap-2.5 px-3 pt-3 pb-1 flex-1 min-h-0 overflow-hidden">
+                        <div className={cn("shrink-0 rounded-lg p-1.5 border mt-0.5",
+                          isInstalled && !hasError ? "bg-emerald-950/50 border-emerald-900/40" : cn(srcStyle.bg, srcStyle.border))}>
+                          <Package className={cn("h-3 w-3", isInstalled && !hasError ? "text-emerald-400" : srcStyle.iconColor)} />
+                        </div>
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs font-bold text-zinc-100 truncate">{pkgVersion.display_name ?? pkg.id}</p>
+                            {isInstalled && !hasError && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-900/50 rounded-full px-1.5 py-px shrink-0">
+                                <CheckCircle2 className="h-2 w-2" />v{installedVer}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-600 font-mono mt-0.5 truncate">{pkg.id}</p>
+                          {pkgVersion.description && (
+                            <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed line-clamp-2 overflow-hidden">{pkgVersion.description}</p>
+                          )}
+                          {isInstalling && (
+                            <div className="mt-1.5">
+                              <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-red-600 to-red-400 rounded-full transition-all duration-300"
+                                  style={{ width: `${Math.round(installState.progress * 100)}%` }} />
+                              </div>
+                              <p className="text-[9px] text-zinc-500 mt-0.5 truncate">{installState.step}</p>
+                            </div>
+                          )}
+                          {hasError && (
+                            <p className="text-[10px] text-red-400 mt-1 flex items-center gap-1 truncate">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />{installState.error}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-[9px] text-zinc-500 mt-1">{installState.step}</p>
+
+                      {/* Footer — always at the bottom */}
+                      <div className="flex items-center gap-2 px-3 pb-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative">
+                          <select value={selectedVer}
+                            onChange={(e) => setSelectedVersions((prev) => ({ ...prev, [pkg.id]: e.target.value }))}
+                            className="appearance-none bg-zinc-800/80 border border-zinc-700/60 rounded-lg text-[11px] text-zinc-400 pl-2.5 pr-6 py-1.5 focus:outline-none focus:border-zinc-500 cursor-pointer hover:border-zinc-600 transition-colors"
+                          >
+                            {versions.map((v, i) => (
+                              <option key={v} value={v}>{v}{i === 0 ? " (latest)" : ""}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500" />
+                        </div>
+                        <div className="flex-1" />
+                        <button
+                          onClick={() => onInstall(pkg.id, selectedVer)}
+                          disabled={isInstalling || (isInstalled && !hasError)}
+                          className={cn(
+                            "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                            isInstalled && !hasError
+                              ? "bg-zinc-800/60 text-zinc-600 cursor-default border border-zinc-700/40"
+                              : hasError
+                                ? "bg-amber-600 hover:bg-amber-500 text-white shadow-sm shadow-amber-900/30"
+                                : "bg-red-600 hover:bg-red-500 active:bg-red-700 text-white disabled:opacity-50 shadow-sm shadow-red-900/40"
+                          )}
+                        >
+                          {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : isInstalled && !hasError ? <CheckCircle2 className="h-3 w-3" />
+                            : <Download className="h-3 w-3" />}
+                          {isInstalling ? "Installing…" : isInstalled && !hasError ? "" : hasError ? "Retry" : "Install"}
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {hasError && (
-                    <p className="text-[10px] text-red-400 mt-1.5 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3 shrink-0" />{installState.error}
-                    </p>
-                  )}
-                </div>
+                  );
+                })}
+                </div>{/* end grid */}
               </div>
-
-              {/* Controls — stop propagation so click on buttons doesn't open modal */}
-              <div className="flex items-center gap-2 px-3 pb-3" onClick={(e) => e.stopPropagation()}>
-                <div className="relative">
-                  <select value={selectedVer}
-                    onChange={(e) => setSelectedVersions((prev) => ({ ...prev, [pkg.id]: e.target.value }))}
-                    className="appearance-none bg-zinc-800/80 border border-zinc-700/60 rounded-lg text-[11px] text-zinc-400 pl-2.5 pr-6 py-1.5 focus:outline-none focus:border-zinc-500 cursor-pointer hover:border-zinc-600 transition-colors"
-                  >
-                    {versions.map((v, i) => (
-                      <option key={v} value={v}>{v}{i === 0 ? " (latest)" : ""}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-500" />
-                </div>
-                <div className="flex-1" />
-                <button
-                  onClick={() => onInstall(pkg.id, selectedVer)}
-                  disabled={isInstalling || (isInstalled && !hasError)}
-                  className={cn(
-                    "shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                    isInstalled && !hasError
-                      ? "bg-zinc-800/60 text-zinc-600 cursor-default border border-zinc-700/40"
-                      : hasError
-                        ? "bg-amber-600 hover:bg-amber-500 text-white shadow-sm shadow-amber-900/30"
-                        : "bg-red-600 hover:bg-red-500 active:bg-red-700 text-white disabled:opacity-50 shadow-sm shadow-red-900/40"
-                  )}
-                >
-                  {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" />
-                    : isInstalled && !hasError ? <CheckCircle2 className="h-3 w-3" />
-                    : <Download className="h-3 w-3" />}
-                  {isInstalling ? "Instalando…" : isInstalled && !hasError ? "Instalado" : hasError ? "Reintentar" : "Instalar"}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {filtered.length === 0 && search && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-zinc-600">
-            <Search className="h-7 w-7 opacity-30" />
-            <div className="text-center">
-              <p className="text-xs font-medium text-zinc-500">Sin resultados</p>
-              <p className="text-[10px] mt-0.5">No se encontró "{search}" en el catálogo</p>
-            </div>
-          </div>
-        )}
-
-        {filtered.length === 0 && !search && index.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Globe className="h-7 w-7 text-zinc-700" />
-            <div className="text-center">
-              <p className="text-xs font-medium text-zinc-500">Catálogo vacío</p>
-              <p className="text-[10px] text-zinc-700 mt-0.5">Añade fuentes VPM en Ajustes → Packages</p>
-            </div>
-          </div>
-        )}
+            );
+          });
+        })()}
       </div>
     </div>
   );
@@ -1066,7 +1131,7 @@ function ProjectPickerBar() {
             <p className="text-[10px] text-zinc-600 font-mono truncate">{selectedProject.path}</p>
           </div>
         ) : (
-          <p className="flex-1 text-sm text-zinc-500">Selecciona un proyecto…</p>
+          <p className="flex-1 text-sm text-zinc-500">Select A Project…</p>
         )}
         <ChevronDown className={cn("h-3.5 w-3.5 text-zinc-500 shrink-0 transition-transform duration-200", open && "rotate-180")} />
         {selectedProject && (
@@ -1082,7 +1147,7 @@ function ProjectPickerBar() {
           <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
             <Search className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
             <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar proyecto…"
+              placeholder="Search Project…"
               className="flex-1 bg-transparent text-xs text-zinc-200 placeholder-zinc-600 outline-none" />
             {query && <button onClick={() => setQuery("")} className="text-zinc-600 hover:text-zinc-400"><X className="h-3 w-3" /></button>}
           </div>
@@ -1143,7 +1208,7 @@ export function PackagesTab({ project }: { project: Project }) {
     setSources(configuredSources);
     try {
       const results = await Promise.allSettled(
-        configuredSources.map((src) => tauriFetchVpmIndex(src.url))
+        configuredSources.map((src) => tauriFetchVpmRepo(src.url))
       );
       const merged = new Map<string, VpmPackage>();
       let allFailed = true;
@@ -1268,18 +1333,20 @@ export default function PackagesPage() {
     <div className="h-full flex flex-col overflow-hidden">
       <ProjectPickerBar />
       {selectedProject ? (
-        <PackagesTab project={selectedProject} />
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <PackagesTab project={selectedProject} />
+        </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 min-h-0">
           <div className="rounded-2xl bg-gradient-to-b from-zinc-800/40 to-zinc-900/60 border border-zinc-700/40 p-7 shadow-xl shadow-black/30">
             <Boxes className="h-10 w-10 text-zinc-600" />
           </div>
           <div className="text-center">
-            <p className="text-sm font-semibold text-zinc-400">Ningún proyecto seleccionado</p>
+            <p className="text-sm font-semibold text-zinc-400">No project Selected</p>
             <p className="text-xs text-zinc-600 mt-1.5 flex items-center justify-center gap-1">
-              Selecciona un proyecto arriba o desde
+              Select a project from up there or from
               <ChevronRight className="h-3 w-3" />
-              Proyectos
+              Projects
             </p>
           </div>
         </div>

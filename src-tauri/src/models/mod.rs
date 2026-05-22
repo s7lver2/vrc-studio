@@ -95,12 +95,16 @@ pub struct InventoryFolder {
     pub parent_id: Option<String>,
     pub color: Option<String>,
     pub custom_image_path: Option<String>,
+    pub sort_order: Option<i32>,
+    pub emoji: Option<String>,
+    pub custom_image_fill: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VpmRepository {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub url: String,
     pub last_fetched: Option<String>,
     pub is_official: bool,

@@ -25,11 +25,11 @@ export interface CompressionConfig {
 }
 
 const DEFAULT_CONFIGS: Record<CompressionPreset, Partial<CompressionConfig>> = {
-  fast:     { algorithm: "zstd", level: 1, threads: 0, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: true, verifyChecksum: false },
+  fast: { algorithm: "zstd", level: 1, threads: 0, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: true, verifyChecksum: false },
   balanced: { algorithm: "zstd", level: 3, threads: 0, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: true, verifyChecksum: true },
-  maximum:  { algorithm: "zstd", level: 19, threads: 1, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: false, verifyChecksum: true },
-  store:    { algorithm: "deflate", level: 0, threads: 0, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: true, verifyChecksum: false },
-  custom:   {},
+  maximum: { algorithm: "zstd", level: 19, threads: 1, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: false, verifyChecksum: true },
+  store: { algorithm: "deflate", level: 0, threads: 0, splitChunks: false, chunkSizeMb: 256, preserveTimestamps: true, verifyChecksum: false },
+  custom: {},
 };
 
 const DEFAULT_EXCLUDE = ["*.DS_Store", "Thumbs.db", ".git/", "*.tmp", "*.log"].join("\n");
@@ -39,7 +39,7 @@ function loadConfig(): CompressionConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { }
   return {
     preset: "balanced", algorithm: "zstd", level: 3, threads: 0,
     splitChunks: false, chunkSizeMb: 256, excludePatterns: DEFAULT_EXCLUDE,
@@ -48,7 +48,7 @@ function loadConfig(): CompressionConfig {
 }
 
 function saveConfig(cfg: CompressionConfig) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch { }
 }
 
 function cn(...c: (string | boolean | undefined)[]) { return c.filter(Boolean).join(" "); }
@@ -119,22 +119,88 @@ export function CompressionSection() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t("compression_section_preset")}</h2>
-        <div className="grid grid-cols-2 gap-2">
-          {PRESETS.slice(0, 4).map((p) => {
+        <div className="flex flex-col gap-2">
+          {PRESETS.map((p) => {
             const Icon = p.icon;
             const active = cfg.preset === p.id;
+            // Barra visual speed/ratio según preset
+            const SPEED_RATIO: Record<CompressionPreset, { speed: number; ratio: number }> = {
+              fast: { speed: 95, ratio: 25 },
+              balanced: { speed: 60, ratio: 65 },
+              maximum: { speed: 15, ratio: 95 },
+              store: { speed: 100, ratio: 0 },
+              custom: { speed: 50, ratio: 50 },
+            };
+            const sr = SPEED_RATIO[p.id];
+
             return (
-              <button key={p.id} onClick={() => selectPreset(p.id)} className={cn("flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all", active ? cn(p.accentBg, p.accentBorder, "ring-1 ring-inset", p.accentBorder) : "border-zinc-800 bg-zinc-900 hover:border-zinc-700")}>
-                <div className={cn("p-1.5 rounded-lg", active ? p.accentBg : "bg-zinc-800")}><Icon className={cn("h-4 w-4", active ? p.accent : "text-zinc-600")} /></div>
-                <div>
-                  <p className={cn("text-sm font-semibold", active ? p.accent : "text-zinc-300")}>{p.label}</p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5">{p.tagline}</p>
+              <button
+                key={p.id}
+                onClick={() => selectPreset(p.id)}
+                className={cn(
+                  "flex items-center gap-4 p-4 rounded-xl border text-left transition-all",
+                  active
+                    ? cn("border-l-[3px]", p.accentBorder, p.accentBg)
+                    : "border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+                )}
+              >
+                <div className={cn("p-2.5 rounded-xl shrink-0", active ? p.accentBg : "bg-zinc-800")}>
+                  <Icon className={cn("h-5 w-5", active ? p.accent : "text-zinc-500")} />
                 </div>
-                <div className="flex flex-wrap gap-1 mt-0.5">
-                  {p.specs.map((s) => (
-                    <span key={s} className={cn("text-[9px] font-mono px-1.5 py-0.5 rounded border", active ? cn(p.accentBg, p.accentBorder, p.accent) : "bg-zinc-800 border-zinc-700 text-zinc-600")}>{s}</span>
-                  ))}
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className={cn("text-sm font-bold", active ? p.accent : "text-zinc-300")}>
+                      {p.label}
+                    </p>
+                    {p.id !== "custom" && (
+                      <div className="flex gap-1 flex-wrap">
+                        {p.specs.map((s) => (
+                          <span
+                            key={s}
+                            className={cn(
+                              "text-[9px] font-mono px-1.5 py-0.5 rounded border",
+                              active ? cn(p.accentBg, p.accentBorder, p.accent) : "bg-zinc-800 border-zinc-700 text-zinc-600"
+                            )}
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-zinc-600">{p.tagline}</p>
+
+                  {/* Barra speed vs ratio */}
+                  {p.id !== "custom" && (
+                    <div className="mt-2 flex gap-2 items-center">
+                      <div className="flex-1 flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[8px] text-zinc-700 w-8">Speed</span>
+                          <div className="flex-1 h-1 rounded-full bg-zinc-800">
+                            <div
+                              className="h-full rounded-full bg-amber-500/60"
+                              style={{ width: `${sr.speed}%`, transition: "width 0.3s" }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[8px] text-zinc-700 w-8">Ratio</span>
+                          <div className="flex-1 h-1 rounded-full bg-zinc-800">
+                            <div
+                              className="h-full rounded-full bg-violet-500/60"
+                              style={{ width: `${sr.ratio}%`, transition: "width 0.3s" }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {active && (
+                  <div className={cn("w-2 h-2 rounded-full shrink-0", p.accent.replace("text-", "bg-"))} />
+                )}
               </button>
             );
           })}
@@ -159,10 +225,10 @@ export function CompressionSection() {
         {cfg.preset !== "custom" && (
           <div className="flex items-center gap-1.5 flex-wrap mt-3">
             <Info className="h-3 w-3 text-zinc-700 shrink-0" />
-            {[ `${DEFAULT_CONFIGS[cfg.preset]?.algorithm} · level ${DEFAULT_CONFIGS[cfg.preset]?.level}`,
-               `threads: ${DEFAULT_CONFIGS[cfg.preset]?.threads === 0 ? "auto" : DEFAULT_CONFIGS[cfg.preset]?.threads}`,
-               DEFAULT_CONFIGS[cfg.preset]?.preserveTimestamps ? "timestamps on" : "timestamps off",
-               DEFAULT_CONFIGS[cfg.preset]?.verifyChecksum ? "checksum on" : "checksum off",
+            {[`${DEFAULT_CONFIGS[cfg.preset]?.algorithm} · level ${DEFAULT_CONFIGS[cfg.preset]?.level}`,
+            `threads: ${DEFAULT_CONFIGS[cfg.preset]?.threads === 0 ? "auto" : DEFAULT_CONFIGS[cfg.preset]?.threads}`,
+            DEFAULT_CONFIGS[cfg.preset]?.preserveTimestamps ? "timestamps on" : "timestamps off",
+            DEFAULT_CONFIGS[cfg.preset]?.verifyChecksum ? "checksum on" : "checksum off",
             ].map((spec) => (
               <span key={spec} className="text-[10px] text-zinc-600 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 font-mono">{spec}</span>
             ))}
@@ -239,7 +305,7 @@ export function CompressionSection() {
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <button onClick={() => {/* handle exclude open */}} className="flex items-center justify-between text-xs font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-200 transition-colors">
+              <button onClick={() => {/* handle exclude open */ }} className="flex items-center justify-between text-xs font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-200 transition-colors">
                 <span>Exclude patterns</span>
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>

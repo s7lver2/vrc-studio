@@ -2,9 +2,10 @@
  * Settings page — redesigned tabbed layout.
  * Tabs: General · Packages · Integrations · Compression · Updates · Debug
  */
-
 import Logs from "./Logs";
-import React, { useState, useCallback } from "react";
+import { StorageCompressionSection } from "@/components/settings/StorageCompressionSection";
+import { ConnectionHub } from "@/components/settings/ConnectionsHub";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   Globe, Tags, Save, Check, Beaker,
   RefreshCw, Package, Plus, Link, Upload,
@@ -13,11 +14,21 @@ import {
   Settings as SettingsIcon, Plug, Bug,
   Archive, Download, Shield, Wifi, Palette,
   Lock, ShieldAlert, HardDrive, FolderOpen,
-  Terminal, FileText
+  Terminal, FileText, Play, LogIn, LogOut, X
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CompressionSection } from "@/components/settings/CompressionSection";
-import { tauriPing, tauriFetchVpmIndex, VpmPackage, tauriExportDatabase, tauriImportDatabase } from "@/lib/tauri";
+import {
+  tauriPing,
+  tauriFetchVpmRepo,        // ← nuevo (reemplaza tauriFetchVpmIndex aquí)
+  tauriGetAppSettings,       // ← nuevo (puede que ya esté)
+  tauriSetAppSettings,       // ← nuevo
+  VpmPackage,
+  tauriExportDatabase,
+  tauriImportDatabase,
+  AppSettings,               // ← asegúrate de que está
+  github, GithubUserInfo
+} from "@/lib/tauri";
 import { useRipperStatus, RipperStatus } from "@/hooks/useRipperStatus";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
 import { useT, useLocale, setLocale, Locale } from "@/i18n";
@@ -30,8 +41,169 @@ import { DeveloperCodeModal } from "@/components/settings/DeveloperCodeModal";
 import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
 import { StorageSection } from "@/components/settings/StorageSection";
+import { ImportSection } from "@/components/settings/ImportSection";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// ── Integration tile types ────────────────────────────────────────────────────
+
+type IntegrationStatus = "connected" | "disconnected" | "unknown";
+
+type Integration = {
+  id: string;
+  name: string;
+  logo: React.ReactNode;  // SVG o emoji
+  status: IntegrationStatus;
+  requiresDevCode: boolean;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  detailContent?: React.ReactNode; // Contenido del modal de detalle
+};
+
+function IntegrationTile({
+  integration,
+  isLocked,
+  onLockedClick,
+}: {
+  integration: Integration;
+  isLocked: boolean;
+  onLockedClick: () => void;
+}) {
+  const [showDetail, setShowDetail] = useState(false);
+  const isConnected = integration.status === "connected";
+
+  const handleClick = () => {
+    if (isLocked && integration.requiresDevCode) {
+      onLockedClick();
+      return;
+    }
+    if (isConnected) {
+      setShowDetail(true);
+    } else {
+      integration.onConnect();
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={handleClick}
+        className="relative flex flex-col items-center gap-2 p-3 rounded-xl transition-all group"
+        style={{
+          width: 80,
+          border: isConnected
+            ? "1.5px solid rgba(52, 211, 153, 0.4)"
+            : "1.5px solid #27272a",
+          background: isConnected
+            ? "radial-gradient(ellipse at 50% 120%, rgba(52,211,153,0.12) 0%, #09090b 70%)"
+            : "#18181b",
+          boxShadow: isConnected
+            ? "0 0 16px rgba(52, 211, 153, 0.15), inset 0 0 12px rgba(52,211,153,0.05)"
+            : "none",
+        }}
+        title={integration.requiresDevCode && isLocked ? "Requiere código de desarrollador" : integration.name}
+      >
+        {/* Logo */}
+        <div
+          className="relative w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{
+            filter: isLocked && integration.requiresDevCode ? "blur(3px)" : "none",
+          }}
+        >
+          {integration.logo}
+        </div>
+
+        {/* Name */}
+        <span
+          className="text-[9px] font-semibold text-center leading-tight"
+          style={{
+            color: isConnected ? "#34d399" : "#71717a",
+            filter: isLocked && integration.requiresDevCode ? "blur(2px)" : "none",
+          }}
+        >
+          {integration.name}
+        </span>
+
+        {/* Status dot */}
+        {isConnected && (
+          <div
+            className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400"
+            style={{ boxShadow: "0 0 6px rgba(52, 211, 153, 0.8)" }}
+          />
+        )}
+
+        {/* Lock overlay para integraciones protegidas */}
+        {isLocked && integration.requiresDevCode && (
+          <div className="absolute inset-0 flex items-center justify-center rounded-xl">
+            <div className="w-7 h-7 rounded-lg bg-zinc-900/80 border border-zinc-700 flex items-center justify-center">
+              <Lock className="h-3.5 w-3.5 text-zinc-400" />
+            </div>
+          </div>
+        )}
+      </button>
+
+      {/* Detail modal */}
+      {showDetail && (
+        <IntegrationDetailModal
+          integration={integration}
+          onClose={() => setShowDetail(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function IntegrationDetailModal({
+  integration,
+  onClose,
+}: {
+  integration: Integration;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-[420px] rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800">
+          <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center">
+            {integration.logo}
+          </div>
+          <div className="flex-1">
+            <h2 className="text-sm font-bold text-zinc-100">{integration.name}</h2>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" style={{ boxShadow: "0 0 4px rgba(52,211,153,0.8)" }} />
+              <p className="text-[10px] text-emerald-400 font-semibold">Conectado</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {integration.detailContent ?? (
+            <p className="text-xs text-zinc-500">Sin información adicional disponible.</p>
+          )}
+        </div>
+
+        {/* Disconnect */}
+        <div className="px-6 pb-5 flex justify-end">
+          <button
+            onClick={() => { integration.onDisconnect(); onClose(); }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-900/40 bg-red-950/20 text-red-400 text-xs font-medium hover:bg-red-950/40 transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" /> Desconectar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function cn(...c: (string | boolean | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -67,8 +239,8 @@ function Toggle({
 }) {
   const colors: Record<string, string> = {
     violet: "bg-violet-600 border-violet-500/60",
-    blue:   "bg-blue-600 border-blue-500/60",
-    amber:  "bg-amber-600 border-amber-500/60",
+    blue: "bg-blue-600 border-blue-500/60",
+    amber: "bg-amber-600 border-amber-500/60",
   };
   return (
     <button
@@ -166,14 +338,24 @@ function useVpmSources() {
 
   const save = (next: VpmSource[]) => {
     setSources(next);
-    try { localStorage.setItem("vpm_sources", JSON.stringify(next)); } catch {}
+    try { localStorage.setItem("vpm_sources", JSON.stringify(next)); } catch { }
+    // Sync non-official URLs to backend AppSettings so fetch_vpm_index picks them up
+    const extraUrls = next
+      .filter((s) => !s.isOfficial)
+      .map((s) => s.url)
+      .filter(Boolean);
+    tauriGetAppSettings()
+      .then((current) =>
+        tauriSetAppSettings({ ...current, extra_vpm_sources: extraUrls })
+      )
+      .catch(console.error);
   };
 
   return {
     sources,
-    addSource:    (src: VpmSource) => save([...sources, src]),
-    addSources:   (s: VpmSource[]) => save([...sources, ...s]),
-    removeSource: (id: string)     => save(sources.filter((s) => s.id !== id)),
+    addSource: (src: VpmSource) => save([...sources, src]),
+    addSources: (s: VpmSource[]) => save([...sources, ...s]),
+    removeSource: (id: string) => save(sources.filter((s) => s.id !== id)),
   };
 }
 
@@ -181,19 +363,19 @@ function useVpmSources() {
 
 function AddUrlModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: VpmSource) => void }) {
   const t = useT();
-  const [url, setUrl]       = useState("");
+  const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<VpmPackage[] | null>(null);
   const [repoName, setRepoName] = useState("");
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handlePreview = async () => {
     if (!url.trim()) return;
     setLoading(true); setError(null); setPreview(null);
     try {
-      const pkgs = await tauriFetchVpmIndex(url.trim());
+      const pkgs = await tauriFetchVpmRepo(url.trim());
       setPreview(pkgs);
-      try { setRepoName(new URL(url.trim()).hostname.replace(/^www\./, "")); } catch {}
+      try { setRepoName(new URL(url.trim()).hostname.replace(/^www\./, "")); } catch { }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -305,8 +487,8 @@ function ImportVccModal({ onClose, onImport }: { onClose: () => void; onImport: 
   const t = useT();
   const [sources, setSources] = useState<ImportedVccSource[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-  const [parsed, setParsed]   = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [parsed, setParsed] = useState(false);
 
   const handleBrowse = async () => {
     const result = await openDialog({ title: "Select VCC / alcom settings file", filters: [{ name: "JSON", extensions: ["json"] }] });
@@ -349,8 +531,28 @@ function ImportVccModal({ onClose, onImport }: { onClose: () => void; onImport: 
           {!parsed ? (
             <>
               <div className="flex flex-col gap-1.5 text-xs text-zinc-500 bg-zinc-900 rounded-lg p-3 border border-zinc-800">
-                <div className="flex items-center gap-2"><ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" /><span>VCC: <span className="font-mono text-zinc-400">%LOCALAPPDATA%\VRChatCreatorCompanion\settings.json</span></span></div>
-                <div className="flex items-center gap-2"><ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" /><span>alcom: <span className="font-mono text-zinc-400">%LOCALAPPDATA%\AlcomByVRCGet\settings.json</span></span></div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide font-medium mb-0.5">VCC</p>
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" />
+                  <span className="font-mono text-zinc-400">%APPDATA%\VRChatCreatorCompanion\settings.json</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" />
+                  <span className="font-mono text-zinc-400">%LOCALAPPDATA%\VRChatCreatorCompanion\settings.json</span>
+                </div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wide font-medium mt-1.5 mb-0.5">alcom</p>
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" />
+                  <span className="font-mono text-zinc-400">%LOCALAPPDATA%\AlcomByVRCGet\settings.json</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" />
+                  <span className="font-mono text-zinc-400">%APPDATA%\AlcomByVRCGet\settings.json</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-3 w-3 text-zinc-600 shrink-0" />
+                  <span className="font-mono text-zinc-400">%APPDATA%\vrc-get\settings.json</span>
+                </div>
               </div>
               {error && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-950/40 border border-red-900/50 px-3 py-2.5">
@@ -359,7 +561,8 @@ function ImportVccModal({ onClose, onImport }: { onClose: () => void; onImport: 
                 </div>
               )}
               <button
-                onClick={handleBrowse} disabled={loading}
+                onClick={handleBrowse}
+                disabled={loading}
                 className="flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-3 text-sm text-zinc-200 transition-colors disabled:opacity-40"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -379,7 +582,7 @@ function ImportVccModal({ onClose, onImport }: { onClose: () => void; onImport: 
                     )}
                   >
                     <div className={cn("mt-0.5 h-4 w-4 rounded border shrink-0 flex items-center justify-center transition-colors", src.selected ? "bg-violet-600 border-violet-600" : "border-zinc-600 bg-zinc-800")}>
-                      {src.selected && <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      {src.selected && <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-zinc-200 truncate">{src.name}</p>
@@ -414,15 +617,15 @@ function ImportVccModal({ onClose, onImport }: { onClose: () => void; onImport: 
 function PackagesSection() {
   const t = useT();
   const { sources, addSources, removeSource } = useVpmSources();
-  const [addUrlOpen,    setAddUrlOpen]    = useState(false);
+  const [addUrlOpen, setAddUrlOpen] = useState(false);
   const [importVccOpen, setImportVccOpen] = useState(false);
-  const [checkingId,    setCheckingId]    = useState<string | null>(null);
-  const [checkResults,  setCheckResults]  = useState<Record<string, { count: number } | { error: string }>>({});
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [checkResults, setCheckResults] = useState<Record<string, { count: number } | { error: string }>>({});
 
   const checkSource = async (src: VpmSource) => {
     setCheckingId(src.id);
     try {
-      const pkgs = await tauriFetchVpmIndex(src.url);
+      const pkgs = await tauriFetchVpmRepo(src.url);
       setCheckResults((prev) => ({ ...prev, [src.id]: { count: pkgs.length } }));
     } catch (e) {
       setCheckResults((prev) => ({ ...prev, [src.id]: { error: String(e) } }));
@@ -433,7 +636,7 @@ function PackagesSection() {
 
   return (
     <>
-      {addUrlOpen    && <AddUrlModal   onClose={() => setAddUrlOpen(false)}    onAdd={(s) => { addSources([s]); setAddUrlOpen(false); }} />}
+      {addUrlOpen && <AddUrlModal onClose={() => setAddUrlOpen(false)} onAdd={(s) => { addSources([s]); setAddUrlOpen(false); }} />}
       {importVccOpen && <ImportVccModal onClose={() => setImportVccOpen(false)} onImport={(imported) => addSources(imported.map((s) => ({ id: crypto.randomUUID(), name: s.name, url: s.url })))} />}
 
       <SectionHeader icon={Package} title={t("settings_packages_title")} description={t("settings_packages_desc")} />
@@ -453,7 +656,7 @@ function PackagesSection() {
 
         <SettingsCard>
           {sources.map((src, idx) => {
-            const result    = checkResults[src.id];
+            const result = checkResults[src.id];
             const isChecking = checkingId === src.id;
             return (
               <CardRow key={src.id} last={idx === sources.length - 1}>
@@ -527,8 +730,8 @@ function GeneralSection() {
   };
 
   const slots: { slot: BehaviorSlot; labelKey: "settings_behavior_base" | "settings_behavior_outfit" | "settings_behavior_accessory"; descKey: "settings_behavior_base_desc" | "settings_behavior_outfit_desc" | "settings_behavior_accessory_desc"; color: string }[] = [
-    { slot: "base",      labelKey: "settings_behavior_base",      descKey: "settings_behavior_base_desc",      color: "text-amber-400" },
-    { slot: "outfit",    labelKey: "settings_behavior_outfit",    descKey: "settings_behavior_outfit_desc",    color: "text-pink-400"  },
+    { slot: "base", labelKey: "settings_behavior_base", descKey: "settings_behavior_base_desc", color: "text-amber-400" },
+    { slot: "outfit", labelKey: "settings_behavior_outfit", descKey: "settings_behavior_outfit_desc", color: "text-pink-400" },
     { slot: "accessory", labelKey: "settings_behavior_accessory", descKey: "settings_behavior_accessory_desc", color: "text-violet-400" },
   ];
 
@@ -537,52 +740,75 @@ function GeneralSection() {
       <SectionHeader icon={SettingsIcon} title="General" description={t("settings_general_desc")} />
 
       <div className="flex flex-col gap-6">
-        {/* Language */}
+        {/* Language — banderas grandes como selector primario */}
         <div className="flex flex-col gap-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
             <Globe className="h-3.5 w-3.5" /> {t("settings_language")}
           </p>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
-            <SettingsField name={t("settings_language")} desc={t("settings_language_desc")}>
-              <div className="flex gap-2 flex-wrap justify-end">
-                {LOCALE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value} onClick={() => setLocale(opt.value)}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all",
-                      locale === opt.value
-                        ? "border-violet-500/60 bg-violet-600/15 text-violet-300 font-medium"
-                        : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
-                    )}
-                  >
-                    <span className="text-base">{opt.flag}</span>
-                    {opt.label}
-                    {locale === opt.value && <Check className="h-3 w-3 text-violet-400" />}
-                  </button>
-                ))}
-              </div>
-            </SettingsField>
+          <div className="flex gap-2">
+            {LOCALE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setLocale(opt.value)}
+                className={cn(
+                  "flex-1 flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition-all duration-200",
+                  locale === opt.value
+                    ? "border-violet-500 bg-violet-950/40 shadow-[0_0_16px_rgba(139,92,246,0.2)]"
+                    : "border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800/60"
+                )}
+              >
+                <span className="text-3xl leading-none">{opt.flag}</span>
+                <span className={cn(
+                  "text-xs font-semibold",
+                  locale === opt.value ? "text-violet-300" : "text-zinc-500"
+                )}>
+                  {opt.label}
+                </span>
+                {locale === opt.value && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Behavior labels */}
+        {/* Behaviour labels — chips de color con input inline */}
         <div className="flex flex-col gap-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
             <Tags className="h-3.5 w-3.5" /> {t("settings_behavior_labels")}
           </p>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
-            {slots.map(({ slot, labelKey, descKey }) => (
-              <SettingsField key={slot} name={t(labelKey)} desc={t(descKey)}>
+          <div className="flex flex-col gap-2">
+            {slots.map(({ slot, labelKey, descKey, color }) => (
+              <div
+                key={slot}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900 group hover:border-zinc-700 transition-colors"
+              >
+                {/* Color dot */}
+                <div className={cn("w-3 h-3 rounded-full shrink-0", color.replace("text-", "bg-"))} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-zinc-300">{t(labelKey)}</p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5">{t(descKey)}</p>
+                </div>
+                {/* Preview badge con el valor actual */}
+                <div className={cn(
+                  "shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-full border",
+                  color, color.replace("text-", "bg-") + "/10",
+                  color.replace("text-", "border-") + "/30"
+                )}>
+                  {draft[slot]}
+                </div>
+                {/* Input inline (aparece al hover) */}
                 <input
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-500 font-mono transition-colors"
+                  className="w-24 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-zinc-200 outline-none focus:border-zinc-500 font-mono transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
                   value={draft[slot]}
                   onChange={(e) => setDraft((d) => ({ ...d, [slot]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
                   spellCheck={false}
                 />
-              </SettingsField>
+              </div>
             ))}
           </div>
+          {/* Save button */}
           <button
             onClick={handleSave}
             className={cn(
@@ -592,7 +818,7 @@ function GeneralSection() {
                 : "bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border-zinc-700"
             )}
           >
-            {saved ? <><Check className="h-3.5 w-3.5" /> {t("settings_saved")}</> : <><Save className="h-3.5 w-3.5" /> {t("settings_behavior_save")}</>}
+            {saved ? <><Check className="h-3.5 w-3.5" /> {t("settings_saved")}</> : <><Save className="h-3.5 w-3.5" /> Save</>}
           </button>
         </div>
       </div>
@@ -606,7 +832,7 @@ function BoothBlock() {
   const t = useT();
   const { status, purchaseCount, loadingPurchases, connect, disconnect, refreshPurchases } = useBoothStatus();
   const statusColor = status === "connected" ? "text-emerald-400" : status === "unknown" ? "text-zinc-400" : "text-zinc-500";
-  const statusText  = status === "connected"
+  const statusText = status === "connected"
     ? purchaseCount !== null
       ? `${t("ripper_connected")} — ${purchaseCount} purchased item${purchaseCount !== 1 ? "s" : ""} detected`
       : t("ripper_connected")
@@ -649,12 +875,12 @@ function RipperBlock() {
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
       <SettingsField name="Ripper.store" desc={statusLabel[status]}>
         <div className="flex gap-2 justify-end">
-          {status === "connected"   && <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>}
+          {status === "connected" && <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>}
           {(status === "disconnected" || status === "unknown") && <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>}
-          {status === "expired"     && <button onClick={reconnect} className="px-3 py-1.5 text-xs rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 transition-colors">{t("ripper_reconnect")}</button>}
+          {status === "expired" && <button onClick={reconnect} className="px-3 py-1.5 text-xs rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 transition-colors">{t("ripper_reconnect")}</button>}
         </div>
       </SettingsField>
-      {status === "expired"      && <p className="text-xs text-amber-400/80 mt-2 pb-3">{t("ripper_expired_msg")}</p>}
+      {status === "expired" && <p className="text-xs text-amber-400/80 mt-2 pb-3">{t("ripper_expired_msg")}</p>}
       {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2 pb-3">{t("ripper_connect_msg")}</p>}
     </div>
   );
@@ -667,106 +893,160 @@ function ConnectionsSection() {
   const { untrustedSourcesUnlocked, setUntrustedSourcesUnlocked } = useAppStore();
   const { riperstoreExperimental, setRiperstoreExperimental } = useAppStore();
   const [showCodeModal, setShowCodeModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState<string | null>(null); // id de la integración a autenticar
 
-  const handleUntrustedClick = () => {
-    if (!untrustedSourcesUnlocked) {
-      setShowCodeModal(true);
+  const { status: boothStatus, connect: boothConnect, disconnect: boothDisconnect } = useBoothStatus();
+  const { status: ripperStatus, connect: ripperConnect, disconnect: ripperDisconnect } = useRipperStatus();
+  const [githubUser, setGithubUser] = useState<GithubUserInfo | null>(null);
+  const [githubAuthStep, setGithubAuthStep] = useState<"idle" | "waiting" | "done">("idle");
+  const [devicePrompt, setDevicePrompt] = useState<{ user_code: string; verification_uri: string } | null>(null);
+
+  useEffect(() => {
+    github.getUser().then(setGithubUser).catch(() => setGithubUser(null));
+  }, []);
+
+  const startGithubAuth = async () => {
+    setGithubAuthStep("waiting");
+    setShowAuthModal("github");
+    try {
+      const prompt = await github.startDeviceAuth();
+      setDevicePrompt(prompt);
+      const info = await github.pollToken();
+      setGithubUser(info);
+      setGithubAuthStep("done");
+      setDevicePrompt(null);
+    } catch {
+      setGithubAuthStep("idle");
     }
   };
 
-  const handleUnlocked = () => {
-    setUntrustedSourcesUnlocked(true);
-  };
-
-  const handleLock = () => {
-    setUntrustedSourcesUnlocked(false);
-  };
+  const integrations: Integration[] = [
+    {
+      id: "github",
+      name: "GitHub",
+      logo: (
+        <svg viewBox="0 0 98 96" className="w-6 h-6 text-zinc-300" fill="currentColor">
+          <path fillRule="evenodd" clipRule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" />
+        </svg>
+      ),
+      status: githubUser ? "connected" : "disconnected",
+      requiresDevCode: false,
+      onConnect: startGithubAuth,
+      onDisconnect: async () => { await github.logout(); setGithubUser(null); },
+      detailContent: githubUser ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <img src={githubUser.avatar_url ?? undefined} className="w-12 h-12 rounded-full ring-2 ring-emerald-700/50" alt="" />
+            <div>
+              <p className="text-sm font-bold text-zinc-100">{githubUser.name ?? githubUser.login}</p>
+              <p className="text-xs text-zinc-500">@{githubUser.login}</p>
+            </div>
+          </div>
+          <a
+            href={`https://github.com/${githubUser.login}`}
+            target="_blank" rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" /> See profile on Github
+          </a>
+        </div>
+      ) : undefined,
+    },
+    {
+      id: "booth",
+      name: "Booth.pm",
+      logo: <span className="text-2xl">🛒</span>,
+      status: boothStatus === "connected" ? "connected" : boothStatus === "unknown" ? "unknown" : "disconnected",
+      requiresDevCode: false,
+      onConnect: boothConnect,
+      onDisconnect: boothDisconnect,
+      detailContent: (
+        <p className="text-xs text-zinc-400">Booth.pm connected.</p>
+      ),
+    },
+    {
+      id: "riperstore",
+      name: "Riperstore",
+      logo: <span className="text-2xl">🔮</span>,
+      status: ripperStatus === "connected" ? "connected" : "disconnected",
+      requiresDevCode: true,
+      onConnect: () => { setRiperstoreExperimental(true); ripperConnect(); },
+      onDisconnect: () => { ripperDisconnect(); setRiperstoreExperimental(false); },
+      detailContent: (
+        <p className="text-xs text-zinc-400">Experimental integration with ripperstore forums enabled.</p>
+      ),
+    },
+  ];
 
   return (
     <>
       {showCodeModal && (
         <DeveloperCodeModal
           onClose={() => setShowCodeModal(false)}
-          onUnlocked={handleUnlocked}
+          onUnlocked={() => { setUntrustedSourcesUnlocked(true); setShowCodeModal(false); }}
         />
       )}
 
       <SectionHeader
         icon={Wifi}
         title="Connections"
-        description="Manage authentication with external platforms and integrations."
+        description="How much we can do with your favourite apps"
       />
 
-      <div className="flex flex-col gap-6">
-        {/* Booth */}
-        <div className="flex flex-col gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Booth.pm</p>
-          <BoothBlock />
-        </div>
-
-        {/* Untrusted Sources */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-              <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
-              Untrusted Sources
-              {untrustedSourcesUnlocked && (
-                <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-semibold">
-                  UNLOCKED
-                </span>
-              )}
+      {/* Auth modal para GitHub (device flow) */}
+      {showAuthModal === "github" && githubAuthStep === "waiting" && devicePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
+          <div className="w-[380px] rounded-2xl border border-zinc-800 bg-zinc-950 p-6 flex flex-col gap-4 shadow-2xl">
+            <h3 className="text-sm font-bold text-zinc-100">Connect Github</h3>
+            <p className="text-xs text-zinc-400">
+              Open <a href={devicePrompt.verification_uri} target="_blank" rel="noreferrer" className="text-violet-400 underline">{devicePrompt.verification_uri}</a> and introduce:
             </p>
+            <div className="font-mono text-2xl font-bold tracking-widest text-zinc-100 text-center py-3 rounded-xl border border-zinc-800 bg-zinc-900">
+              {devicePrompt.user_code}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Waiting auth…
+            </div>
+            <button onClick={() => { setShowAuthModal(null); setGithubAuthStep("idle"); }} className="self-end text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-6">
+        {/* Grid de tiles */}
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Integrations</p>
             {untrustedSourcesUnlocked && (
               <button
-                onClick={handleLock}
-                className="text-[10px] text-zinc-600 hover:text-red-400 transition-colors flex items-center gap-1"
+                onClick={() => setUntrustedSourcesUnlocked(false)}
+                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-600 hover:text-zinc-400 transition-colors"
               >
-                <Lock className="h-3 w-3" /> Lock
+                <Lock className="h-2.5 w-2.5" /> Block Dev
               </button>
             )}
           </div>
 
-          {!untrustedSourcesUnlocked ? (
-            <SettingsCard>
-              <CardRow last>
-                <button
-                  onClick={handleUntrustedClick}
-                  className="w-full flex items-center gap-4 text-left group"
-                >
-                  <div className="p-2 rounded-xl bg-zinc-800 border border-zinc-700/50 group-hover:border-zinc-600 transition-colors">
-                    <Lock className="h-4 w-4 text-zinc-500" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-zinc-300 group-hover:text-zinc-100 transition-colors">
-                      Access Developer Integrations
-                    </p>
-                    <p className="text-[11px] text-zinc-600 mt-0.5">
-                      Requires a developer code to unlock
-                    </p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-zinc-700 group-hover:text-zinc-500 transition-colors" />
-                </button>
-              </CardRow>
-            </SettingsCard>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <SettingsCard>
-                <CardRow last={!riperstoreExperimental}>
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-zinc-100">
-                        {t("settings_riperstore_enable_label")}
-                      </p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        {t("settings_riperstore_enable_desc")}
-                      </p>
-                    </div>
-                    <Toggle value={riperstoreExperimental} onChange={setRiperstoreExperimental} accent="blue" />
-                  </div>
-                </CardRow>
-              </SettingsCard>
-              {riperstoreExperimental && <RipperBlock />}
-            </div>
+          <div className="flex gap-3 flex-wrap">
+            {integrations.map((integ) => (
+              <IntegrationTile
+                key={integ.id}
+                integration={integ}
+                isLocked={integ.requiresDevCode && !untrustedSourcesUnlocked}
+                onLockedClick={() => setShowCodeModal(true)}
+              />
+            ))}
+          </div>
+
+          {/* Hint cuando hay integraciones bloqueadas */}
+          {!untrustedSourcesUnlocked && (
+            <p className="text-[10px] text-zinc-700 flex items-center gap-1">
+              <Lock className="h-3 w-3" />
+              Some integrations maybe require a code 🔒.
+            </p>
           )}
         </div>
       </div>
@@ -853,9 +1133,10 @@ interface ReimportResult { item_id: string; name: string; status: "ok" | "skippe
 
 function DebugSection() {
   const t = useT();
-  const { fetchAll: fetchInventory } = useInventoryStore();
+  const { fetchAll: fetchInventory, addDebugItems, clearDebugItems } = useInventoryStore();
+  const { openGetStarted } = useAppStore();
   const [pingResponse, setPingResponse] = useState<string | null>(null);
-  const [pingError,    setPingError]    = useState<string | null>(null);
+  const [pingError, setPingError] = useState<string | null>(null);
 
   // reimport state
   const [reimportState, setReimportState] = useState<"idle" | "running" | "done">("idle");
@@ -865,6 +1146,58 @@ function DebugSection() {
   // reset folder assignments state
   const [resettingFolders, setResettingFolders] = useState(false);
   const [resetFolderResult, setResetFolderResult] = useState<string | null>(null);
+
+  // fake items state
+  const [fakeCount, setFakeCount] = useState(10);
+  const [fakeGenerated, setFakeGenerated] = useState(false);
+
+  const FAKE_NAMES = [
+    "Yomu Avatar", "Karin Outfit", "Shadow Veil", "Tsuki Base", "Crystal Wings",
+    "Neko Ears Pack", "Synth Shader", "Aurora Hair", "Phantom Tail", "Vox Accessory",
+    "Stellar Dress", "Void Cloak", "Bloom Particle", "Ryuu Scale", "Mochi Paws",
+    "Echo Visor", "Drift Jacket", "Hana Kimono", "Lunar Belt", "Prism Horns",
+  ];
+  const FAKE_AUTHORS = ["yoshino", "mika_dev", "rei.studio", "suzuri_arts", "akaneko", "booth_official"];
+  const FAKE_TAGS = ["base", "outfit", "accessory", "avatar", "shader", "material", "hair", "tail", "ears", "wings"];
+  const FAKE_THUMBS = [
+    "https://picsum.photos/seed/a/200/200",
+    "https://picsum.photos/seed/b/200/200",
+    "https://picsum.photos/seed/c/200/200",
+    "https://picsum.photos/seed/d/200/200",
+    "https://picsum.photos/seed/e/200/200",
+  ];
+
+  const generateFakeItems = () => {
+    const newItems = Array.from({ length: fakeCount }, (_, i) => {
+      const name = FAKE_NAMES[Math.floor(Math.random() * FAKE_NAMES.length)];
+      return {
+        id: `debug_${crypto.randomUUID()}`,
+        name: `${name} #${i + 1}`,
+        display_name: `${name} #${i + 1}`,
+        author: FAKE_AUTHORS[Math.floor(Math.random() * FAKE_AUTHORS.length)],
+        source: "local" as const,
+        source_id: null,
+        local_path: "/debug/fake",
+        thumbnail_url: FAKE_THUMBS[i % FAKE_THUMBS.length],
+        download_date: new Date().toISOString(),
+        size_bytes: Math.floor(Math.random() * 200_000_000) + 5_000_000,
+        tags: FAKE_TAGS.sort(() => Math.random() - 0.5).slice(0, Math.floor(Math.random() * 3) + 1),
+        is_compressed: false,
+        custom_cover_path: null,
+        sort_order: null,
+        product_images: [],
+        custom_images: [],
+        folder_id: null,
+      };
+    });
+    addDebugItems(newItems);
+    setFakeGenerated(true);
+  };
+
+  const clearFakeItems = () => {
+    clearDebugItems();
+    setFakeGenerated(false);
+  };
 
   const handlePing = async () => {
     setPingResponse(null); setPingError(null);
@@ -909,9 +1242,9 @@ function DebugSection() {
     }
   };
 
-  const ok      = reimportResults.filter((r) => r.status === "ok").length;
+  const ok = reimportResults.filter((r) => r.status === "ok").length;
   const skipped = reimportResults.filter((r) => r.status === "skipped").length;
-  const errors  = reimportResults.filter((r) => r.status === "error").length;
+  const errors = reimportResults.filter((r) => r.status === "error").length;
 
   return (
     <>
@@ -953,6 +1286,24 @@ function DebugSection() {
       <div className="flex flex-col gap-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t("settings_debug")}</p>
         <SettingsCard>
+          {/* Restart with Get Started */}
+          <CardRow>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">Restart with Get Started</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Replay the first-launch tutorial that guides you through all sections.
+                </p>
+              </div>
+              <button
+                onClick={openGetStarted}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white font-medium transition-colors shrink-0 border border-zinc-600"
+              >
+                <Play className="h-3.5 w-3.5" /> Launch
+              </button>
+            </div>
+          </CardRow>
+
           {/* Ping */}
           <CardRow>
             <div className="flex items-center justify-between gap-4">
@@ -1006,9 +1357,9 @@ function DebugSection() {
                     {reimportResults.map((r, i) => (
                       <div key={i} className="flex items-start gap-2.5 px-3 py-2">
                         <span className={cn("shrink-0 mt-0.5 text-[10px] font-bold uppercase w-12 text-right",
-                          r.status === "ok"      && "text-emerald-400",
+                          r.status === "ok" && "text-emerald-400",
                           r.status === "skipped" && "text-zinc-500",
-                          r.status === "error"   && "text-red-400",
+                          r.status === "error" && "text-red-400",
                         )}>{r.status}</span>
                         <div className="min-w-0">
                           <p className="text-xs text-zinc-200 truncate">{r.name || "—"}</p>
@@ -1109,6 +1460,59 @@ function DebugSection() {
               </button>
             </div>
           </CardRow>
+
+          {/* ── Fake inventory items (debug only) ── */}
+          <CardRow>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100 flex items-center gap-1.5">
+                  Generate fake items
+                  <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-semibold tracking-wider">DEBUG ONLY</span>
+                </p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Injects random inventory entries into the store — no real files are created.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={fakeCount}
+                  onChange={(e) => setFakeCount(Math.max(1, Math.min(500, Number(e.target.value))))}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-200 px-2 py-1.5 text-center focus:outline-none focus:border-zinc-500"
+                />
+                <button
+                  onClick={generateFakeItems}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700/60 hover:bg-amber-600/70 text-xs text-amber-200 font-medium transition-colors border border-amber-600/40"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Generate
+                </button>
+              </div>
+            </div>
+            {fakeGenerated && (
+              <p className="mt-2 text-[10px] text-amber-400/80">
+                ⚠ Fake items are active — they will disappear on restart.
+              </p>
+            )}
+          </CardRow>
+
+          <CardRow last>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">Clear fake items</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Removes all debug-generated items from the current session.
+                </p>
+              </div>
+              <button
+                onClick={clearFakeItems}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-red-900/50 hover:border-red-800/50 hover:text-red-300 text-xs text-zinc-300 font-medium transition-colors shrink-0 border border-zinc-600"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Clear
+              </button>
+            </div>
+          </CardRow>
         </SettingsCard>
       </div>
     </>
@@ -1117,7 +1521,8 @@ function DebugSection() {
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 
-type SettingsTab = "general" | "packages" | "integrations" | "connections" | "compression" | "updates" | "debug" | "appearance" | "storage" | "logs";
+type SettingsTab = "general" | "packages" | "integrations" | "connections" |
+  "storage-compression" | "updates" | "debug" | "appearance" | "logs" | "import";
 
 interface NavGroup {
   groupKey: "settings_group_app" | "settings_group_connect" | "settings_group_system";
@@ -1128,25 +1533,24 @@ const NAV_GROUPS: NavGroup[] = [
   {
     groupKey: "settings_group_app",
     items: [
-      { id: "general",    labelKey: "settings_tab_general",    icon: SettingsIcon },
+      { id: "general", labelKey: "settings_tab_general", icon: SettingsIcon },
       { id: "appearance", labelKey: "settings_tab_appearance", icon: Palette },
-      { id: "compression",labelKey: "settings_tab_compression",icon: Archive },
-      { id: "storage",    labelKey: "settings_tab_storage",    icon: HardDrive },
+      { id: "storage-compression", labelKey: "settings_tab_storage_compression", icon: Archive },
     ],
   },
   {
     groupKey: "settings_group_connect",
     items: [
-      { id: "packages",    labelKey: "settings_tab_packages",   icon: Package },
-      { id: "connections", labelKey: "settings_tab_connections",icon: Wifi },
+      { id: "packages", labelKey: "settings_tab_packages", icon: Package },
+      { id: "connections", labelKey: "settings_tab_connections", icon: Wifi },
     ],
   },
   {
     groupKey: "settings_group_system",
     items: [
       { id: "updates", labelKey: "settings_tab_updates", icon: RefreshCw },
-      { id: "logs",  labelKey: "settings_tab_logs",  icon: FileText },
-      { id: "debug",   labelKey: "settings_tab_debug",   icon: Bug },
+      { id: "logs", labelKey: "settings_tab_logs", icon: FileText },
+      { id: "debug", labelKey: "settings_tab_debug", icon: Bug },
     ],
   },
 ];
@@ -1175,8 +1579,8 @@ export default function Settings() {
                       ? "bg-zinc-800 text-zinc-100"
                       : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900"
                   )}
+                  style={active ? { color: "var(--accent-color)" } : {}}
                 >
-                  {/* Remove the absolute indicator span */}
                   <span
                     className={cn(
                       "flex items-center justify-center h-6 w-6 rounded-md transition-all shrink-0",
@@ -1194,15 +1598,14 @@ export default function Settings() {
       </aside>
 
       <main className="flex-1 overflow-y-auto px-10 py-8 max-w-2xl">
-        {activeTab === "general"      && <GeneralSection />}
-        {activeTab === "appearance"   && <AppearanceSection />}
-        {activeTab === "packages"     && <PackagesSection />}
-        {activeTab === "connections"  && <ConnectionsSection />}
-        {activeTab === "compression"  && <CompressionSectionWrapper />}
-        {activeTab === "storage"      && <StorageSection />}
-        {activeTab === "updates"      && <UpdatesSection />}
+        {activeTab === "general" && <GeneralSection />}
+        {activeTab === "appearance" && <AppearanceSection />}
+        {activeTab === "packages" && <PackagesSection />}
+        {activeTab === "connections" && <ConnectionHub />}
+        {activeTab === "storage-compression" && <StorageCompressionSection />}
+        {activeTab === "updates" && <UpdatesSection />}
         {activeTab === "logs" && <LogsSection />}
-        {activeTab === "debug"        && <DebugSection />}
+        {activeTab === "debug" && <DebugSection />}
       </main>
     </div>
   );
