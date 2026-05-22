@@ -1,4 +1,4 @@
-import { Boxes, Package, ShoppingBag, Archive, Bell, FlaskConical, Settings, User, GitBranch } from "lucide-react";
+import { Boxes, Package, ShoppingBag, Archive, Bell, Settings, User, GitBranch } from "lucide-react";
 import { useAppStore, Section } from "@/store/app";
 import { useState, useEffect } from 'react';
 import { useTrackerStore } from "@/store/trackerStore";
@@ -26,7 +26,6 @@ export function Sidebar() {
     { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag, wip: true },
     { section: "inventory", label: t("nav_inventory"), icon: Archive },
     { section: "tracker",   label: t("nav_tracker"),   icon: Bell,        wip: true },
-    { section: "sandbox",   label: "Sandbox",          icon: FlaskConical, wip: true },
     { section: "git",       label: "Git",              icon: GitBranch },
   ];
 
