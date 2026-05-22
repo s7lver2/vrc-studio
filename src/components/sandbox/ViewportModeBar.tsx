@@ -1,4 +1,4 @@
-import { Eye, Bone, Grid3x3, Layers } from "lucide-react";
+import { Eye, Grid3x3, Layers } from "lucide-react";
 import { useSandboxStore, type ViewportMode } from "@/store/sandboxStore";
 
 const MODES: { id: ViewportMode; icon: React.ReactNode; label: string }[] = [

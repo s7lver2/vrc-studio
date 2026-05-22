@@ -1,8 +1,7 @@
 // src/components/git/tree/PropertiesPanel.tsx
 import React from "react";
-import { X, Loader2, GitBranch, GitFork, Star } from "lucide-react";
+import { X, Loader2, GitFork, Star } from "lucide-react";
 import type { PropsPanelTarget, ToolNodeInstance } from "./types";
-import type { CommitEntry, CommitDiffFile } from "@/types/vcs";
 import { TOOL_ICONS } from "./constants";
 import { fmtShort, shortSha } from "./utils";
 

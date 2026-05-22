@@ -1,32 +1,27 @@
-/**
- * Settings page — redesigned tabbed layout.
- * Tabs: General · Packages · Integrations · Compression · Updates · Debug
- */
 import Logs from "./Logs";
 import { StorageCompressionSection } from "@/components/settings/StorageCompressionSection";
 import { ConnectionHub } from "@/components/settings/ConnectionsHub";
 import React, { useState, useCallback, useEffect } from "react";
 import {
   Globe, Tags, Save, Check, Beaker,
-  RefreshCw, Package, Plus, Link, Upload,
+  RefreshCw, Package, Plus, Upload,
   Loader2, AlertTriangle, CheckCircle2,
   Trash2, ExternalLink, ChevronRight,
   Settings as SettingsIcon, Plug, Bug,
   Archive, Download, Shield, Wifi, Palette,
-  Lock, ShieldAlert, HardDrive, FolderOpen,
-  Terminal, FileText, Play, LogIn, LogOut, X
+  Lock, FolderOpen, Terminal, FileText, Play, 
+  LogOut, X
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CompressionSection } from "@/components/settings/CompressionSection";
 import {
   tauriPing,
-  tauriFetchVpmRepo,        // ← nuevo (reemplaza tauriFetchVpmIndex aquí)
-  tauriGetAppSettings,       // ← nuevo (puede que ya esté)
-  tauriSetAppSettings,       // ← nuevo
+  tauriFetchVpmRepo,     
+  tauriGetAppSettings,       
+  tauriSetAppSettings,       
   VpmPackage,
   tauriExportDatabase,
   tauriImportDatabase,
-  AppSettings,               // ← asegúrate de que está
   github, GithubUserInfo
 } from "@/lib/tauri";
 import { useRipperStatus, RipperStatus } from "@/hooks/useRipperStatus";
@@ -38,10 +33,7 @@ import { UpdateSettingsPanel } from "@/components/settings/UpdateSettingsPanel";
 import { invoke } from "@tauri-apps/api/core";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { DeveloperCodeModal } from "@/components/settings/DeveloperCodeModal";
-import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
-import { StorageSection } from "@/components/settings/StorageSection";
-import { ImportSection } from "@/components/settings/ImportSection";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

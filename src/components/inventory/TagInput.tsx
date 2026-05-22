@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { X, Plus, Tag } from "lucide-react";
-import { useTagStore, SYSTEM_TAGS } from "../../store/tagStore";
+import { useTagStore } from "../../store/tagStore";
 import { useT } from "../../i18n";
 
 interface Props {

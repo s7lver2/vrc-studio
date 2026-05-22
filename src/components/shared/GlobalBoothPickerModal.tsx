@@ -1,4 +1,3 @@
-// src/components/shared/GlobalBoothPickerModal.tsx
 /**
  * GlobalBoothPickerModal — modal de búsqueda Booth reutilizable.
  * Sustituye BoothProductPickerModal (tracker) y el inline search de ScanDriveWizard.

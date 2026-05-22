@@ -1,4 +1,3 @@
-// src/components/sidebar/Sidebar.tsx
 import { Boxes, Package, ShoppingBag, Archive, Bell, FlaskConical, Settings, User, GitBranch } from "lucide-react";
 import { useAppStore, Section } from "@/store/app";
 import { useState, useEffect } from 'react';

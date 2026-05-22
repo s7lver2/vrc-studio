@@ -5,7 +5,6 @@ import {
   Play, Square, Check, Loader2, X,
 } from "lucide-react";
 import type { Tool, SimulationPhase, LayoutMode } from "./types";
-import { DRAGGABLE_TOOLS, ToolNodeInstance } from "./types";
 import { TOOL_ICONS } from "./constants";
 import { CanvasMenu } from "./CanvasMenu";
 

@@ -14,12 +14,12 @@ import { NodeEdge } from "./NodeEdge";
 import { PropertiesPanel } from "./PropertiesPanel";
 
 import { useTreeState } from "./useTreeState";
-import type { ToolNodeInstance, SimulationCommit, EdgeDef, PropsPanelTarget } from "./types";
-import { TOOL_SOURCE_COUNT, TOOL_ICONS } from "./constants"; // ← Añadido TOOL_ICONS
+import type { ToolNodeInstance, SimulationCommit, EdgeDef } from "./types";
+import { TOOL_SOURCE_COUNT, TOOL_ICONS } from "./constants";
 import {
-    buildCommitLane, buildNodePositions, shortSha, fmtShort,
+    buildCommitLane, buildNodePositions
 } from "./utils";
-import { NODE_W, NODE_H, TOOL_NODE_W, TOOL_NODE_H, GAP_Y, SIMULATION_BUILD_DELAY_MS } from "./constants";
+import { NODE_W, NODE_H, TOOL_NODE_W, TOOL_NODE_H } from "./constants";
 
 export function GitTreePage({ project }: { project: Project }) {
     const { branchColors } = useVcsStore();

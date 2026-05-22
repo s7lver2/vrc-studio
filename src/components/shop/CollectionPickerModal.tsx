@@ -1,6 +1,5 @@
-// src/components/shop/CollectionPickerModal.tsx
 import { useState, useEffect } from "react";
-import { X, Plus, Check, FolderPlus, Folder } from "lucide-react";
+import { X, Plus, Check, Folder } from "lucide-react";
 import { useCollectionsStore } from "../../store/collectionsStore";
 
 export function CollectionPickerModal() {

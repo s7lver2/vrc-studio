@@ -1,4 +1,3 @@
-// src/components/sandbox/AssetSourcePicker.tsx
 /**
  * AssetSourcePicker — selección de fuente de asset con 3 iconos grandes.
  *

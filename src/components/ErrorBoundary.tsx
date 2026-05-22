@@ -1,4 +1,3 @@
-// src/components/ErrorBoundary.tsx
 import { Component, ReactNode } from "react";
 import { addLog } from "@/store/logsStore";
 

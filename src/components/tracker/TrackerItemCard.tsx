@@ -1,6 +1,4 @@
-import { Bell, BellOff, Trash2, ExternalLink, TrendingDown, Package,
-  Clock, 
- } from "lucide-react";
+import { Bell, BellOff, Trash2, ExternalLink, TrendingDown, Package } from "lucide-react";
 import { useTrackerStore } from "@/store/trackerStore";
 import type { TrackerItem } from "@/lib/tauri";
 

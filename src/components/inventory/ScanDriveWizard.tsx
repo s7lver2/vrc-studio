@@ -8,9 +8,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   X, HardDrive, Search, FolderOpen, ChevronRight, Loader2,
   CheckCircle2, AlertTriangle, MoreHorizontal, Copy, Trash2,
-  Layers, SkipForward, Pencil, Check, Plus, Tag, Image,
-  FileText, Globe, RefreshCw, ChevronDown, ChevronUp,
-  TerminalSquare, Package, Upload, Store, User, Download
+  Layers, SkipForward, Pencil, Check, Plus, Tag,
+  Globe, RefreshCw, ChevronDown, ChevronUp,
+  TerminalSquare, Package, Upload, Store, Download
 } from "lucide-react";
 import { tauriGetBoothProductDetail, tauriSearchShop, tauriImportLocalPackage, tauriSetItemProductImages, ShopProduct, tauriCheckDuplicateItems, tauriDeleteInventoryItem, } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";

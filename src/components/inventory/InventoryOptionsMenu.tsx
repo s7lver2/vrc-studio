@@ -1,5 +1,5 @@
 // src/components/inventory/InventoryOptionsMenu.tsx
-import { MoreHorizontal, Tag, Shapes, X } from "lucide-react";
+import { MoreHorizontal, Tag, Shapes } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useT } from "@/i18n";

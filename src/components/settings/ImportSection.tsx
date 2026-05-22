@@ -1,4 +1,3 @@
-// src/components/settings/ImportSection.tsx
 import { useState, useEffect } from "react";
 import { ExternalLink, Loader2, Layers, Timer, X, Download, CheckCircle2 } from "lucide-react";
 import { tauriGetAppSettings, tauriSetAppSettings, tauriReadVccRepos } from "@/lib/tauri";

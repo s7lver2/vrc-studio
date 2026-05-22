@@ -2,10 +2,10 @@
  * CompressionSection — Compression settings tab.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Zap, Scale, Gem, Box, SlidersHorizontal,
-  ChevronDown, ChevronUp, Info, Save, Check,
+  ChevronDown, Info, Save, Check,
 } from "lucide-react";
 import { useT } from "@/i18n";
 

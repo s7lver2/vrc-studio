@@ -4,7 +4,6 @@ import { useSandboxStore, MaterialSlot } from "@/store/sandboxStore";
 import { usePhysicsStore, MorphTarget, AvatarBone, ExpressionParam } from "@/store/physicsStore";
 import { readFile, readDir } from "@tauri-apps/plugin-fs";
 import { LoadingProgressBar } from "./LoadingSkeleton";
-import * as THREE from 'three';
 import { tauriParsePrefab } from "@/lib/tauri";
 
 export interface SandboxViewerHandle {

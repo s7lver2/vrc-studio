@@ -15,12 +15,12 @@
  * El visor 3D es una esfera que refleja los cambios del nodo Output.
  * El editor de nodos permite conectar color, texturas y parámetros PBR.
  */
-import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Save, Download, HardDrive, Package, Monitor, Upload } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { X, Save, HardDrive, Package, Upload } from "lucide-react";
 import { useMaterialEditorStore } from "@/store/materialEditorStore";
 import { MaterialNodeEditor } from "./MaterialNodeEditor";
 import { open as tauriOpen } from "@tauri-apps/plugin-dialog";
-import { readFile, writeTextFile, mkdir } from "@tauri-apps/plugin-fs";
+import { writeTextFile, mkdir } from "@tauri-apps/plugin-fs";
 import { useSandboxStore } from "@/store/sandboxStore";
 import type { VrcSmatFile } from "@/types/vrcsmat";
 import type { VrcSmatNode, VrcSmatConnection } from "@/types/vrcsmat";

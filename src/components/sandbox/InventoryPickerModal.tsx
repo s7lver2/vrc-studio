@@ -1,11 +1,10 @@
 // src/components/sandbox/InventoryPickerModal.tsx
 import { useState, useEffect } from "react";
-import { X, LayoutGrid, List, Tag, Package, ChevronRight, FileText } from "lucide-react";
+import { X, LayoutGrid, List, Package, ChevronRight, FileText } from "lucide-react";
 import { useInventoryStore } from "@/store/inventoryStore";
-import { useTagStore, SYSTEM_TAGS } from "@/store/tagStore";
+import { useTagStore } from "@/store/tagStore";
 import { useSandboxStore, SandboxFile } from "@/store/sandboxStore";
 import type { InventoryItem, FileNode } from "@/lib/tauri";
-import { FileTreePicker } from "./FileTreePicker";
 import { ItemCardSkeleton, ItemRowSkeleton } from "./LoadingSkeleton";
 
 const COMPATIBLE_EXTS = new Set(["fbx", "glb", "gltf", "vrm", "prefab", "png", "jpg", "jpeg", "bmp", "anim"]);

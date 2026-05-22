@@ -25,7 +25,6 @@ import {
   tauriInstallVpmPackageToProject,
   tauriRemoveVpmPackageFromProject,
   tauriGetVpmPackageFiles,
-  type VpmPackageSample,
 } from "@/lib/tauri";
 import {useT} from "../i18n";
 

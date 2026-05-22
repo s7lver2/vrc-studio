@@ -2,9 +2,9 @@
  * Preview3D — Visor 3D BETA para paquetes de inventario.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Loader2, RotateCcw, User, ChevronDown, AlertTriangle, Info, FlaskConical,
+  Loader2, RotateCcw, AlertTriangle, FlaskConical,
 } from "lucide-react";
 import { InventoryItem } from "../../lib/tauri";
 import type * as THREE from "three";

@@ -2,7 +2,6 @@
 import { Shuffle, ShoppingCart, Library, Folder, ArrowRight } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
 import { useCollectionsStore } from "../../store/collectionsStore";
-import { useShopStore } from "../../store/shopStore";
 import { Collection } from "../../lib/tauri";
 
 // Logo SVG de VRC Studio (simplificado — usar el que ya existe en assets)

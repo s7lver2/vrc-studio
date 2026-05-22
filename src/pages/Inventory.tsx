@@ -1,9 +1,7 @@
-// 📁 src/pages/Inventory.tsx
-
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   LayoutGrid, List, Upload, HardDrive, Search, X,
-  Tag, User, FileText, ChevronDown, ChevronLeft,
+  Tag, User, FileText, ChevronLeft,
   SortAsc, Archive, Globe, Shapes, FolderOpen
 } from "lucide-react";
 import { InventoryGrid } from "../components/inventory/InventoryGrid";

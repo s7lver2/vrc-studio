@@ -1,4 +1,3 @@
-// src/components/sandbox/TexturePickerModal.tsx
 /**
  * TexturePickerModal — muestra las texturas disponibles en el item base
  * representadas como esferas con la textura aplicada usando Three.js offscreen.

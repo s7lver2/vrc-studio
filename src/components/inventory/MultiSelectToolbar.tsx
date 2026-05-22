@@ -1,4 +1,4 @@
-import { Trash2, Archive, X, CheckSquare, RefreshCw } from "lucide-react";
+import { Trash2, Archive, X, CheckSquare } from "lucide-react";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { tauriDeleteInventoryItem, tauriCompressItem } from "@/lib/tauri";
 import { useState, useCallback, useEffect, useRef } from "react";

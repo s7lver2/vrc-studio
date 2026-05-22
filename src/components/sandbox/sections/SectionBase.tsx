@@ -1,4 +1,3 @@
-// src/components/sandbox/sections/SectionBase.tsx
 /**
  * SectionBase — bloque colapsable estilo Unity Inspector.
  * Cada sección del panel lateral lo reutiliza.
@@ -9,7 +8,6 @@ import { ChevronRight, ChevronDown } from "lucide-react";
 interface SectionBaseProps {
   title: string;
   icon?: React.ReactNode;
-  /** Badge pequeño (número de slots, estado, etc.) */
   badge?: string;
   defaultOpen?: boolean;
   children: React.ReactNode;

@@ -1,4 +1,3 @@
-// src/components/shared/BoothLinkPanel.tsx
 /**
  * BoothLinkPanel — panel reutilizable para vincular/buscar un producto de Booth.
  * Usado en ScanDriveWizard, AddTrackerModal, y cualquier otro sitio que necesite.

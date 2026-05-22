@@ -1,4 +1,3 @@
-// src/components/sandbox/FileTreePicker.tsx
 /**
  * FileTreePicker — modal de selección de archivo con árbol colapsable.
  *

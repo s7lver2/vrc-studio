@@ -7,7 +7,7 @@ import { useDownloadProgress } from "../../hooks/useDownloadProgress";
 import { useCollectionsStore } from "../../store/collectionsStore";
 import { Bookmark } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
-import { Download, CheckCircle2, Package, Loader2, ShoppingCart, BookmarkPlus } from "lucide-react";
+import { Download, CheckCircle2, Package, Loader2, ShoppingCart } from "lucide-react";
 import { useT } from "@/i18n";
 
 interface Props {

@@ -5,26 +5,21 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   X, ExternalLink, FolderOpen, GitBranch,
-  Monitor, Layers, Cpu, Calendar, HardDrive,
+  Monitor, Layers, Cpu, HardDrive,
   Loader2, AlertTriangle, RefreshCw, Camera,
-  Info, FileSearch, Package, Sparkles,
-  Archive, PackageOpen,
+  Info, FileSearch, Package,
 } from "lucide-react";
 import {
   Project, FileNode,
   tauriGetFileTree, tauriOpenItemLocation,
   tauriListUnityInstallations,
   tauriOpenProjectInUnity,
-  tauriCompressProject, tauriDecompressProject,
 } from "@/lib/tauri";
-import { ProjectCompressionPopup } from "./ProjectCompressionPopup";
 import { FileTreeViewer } from "@/components/inventory/FileTreeViewver";
 import { VcsPanel } from "@/components/vcs/VcsPanel";
 import { PackagesTab } from "@/pages/Packages";
 import { listen } from "@tauri-apps/api/event";
 import { toAssetUrl } from "@/lib/utils";
-import { useAppStore } from "@/store/app";
-import { invoke } from "@tauri-apps/api/core";
 import { useT } from "@/i18n";
 
 // ── helpers ───────────────────────────────────────────────────────────────────

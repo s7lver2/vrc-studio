@@ -1,5 +1,5 @@
 // src/components/git/tree/types.ts
-import type { CommitEntry, BranchInfo, CommitDiffFile } from "@/types/vcs";
+import type { CommitEntry, CommitDiffFile } from "@/types/vcs";
 
 export type Tool =
   | "select" | "pan"

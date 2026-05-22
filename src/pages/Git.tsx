@@ -3,14 +3,12 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
     GitBranch, GitCommit, GitMerge, GitPullRequest,
     AlertTriangle, CheckCircle2, Plus, Trash2,
-    RefreshCw, Loader2, ChevronDown,
-    ArrowUp, ArrowDown, Copy, ExternalLink,
-    Circle, Minus, X, Check, Upload, Download,
-    FolderOpen, Eye, Layers, Cpu, LogIn, LogOut,
-    Zap, RotateCcw, Star, Tag, Hash, Clock, User,
-    MousePointer2, Hand, Cherry, CornerUpRight, GitFork,
-    Undo2, Pencil, PackagePlus, PackageMinus, ArrowLeftRight,
-    BookOpen
+    RefreshCw, Loader2, ArrowUp, ArrowDown, 
+    ExternalLink,
+    Circle, X, Check, Upload,
+    FolderOpen, Eye, Layers, Cpu, LogOut,
+    Zap, Star, Hash, User, GitFork,
+    Pencil
 } from "lucide-react";
 import { GitTreePage } from "@/components/git/tree/GitTreePage";
 import { useAppStore } from "@/store/app";
@@ -18,27 +16,18 @@ import { createPortal } from "react-dom";
 import { Project } from "@/lib/tauri";
 import { vcs, github, GithubUserInfo, GithubRepo } from "@/lib/tauri";
 import type { GitStatus, CommitEntry, BranchInfo, FileDiff, CommitDiffFile } from "@/types/vcs";
-import { useT } from "@/i18n";
 import { GlobalProjectPickerModal } from "@/components/shared/GlobalProjectPickerModal";
 import { FileTypeIcon } from "@/components/vcs/FileTypeIcon";
 import { useVcsStore, } from "@/store/vcsStore";
 
 
-type NodeInfo = {
-    x: number; y: number; color: string; isHead: boolean;
-    branchNames: string[]; tipSha?: string;
-};
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function cn(...c: (string | boolean | undefined)[]) {
     return c.filter(Boolean).join(" ");
 }
-function fmt(ts: number) {
-    return new Date(ts * 1000).toLocaleDateString(undefined, {
-        month: "short", day: "numeric", year: "numeric",
-    });
-}
+
 function fmtShort(ts: number) {
     const d = new Date(ts * 1000);
     const now = new Date();
@@ -48,16 +37,6 @@ function fmtShort(ts: number) {
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     return `${Math.floor(diff / 86400)}d ago`;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-    added: "text-emerald-400",
-    deleted: "text-red-400",
-    modified: "text-amber-400",
-    renamed: "text-blue-400",
-};
-const STATUS_LABELS: Record<string, string> = {
-    added: "A", deleted: "D", modified: "M", renamed: "R",
-};
 
 // ── Sub-page type ─────────────────────────────────────────────────────────────
 

@@ -1,5 +1,3 @@
-// src/components/sidebar/NavItem.tsx
-import { LucideIcon } from "lucide-react";
 import { forwardRef } from "react";
 
 // Inside your NavItem.tsx component:

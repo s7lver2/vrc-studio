@@ -1,5 +1,5 @@
 // src/components/git/tree/CanvasMenu.tsx
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { MoreHorizontal, Check } from "lucide-react";
 import type { LayoutMode } from "./types";
 

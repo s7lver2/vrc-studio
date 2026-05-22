@@ -1,5 +1,3 @@
-// src/components/git/tree/SimulationNode.tsx
-import React from "react";
 import type { SimulationCommit } from "./types";
 import { NODE_W, NODE_H } from "./constants";
 
@@ -11,7 +9,6 @@ interface SimulationNodeProps {
 // La animación marchingAnts debe existir en index.css (ver Task 6 Step 2).
 export function SimulationNode({ sim }: SimulationNodeProps) {
   const rx = 10;
-  const perimeter = 2 * (NODE_W + NODE_H);
 
   return (
     <div

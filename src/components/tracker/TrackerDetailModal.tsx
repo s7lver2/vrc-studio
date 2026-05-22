@@ -1,9 +1,7 @@
-// src/components/tracker/TrackerDetailModal.tsx
 import React, { useEffect, useState } from "react";
 import {
-  X, ExternalLink, TrendingDown, TrendingUp, Clock, Package, BarChart2, Minus,
-  Loader2, Zap, AlertTriangle, ChevronDown, ChevronUp, Calendar, Hash, Tag,
-  ArrowDown, ArrowUp, Activity, Bell,
+  X, ExternalLink, TrendingDown, Clock, Package, BarChart2,
+  Loader2, Zap, AlertTriangle, Activity
 } from "lucide-react";
 import { useTrackerStore } from "@/store/trackerStore";
 import type { TrackerItem, TrackerEvent } from "@/lib/tauri";

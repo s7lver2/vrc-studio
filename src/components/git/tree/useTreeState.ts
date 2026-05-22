@@ -1,7 +1,6 @@
 // src/components/git/tree/useTreeState.ts
 import { useState, useRef, useCallback } from "react";
 import type { Tool, ToolNodeInstance, SimulationCommit, SimulationPhase, PropsPanelTarget } from "./types";
-import { DRAGGABLE_TOOLS } from "./types";
 
 export type TreeCanvasState = ReturnType<typeof useTreeState>;
 

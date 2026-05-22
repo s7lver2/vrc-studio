@@ -1,4 +1,3 @@
-// src/components/settings/StorageCompressionSection.tsx
 import { useState } from "react";
 import { HardDrive, Archive } from "lucide-react";
 import { StorageSection } from "./StorageSection";

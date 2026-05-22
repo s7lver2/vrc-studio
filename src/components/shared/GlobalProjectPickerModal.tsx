@@ -1,4 +1,3 @@
-// src/components/shared/GlobalProjectPickerModal.tsx
 /**
  * GlobalProjectPickerModal — selección de proyecto desde cualquier parte de la app.
  * Muestra indicador verde en proyectos con Unity en ejecución. Proyectos abiertos

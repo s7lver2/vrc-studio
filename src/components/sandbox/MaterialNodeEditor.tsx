@@ -1,6 +1,6 @@
 // src/components/sandbox/MaterialNodeEditor.tsx
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Plus, Trash2, Link2Off } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useMaterialEditorStore } from "@/store/materialEditorStore";
 import type { VrcSmatNode, VrcSmatNodeType } from "@/types/vrcsmat";
 import { SpherePreview } from "./SpherePreview";

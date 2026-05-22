@@ -1,5 +1,5 @@
 // src/components/sandbox/sections/AvatarInfoSection.tsx
-import { User, Eye, Mic, CheckCircle, XCircle } from "lucide-react";
+import { User, Eye, Mic, CheckCircle } from "lucide-react";
 import { SectionBase } from "./SectionBase";
 import { useSandboxStore } from "@/store/sandboxStore";
 

@@ -1,7 +1,7 @@
 // src/components/git/tree/ToolNode.tsx
 import React from "react";
 import type { ToolNodeInstance } from "./types";
-import { TOOL_ICONS, TOOL_NODE_W, TOOL_NODE_H, TOOL_PROPS_SCHEMA, TOOL_SOURCE_COUNT } from "./constants";
+import { TOOL_ICONS, TOOL_NODE_W, TOOL_PROPS_SCHEMA, TOOL_SOURCE_COUNT } from "./constants";
 
 interface ToolNodeProps {
   node: ToolNodeInstance;

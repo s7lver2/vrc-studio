@@ -1,4 +1,3 @@
-// src/components/sandbox/sections/ClothingSection.tsx
 /**
  * ClothingSection — adjunta un modelo de ropa al avatar base y linkea armatures.
  *

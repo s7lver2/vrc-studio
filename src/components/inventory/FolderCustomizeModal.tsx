@@ -5,7 +5,6 @@ import { InventoryFolder } from "@/lib/tauri";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { toAssetUrl } from "@/lib/utils";
-import { createPortal } from "react-dom";
 import { useT } from "@/i18n";
 
 const PRESET_COLORS = [

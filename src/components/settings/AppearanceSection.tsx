@@ -1,7 +1,6 @@
-// src/components/settings/AppearanceSection.tsx
 import {
     Palette, Monitor, Grid3X3, LayoutGrid,
-    PanelLeft, Type, Zap, Moon
+    Type, Zap, Moon
 } from "lucide-react";
 import { useAppearanceStore, ItemSize, UiScale } from "@/store/appearanceStore";
 

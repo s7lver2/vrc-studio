@@ -1,4 +1,3 @@
-// src/components/shop/CartDrawer.tsx
 import { X, ShoppingCart, Download, Trash2, Package } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
 import { useShopStore } from "../../store/shopStore";

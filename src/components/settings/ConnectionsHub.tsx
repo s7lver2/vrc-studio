@@ -1,8 +1,7 @@
-// src/components/settings/ConnectionHub.tsx
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Lock, LogOut, ExternalLink, Loader2,
-  CheckCircle2, XCircle, AlertTriangle, Copy, Check, Wifi,
+  AlertTriangle, Copy, Check, Wifi,
 } from "lucide-react";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
 import { useRipperStatus } from "@/hooks/useRipperStatus";

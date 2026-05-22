@@ -1,7 +1,5 @@
-// src/components/git/tree/NodeEdge.tsx
-import React from "react";
 import type { EdgeDef } from "./types";
-import { NODE_W, NODE_H, TOOL_NODE_W, TOOL_NODE_H, GAP_Y } from "./constants";
+import { NODE_W, NODE_H, GAP_Y } from "./constants";
 
 interface NodeEdgeProps {
   edge: EdgeDef;

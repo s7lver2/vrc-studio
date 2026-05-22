@@ -1,4 +1,3 @@
-// src/components/vcs/VcsPanel.tsx
 import { GitBranch, ExternalLink } from "lucide-react";
 import { useAppStore } from "@/store/app";
 

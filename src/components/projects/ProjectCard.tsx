@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Project, tauriCompressProject, tauriDecompressProject, tauriFocusUnityWindow } from "@/lib/tauri";
-import { Trash2, ExternalLink, Info, Archive, PackageOpen, Loader2, MonitorUp } from "lucide-react";
+import { Trash2, ExternalLink, Info, Archive, PackageOpen, MonitorUp } from "lucide-react";
 import { toAssetUrl } from "@/lib/utils";
 import { ProjectCompressionPopup } from "./ProjectCompressionPopup";
 import { useT } from "@/i18n";

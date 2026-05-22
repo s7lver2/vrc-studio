@@ -1,5 +1,3 @@
-// src/components/settings/SpaceReclaimerModal.tsx
-
 /**
  * SpaceReclaimerModal — escanea proyectos e inventario buscando archivos
  * pesados/innecesarios y permite al usuario seleccionar qué eliminar.
@@ -13,8 +11,7 @@
 import { useState, useCallback, useMemo } from "react";
 import {
   X, Search, Trash2, RefreshCw, AlertTriangle,
-  CheckSquare, Square, ChevronDown, ChevronUp,
-  FolderOpen, FileImage, Layers, Video, FileText, Package,
+  CheckSquare, Square, FileImage, Layers, Video, FileText, Package,
   Loader2, CheckCircle2, Filter,
 } from "lucide-react";
 import {

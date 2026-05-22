@@ -1,4 +1,3 @@
-// src/components/shop/CollectionsView.tsx
 import { useState, useEffect } from "react";
 import { X, Plus, Trash2, Edit2, Check, Image, Folder, ArrowLeft, Download } from "lucide-react";
 import { useCollectionsStore } from "../../store/collectionsStore";

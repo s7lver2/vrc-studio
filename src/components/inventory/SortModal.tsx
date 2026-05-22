@@ -1,7 +1,7 @@
 // src/components/inventory/SortModal.tsx
 import { Check } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { useInventoryStore, SortField, SortDir } from "@/store/inventoryStore";
+import { useInventoryStore, SortField } from "@/store/inventoryStore";
 import { useT } from "../../i18n";
 
 const SORT_OPTIONS = [

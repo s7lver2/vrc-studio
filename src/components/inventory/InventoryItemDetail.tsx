@@ -2,8 +2,8 @@ import {
   X, ExternalLink, Trash2, FolderInput, FolderOpen,
   Info, FileArchive, Box, ChevronLeft, ChevronRight,
   Calendar, HardDrive, User, Link, Tag, Loader2,
-  AlertTriangle, Package, Archive, Download, Star,
-  FileText, Layers, Clock, Pencil, Check as CheckIcon, Upload,
+  AlertTriangle, Package, Archive, Star,
+  FileText, Layers, Pencil, Check as CheckIcon, Upload,
   Globe
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
