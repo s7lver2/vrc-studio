@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Lock, LogOut, ExternalLink, Loader2,
+  LogOut, ExternalLink, Loader2,
   AlertTriangle, Copy, Check, Wifi,
 } from "lucide-react";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
-import { useRipperStatus } from "@/hooks/useRipperStatus";
 import { github, GithubUserInfo } from "@/lib/tauri";
-import { useAppStore } from "@/store/app";
 import { useAppearanceStore } from "@/store/appearanceStore";
-import { DeveloperCodeModal } from "./DeveloperCodeModal";
+import { useAppStore } from "@/store/app";
 
 function cn(...c: (string | boolean | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -30,8 +28,6 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   expired:      "Session expired",
 };
 
-// ── DeviceFlowPanel ─────────────────────────────────────────────────────────
-
 function DeviceFlowPanel({
   userCode,
   verificationUri,
@@ -42,13 +38,11 @@ function DeviceFlowPanel({
   onCancel: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-
   const copyCode = () => {
     navigator.clipboard.writeText(userCode).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
   return (
     <div className="border-t border-zinc-800 px-5 py-4 flex flex-col gap-3">
       <div className="flex items-center gap-2 text-xs text-zinc-400">
@@ -58,40 +52,26 @@ function DeviceFlowPanel({
       <div className="flex flex-col gap-2">
         <p className="text-[11px] text-zinc-500">
           Open{" "}
-          <a
-            href={verificationUri}
-            target="_blank"
-            rel="noreferrer"
+          <a href={verificationUri} target="_blank" rel="noreferrer"
             className="underline hover:text-zinc-300 transition-colors"
-            style={{ color: "var(--accent-color)" }}
-          >
+            style={{ color: "var(--accent-color)" }}>
             {verificationUri}
-          </a>{" "}
-          and enter this code:
+          </a>{" "}and enter this code:
         </p>
         <div className="flex items-center gap-2">
           <div className="font-mono text-xl font-bold tracking-[0.3em] text-zinc-100 px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-900 flex-1 text-center">
             {userCode}
           </div>
-          <button
-            onClick={copyCode}
-            className="p-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all shrink-0"
-          >
+          <button onClick={copyCode}
+            className="p-2 rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all shrink-0">
             {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
           </button>
         </div>
-        <button
-          onClick={onCancel}
-          className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
-        >
-          Cancel
-        </button>
+        <button onClick={onCancel} className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors">Cancel</button>
       </div>
     </div>
   );
 }
-
-// ── ConnectionCard ───────────────────────────────────────────────────────────
 
 interface CardConfig {
   id: string;
@@ -100,7 +80,6 @@ interface CardConfig {
   logo: React.ReactNode;
   status: ConnectionStatus;
   accountLine?: string;
-  requiresDevCode: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   connectingState?: "idle" | "waiting" | "done";
@@ -108,15 +87,7 @@ interface CardConfig {
   expandedContent?: React.ReactNode;
 }
 
-function ConnectionCard({
-  card,
-  isLocked,
-  onLockedClick,
-}: {
-  card: CardConfig;
-  isLocked: boolean;
-  onLockedClick: () => void;
-}) {
+function ConnectionCard({ card }: { card: CardConfig }) {
   const [expanded, setExpanded] = useState(false);
   const { animSpeed } = useAppearanceStore();
 
@@ -124,13 +95,11 @@ function ConnectionCard({
   const isExpired   = card.status === "expired";
   const isUnknown   = card.status === "unknown";
   const isWaiting   = card.connectingState === "waiting";
-
   const statusColor = STATUS_COLOR[card.status];
 
   return (
     <div
-      className={cn(
-        "relative rounded-2xl border overflow-hidden",
+      className={cn("relative rounded-2xl border overflow-hidden",
         isConnected ? "border-emerald-800/60" : isExpired ? "border-amber-900/50" : "border-zinc-800"
       )}
       style={{
@@ -139,51 +108,24 @@ function ConnectionCard({
           : "#0f0f11",
         boxShadow: isConnected
           ? "0 0 0 1px rgba(52,211,153,0.12), 0 4px 24px rgba(52,211,153,0.07)"
-          : isExpired
-            ? "0 0 0 1px rgba(245,158,11,0.12)"
-            : "none",
+          : isExpired ? "0 0 0 1px rgba(245,158,11,0.12)" : "none",
         transition: "box-shadow 0.3s ease, border-color 0.3s ease",
       }}
     >
-      {/* Lock overlay */}
-      {isLocked && (
-        <button
-          onClick={onLockedClick}
-          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-zinc-950/80 backdrop-blur-[2px] transition-all hover:bg-zinc-950/70"
-        >
-          <Lock className="h-5 w-5 text-zinc-400" />
-          <div className="text-center">
-            <p className="text-xs font-semibold text-zinc-300">Dev Code Required</p>
-            <p className="text-[10px] text-zinc-600 mt-0.5">Tap to unlock with developer code</p>
-          </div>
-        </button>
-      )}
-
-      {/* Main row */}
       <div className="flex items-center gap-4 px-5 py-4">
-        {/* Logo + status ring */}
         <div className="relative shrink-0">
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center bg-zinc-900 border border-zinc-800"
-            style={isConnected ? { borderColor: "rgba(52,211,153,0.25)" } : {}}
-          >
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-zinc-900 border border-zinc-800"
+            style={isConnected ? { borderColor: "rgba(52,211,153,0.25)" } : {}}>
             {card.logo}
           </div>
-          {/* Status dot */}
-          <div
-            className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-zinc-950"
-            style={{ background: statusColor }}
-          >
+          <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-zinc-950"
+            style={{ background: statusColor }}>
             {isConnected && animSpeed !== "off" && (
-              <span
-                className="absolute inset-0 rounded-full animate-ping"
-                style={{ background: statusColor, opacity: 0.4 }}
-              />
+              <span className="absolute inset-0 rounded-full animate-ping" style={{ background: statusColor, opacity: 0.4 }} />
             )}
           </div>
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <p className="text-sm font-semibold text-zinc-100">{card.name}</p>
@@ -193,60 +135,43 @@ function ConnectionCard({
           </div>
           <p className="text-[11px] text-zinc-500 leading-relaxed truncate">{card.description}</p>
           {card.accountLine && isConnected && (
-            <p className="text-[11px] mt-1 font-mono" style={{ color: "var(--accent-color)" }}>
-              {card.accountLine}
-            </p>
+            <p className="text-[11px] mt-1 font-mono" style={{ color: "var(--accent-color)" }}>{card.accountLine}</p>
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
           {isConnected ? (
             <>
               {card.expandedContent && (
-                <button
-                  onClick={() => setExpanded((e) => !e)}
-                  className="px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all"
-                >
+                <button onClick={() => setExpanded(e => !e)}
+                  className="px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all">
                   {expanded ? "Less" : "Details"}
                 </button>
               )}
-              <button
-                onClick={card.onDisconnect}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-red-400 hover:border-red-900 transition-all"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Disconnect
+              <button onClick={card.onDisconnect}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-red-400 hover:border-red-900 transition-all">
+                <LogOut className="h-3.5 w-3.5" /> Disconnect
               </button>
             </>
           ) : isExpired ? (
-            <button
-              onClick={card.onConnect}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-amber-300 border border-amber-900/60 bg-amber-950/30 hover:bg-amber-950/50 transition-all"
-            >
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Reconnect
+            <button onClick={card.onConnect}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-amber-300 border border-amber-900/60 bg-amber-950/30 hover:bg-amber-950/50 transition-all">
+              <AlertTriangle className="h-3.5 w-3.5" /> Reconnect
             </button>
           ) : isUnknown && !isWaiting ? (
             <Loader2 className="h-4 w-4 animate-spin text-zinc-600" />
           ) : isWaiting ? (
             <span className="text-[10px] text-zinc-600 italic">Waiting…</span>
           ) : (
-            <button
-              onClick={card.onConnect}
+            <button onClick={card.onConnect}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-zinc-100 transition-all"
-              style={{
-                background: "var(--accent-color)",
-                boxShadow: "0 0 14px hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.3)",
-              }}
-            >
+              style={{ background: "var(--accent-color)", boxShadow: "0 0 14px hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.3)" }}>
               Connect
             </button>
           )}
         </div>
       </div>
 
-      {/* GitHub device flow inline */}
       {isWaiting && card.devicePrompt && !isConnected && (
         <DeviceFlowPanel
           userCode={card.devicePrompt.user_code}
@@ -255,31 +180,21 @@ function ConnectionCard({
         />
       )}
 
-      {/* Expanded content */}
       {expanded && card.expandedContent && (
-        <div className="border-t border-zinc-800/60 px-5 py-4">
-          {card.expandedContent}
-        </div>
+        <div className="border-t border-zinc-800/60 px-5 py-4">{card.expandedContent}</div>
       )}
     </div>
   );
 }
 
-// ── ConnectionHub ────────────────────────────────────────────────────────────
-
 export function ConnectionHub() {
-  const { untrustedSourcesUnlocked, setUntrustedSourcesUnlocked } = useAppStore();
-  const { riperstoreExperimental, setRiperstoreExperimental } = useAppStore();
-  const [showCodeModal, setShowCodeModal] = useState(false);
-
-  // GitHub state
-  const [githubUser, setGithubUser]     = useState<GithubUserInfo | null>(null);
-  const [githubStep, setGithubStep]     = useState<"idle" | "waiting" | "done">("idle");
+  const showAdultContent = useAppStore((s) => s.showAdultContent);
+  const setShowAdultContent = useAppStore((s) => s.setShowAdultContent);
+  const [githubUser, setGithubUser] = useState<GithubUserInfo | null>(null);
+  const [githubStep, setGithubStep] = useState<"idle" | "waiting" | "done">("idle");
   const [devicePrompt, setDevicePrompt] = useState<{ user_code: string; verification_uri: string } | null>(null);
 
-  // Booth + Ripper
   const { status: boothStatus, purchaseCount, connect: boothConnect, disconnect: boothDisconnect } = useBoothStatus();
-  const { status: ripperStatus, connect: ripperConnect, disconnect: ripperDisconnect, reconnect: ripperReconnect } = useRipperStatus();
 
   useEffect(() => {
     github.getUser().then(setGithubUser).catch(() => setGithubUser(null));
@@ -287,7 +202,6 @@ export function ConnectionHub() {
 
   const startGithubAuth = useCallback(async () => {
     if (githubStep === "waiting") {
-      // Cancel
       setGithubStep("idle");
       setDevicePrompt(null);
       return;
@@ -320,7 +234,6 @@ export function ConnectionHub() {
       logo: githubLogo,
       status: githubUser ? "connected" : githubStep === "waiting" ? "unknown" : "disconnected",
       accountLine: githubUser ? `@${githubUser.login}` : undefined,
-      requiresDevCode: false,
       onConnect: startGithubAuth,
       onDisconnect: async () => { await github.logout(); setGithubUser(null); },
       connectingState: githubStep,
@@ -329,24 +242,16 @@ export function ConnectionHub() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {githubUser.avatar_url && (
-              <img
-                src={githubUser.avatar_url}
-                className="w-10 h-10 rounded-full ring-2 ring-emerald-700/40"
-                alt=""
-              />
+              <img src={githubUser.avatar_url} className="w-10 h-10 rounded-full ring-2 ring-emerald-700/40" alt="" />
             )}
             <div>
               <p className="text-sm font-bold text-zinc-100">{githubUser.name ?? githubUser.login}</p>
               <p className="text-xs text-zinc-500">@{githubUser.login}</p>
             </div>
           </div>
-          <a
-            href={`https://github.com/${githubUser.login}`}
-            target="_blank"
-            rel="noreferrer"
+          <a href={`https://github.com/${githubUser.login}`} target="_blank" rel="noreferrer"
             className="flex items-center gap-1.5 text-xs hover:opacity-80 transition-opacity"
-            style={{ color: "var(--accent-color)" }}
-          >
+            style={{ color: "var(--accent-color)" }}>
             <ExternalLink className="h-3 w-3" /> Profile
           </a>
         </div>
@@ -361,69 +266,36 @@ export function ConnectionHub() {
       accountLine: boothStatus === "connected" && purchaseCount != null
         ? `${purchaseCount} purchased item${purchaseCount !== 1 ? "s" : ""}`
         : undefined,
-      requiresDevCode: false,
       onConnect: boothConnect,
       onDisconnect: boothDisconnect,
-    },
-    {
-      id: "riperstore",
-      name: "Riperstore",
-      description: "Experimental integration with Riperstore forums for extended asset discovery.",
-      logo: <span className="text-2xl leading-none">🔮</span>,
-      status: ripperStatus === "connected"
-        ? "connected"
-        : ripperStatus === "expired"
-          ? "expired"
-          : "disconnected",
-      requiresDevCode: true,
-      onConnect: () => { setRiperstoreExperimental(true); ripperConnect(); },
-      onDisconnect: () => { ripperDisconnect(); setRiperstoreExperimental(false); },
+      expandedContent: boothStatus === "connected" ? (
+        <div className="flex items-center justify-between py-2">
+          <div>
+            <p className="text-xs font-medium text-zinc-300">Adult content</p>
+            <p className="text-xs text-zinc-500">Show R18 items in search results (requires age verification on your Booth account)</p>
+          </div>
+          <button
+            onClick={() => setShowAdultContent(!showAdultContent)}
+            className={cn("w-9 h-5 rounded-full transition-colors relative", showAdultContent ? "bg-emerald-600" : "bg-zinc-700")}
+          >
+            <span className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform", showAdultContent ? "translate-x-4" : "translate-x-0.5")} />
+          </button>
+        </div>
+      ) : undefined,
     },
   ];
 
   return (
-    <>
-      {showCodeModal && (
-        <DeveloperCodeModal
-          onClose={() => setShowCodeModal(false)}
-          onUnlocked={() => { setUntrustedSourcesUnlocked(true); setShowCodeModal(false); }}
-        />
-      )}
-
-      <div className="flex flex-col gap-4">
-        {/* Header row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wifi className="h-3.5 w-3.5 text-zinc-500" />
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Integrations</p>
-          </div>
-          {untrustedSourcesUnlocked ? (
-            <button
-              onClick={() => setUntrustedSourcesUnlocked(false)}
-              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border border-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
-            >
-              <Lock className="h-2.5 w-2.5" /> Lock Dev Mode
-            </button>
-          ) : (
-            <p className="flex items-center gap-1 text-[10px] text-zinc-700">
-              <Lock className="h-3 w-3" />
-              Some integrations require a dev code
-            </p>
-          )}
-        </div>
-
-        {/* Cards */}
-        <div className="flex flex-col gap-3">
-          {cards.map((card) => (
-            <ConnectionCard
-              key={card.id}
-              card={card}
-              isLocked={card.requiresDevCode && !untrustedSourcesUnlocked}
-              onLockedClick={() => setShowCodeModal(true)}
-            />
-          ))}
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <Wifi className="h-3.5 w-3.5 text-zinc-500" />
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Integrations</p>
       </div>
-    </>
+      <div className="flex flex-col gap-3">
+        {cards.map((card) => (
+          <ConnectionCard key={card.id} card={card} />
+        ))}
+      </div>
+    </div>
   );
 }
