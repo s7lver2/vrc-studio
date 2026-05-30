@@ -80,7 +80,7 @@ fn read_bytes_exact(pipe: &mut File, buf: &mut [u8]) -> Result<(), String> {
 fn read_frame(pipe: &mut File) -> Result<Value, String> {
     let mut header = [0u8; 8];
     read_bytes_exact(pipe, &mut header)?;
-    let length = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
+    let length = u32::from_le_bytes([header[4], header[5], header[6], header[7]]) as usize;
     let mut payload = vec![0u8; length];
     read_bytes_exact(pipe, &mut payload)?;
     serde_json::from_slice(&payload).map_err(|e| e.to_string())
@@ -116,17 +116,16 @@ fn ipc_authenticate_with_token(pipe: &mut File, access_token: &str) -> Result<Di
         ));
     }
     let user = &response["data"]["user"];
-    let user_id = user["id"].as_str().unwrap_or("").to_string();
-    let avatar_hash = user["avatar"].as_str().map(|s| s.to_string());
+    let avatar_url = match (user["id"].as_str(), user["avatar"].as_str()) {
+        (Some(uid), Some(hash)) => Some(format!(
+            "https://cdn.discordapp.com/avatars/{uid}/{hash}.png?size=128"
+        )),
+        _ => None,
+    };
     Ok(DiscordUserInfo {
         username: user["username"].as_str().unwrap_or("").to_string(),
         discriminator: user["discriminator"].as_str().unwrap_or("0").to_string(),
-        avatar_url: avatar_hash.map(|h| {
-            format!(
-                "https://cdn.discordapp.com/avatars/{}/{}.png?size=128",
-                user_id, h
-            )
-        }),
+        avatar_url,
     })
 }
 
@@ -205,21 +204,25 @@ pub async fn discord_authorize(
     .await
     .map_err(|_| "Tiempo de espera agotado (120 s). Acepta el popup en Discord.".to_string())?
     .map_err(|e| e.to_string())?
-    .map_err(|e| e)?;
+    ?;
 
     // Phase 2 — HTTP token exchange (async)
     let access_token = exchange_token(&auth_code).await?;
 
-    // Phase 3 — AUTHENTICATE to get user info (blocking, new pipe connection)
+    // Phase 3 — AUTHENTICATE to get user info (blocking, new pipe connection, 30 s timeout)
     let token_clone = access_token.clone();
-    let user = tokio::task::spawn_blocking(move || -> Result<DiscordUserInfo, String> {
-        let mut pipe = open_pipe()?;
-        ipc_handshake(&mut pipe)?;
-        ipc_authenticate_with_token(&mut pipe, &token_clone)
-    })
+    let user = tokio::time::timeout(
+        Duration::from_secs(30),
+        tokio::task::spawn_blocking(move || -> Result<DiscordUserInfo, String> {
+            let mut pipe = open_pipe()?;
+            ipc_handshake(&mut pipe)?;
+            ipc_authenticate_with_token(&mut pipe, &token_clone)
+        }),
+    )
     .await
+    .map_err(|_| "Tiempo de espera agotado esperando respuesta de Discord.".to_string())?
     .map_err(|e| e.to_string())?
-    .map_err(|e| e)?;
+    ?;
 
     // Persist token in backend state
     *state
@@ -236,14 +239,18 @@ pub async fn discord_reauthenticate(
     access_token: String,
 ) -> Result<DiscordUserInfo, String> {
     let token_clone = access_token.clone();
-    let user = tokio::task::spawn_blocking(move || -> Result<DiscordUserInfo, String> {
-        let mut pipe = open_pipe()?;
-        ipc_handshake(&mut pipe)?;
-        ipc_authenticate_with_token(&mut pipe, &token_clone)
-    })
+    let user = tokio::time::timeout(
+        Duration::from_secs(30),
+        tokio::task::spawn_blocking(move || -> Result<DiscordUserInfo, String> {
+            let mut pipe = open_pipe()?;
+            ipc_handshake(&mut pipe)?;
+            ipc_authenticate_with_token(&mut pipe, &token_clone)
+        }),
+    )
     .await
+    .map_err(|_| "Tiempo de espera agotado esperando respuesta de Discord.".to_string())?
     .map_err(|e| e.to_string())?
-    .map_err(|e| e)?;
+    ?;
 
     *state
         .access_token
