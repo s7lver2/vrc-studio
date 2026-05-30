@@ -19,6 +19,7 @@ import type { GitStatus, CommitEntry, BranchInfo, FileDiff, CommitDiffFile } fro
 import { GlobalProjectPickerModal } from "@/components/shared/GlobalProjectPickerModal";
 import { FileTypeIcon } from "@/components/vcs/FileTypeIcon";
 import { useVcsStore, } from "@/store/vcsStore";
+import { useProjectsStore } from "@/store/projects";
 
 
 
@@ -2154,6 +2155,7 @@ export default function Git() {
     const [project, setProject] = useState<Project | null>(null);
     const [activePage, setActivePage] = useState<GitPage>("overview");
     const [pickerOpen, setPickerOpen] = useState(false);
+    const { updateProject } = useProjectsStore();
 
     return (
         <div className="flex h-full overflow-hidden flex-col bg-zinc-950">
@@ -2219,8 +2221,16 @@ export default function Git() {
                     title="Select Git Project"
                     subtitle="Choose a project with Git enabled"
                     onClose={() => setPickerOpen(false)}
+                    showAllProjects={true}
                     onSelect={(p) => {
                         setProject(p);
+                        setActivePage("overview");
+                        setPickerOpen(false);
+                    }}
+                    onEnableGit={(p) => {
+                        const updated = { ...p, vcs_enabled: true };
+                        updateProject(updated);
+                        setProject(updated);
                         setActivePage("overview");
                         setPickerOpen(false);
                     }}

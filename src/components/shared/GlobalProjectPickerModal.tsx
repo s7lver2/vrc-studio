@@ -16,6 +16,8 @@ interface Props {
   subtitle?: string;
   onClose: () => void;
   onSelect: (project: Project, isRunning: boolean) => void;
+  showAllProjects?: boolean;
+  onEnableGit?: (project: Project) => void;
 }
 
 export function GlobalProjectPickerModal({
@@ -23,10 +25,13 @@ export function GlobalProjectPickerModal({
   subtitle = "Choose a Unity project",
   onClose,
   onSelect,
+  showAllProjects = false,
+  onEnableGit,
 }: Props) {
   const { projects, openProjectIds } = useProjectsStore();
   const [query, setQuery] = useState("");
   const [runningProjects, setRunningProjects] = useState<RunningUnityProject[]>([]);
+  const [enableGitTarget, setEnableGitTarget] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refreshRunning = useCallback(() => {
@@ -107,57 +112,85 @@ export function GlobalProjectPickerModal({
           <div className="flex flex-col gap-1">
             {filtered.map((p) => {
               const running = isRunning(p);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => onSelect(p, running)}
-                  className={[
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left group",
-                    running
-                      ? "border-emerald-900/60 bg-emerald-950/20 hover:bg-emerald-950/30 hover:border-emerald-800/60"
-                      : "border-transparent hover:bg-zinc-900 hover:border-zinc-800",
-                  ].join(" ")}
-                >
-                  {/* Thumbnail */}
-                  {p.last_screenshot ? (
-                    <img
-                      src={toAssetUrl(p.last_screenshot) ?? undefined}
-                      alt=""
-                      className="w-10 h-10 rounded-lg object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
-                      <FolderOpen className="h-4 w-4 text-zinc-700" />
-                    </div>
-                  )}
+              const isDimmed = showAllProjects && !p.vcs_enabled;
+              const showEnablePopover = enableGitTarget === p.id;
 
-                  {/* Name + path */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium text-zinc-200 truncate">{p.name}</p>
-                      {running && (
-                        <span className="relative flex h-2 w-2 shrink-0">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                        </span>
+              return (
+                <div key={p.id} className="relative">
+                  <button
+                    onClick={() => {
+                      if (isDimmed) {
+                        setEnableGitTarget(enableGitTarget === p.id ? null : p.id);
+                      } else {
+                        onSelect(p, running);
+                      }
+                    }}
+                    className={[
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left group",
+                      isDimmed ? "opacity-50" : "",
+                      running && !isDimmed
+                        ? "border-emerald-900/60 bg-emerald-950/20 hover:bg-emerald-950/30 hover:border-emerald-800/60"
+                        : "border-transparent hover:bg-zinc-900 hover:border-zinc-800",
+                    ].join(" ")}
+                  >
+                    {/* Thumbnail */}
+                    {p.last_screenshot ? (
+                      <img
+                        src={toAssetUrl(p.last_screenshot) ?? undefined}
+                        alt=""
+                        className="w-10 h-10 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
+                        <FolderOpen className="h-4 w-4 text-zinc-700" />
+                      </div>
+                    )}
+
+                    {/* Name + path */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-medium text-zinc-200 truncate">{p.name}</p>
+                        {running && !isDimmed && (
+                          <span className="relative flex h-2 w-2 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-zinc-500 truncate font-mono">{p.path}</p>
+                      {running && !isDimmed && (
+                        <p className="text-[9px] text-emerald-500 mt-0.5 font-medium">
+                          ● Unity abierto — importará directamente
+                        </p>
                       )}
                     </div>
-                    <p className="text-[10px] text-zinc-500 truncate font-mono">{p.path}</p>
-                    {running && (
-                      <p className="text-[9px] text-emerald-500 mt-0.5 font-medium">
-                        ● Unity abierto — importará directamente
-                      </p>
-                    )}
-                  </div>
 
-                  {/* Unity version */}
-                  {p.unity_version && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Cpu className="h-3 w-3 text-zinc-700" />
-                      <span className="text-[10px] text-zinc-600">{p.unity_version}</span>
+                    {/* Unity version */}
+                    {p.unity_version && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Cpu className="h-3 w-3 text-zinc-700" />
+                        <span className="text-[10px] text-zinc-600">{p.unity_version}</span>
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Enable Git popover */}
+                  {showEnablePopover && isDimmed && onEnableGit && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl p-3 flex items-center justify-between gap-3">
+                      <p className="text-xs text-zinc-400">Git is not enabled for this project</p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEnableGit(p);
+                          setEnableGitTarget(null);
+                        }}
+                        className="shrink-0 px-3 py-1.5 rounded-md text-xs bg-emerald-700 text-white hover:bg-emerald-600 transition-colors font-medium"
+                      >
+                        Enable Git
+                      </button>
                     </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
