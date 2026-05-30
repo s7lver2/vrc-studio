@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { ShopProduct, tauriStartDownload } from "../../lib/tauri";
+import { ShopProduct, tauriStartDownload, tauriBoothListDownloadables, BoothDownloadable } from "../../lib/tauri";
+import { BoothDownloadPickerModal } from "./BoothDownloadPickerModal";
 import { useShopStore } from "../../store/shopStore";
 import { useInventoryStore, } from "../../store/inventoryStore";
 import { useAppStore } from "../../store/app";
@@ -57,6 +58,8 @@ export function ProductCard({ product }: Props) {
 
   const [isInAnyCollection, setIsInAnyCollection] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [downloadables, setDownloadables] = useState<BoothDownloadable[] | null>(null);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
   useEffect(() => {
     getItemCollectionIds(product.source, product.source_id).then((ids) => {
@@ -66,7 +69,70 @@ export function ProductCard({ product }: Props) {
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isInInventory || isDownloading || isStarting) return;
+    if (isInInventory || isDownloading || isStarting || isLoadingFiles) return;
+
+    if (product.source !== "booth") {
+      setIsStarting(true);
+      try {
+        await tauriStartDownload({
+          source: product.source,
+          source_id: product.source_id,
+          name: product.name,
+          author: product.author,
+          thumbnail_url: product.thumbnail_url,
+        });
+      } catch (err) {
+        console.error("Download failed:", err);
+      } finally {
+        setIsStarting(false);
+      }
+      return;
+    }
+
+    setIsLoadingFiles(true);
+    try {
+      const files = await tauriBoothListDownloadables(product.source_id);
+      if (files.length > 1) {
+        setDownloadables(files);
+      } else {
+        // Single file or none — download directly (old flow)
+        setIsStarting(true);
+        try {
+          await tauriStartDownload({
+            source: product.source,
+            source_id: product.source_id,
+            name: product.name,
+            author: product.author,
+            thumbnail_url: product.thumbnail_url,
+          });
+        } finally {
+          setIsStarting(false);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to list downloadables, falling back:", err);
+      // Fallback to direct download on any error
+      setIsStarting(true);
+      try {
+        await tauriStartDownload({
+          source: product.source,
+          source_id: product.source_id,
+          name: product.name,
+          author: product.author,
+          thumbnail_url: product.thumbnail_url,
+        });
+      } catch (e2) {
+        console.error("Download failed:", e2);
+      } finally {
+        setIsStarting(false);
+      }
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  const handlePickerSelect = async (_dl: BoothDownloadable) => {
+    setDownloadables(null);
     setIsStarting(true);
     try {
       await tauriStartDownload({
@@ -207,6 +273,14 @@ export function ProductCard({ product }: Props) {
           </div>
         </div>
       </div>
+      {downloadables && (
+        <BoothDownloadPickerModal
+          productName={product.name}
+          downloadables={downloadables}
+          onSelect={handlePickerSelect}
+          onClose={() => setDownloadables(null)}
+        />
+      )}
     </div>
   );
 }
