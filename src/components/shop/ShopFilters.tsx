@@ -1,17 +1,10 @@
+import { ShoppingBag } from "lucide-react";
 import { useShopStore } from "../../store/shopStore";
-import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
 import { useT } from "@/i18n";
 
 export function ShopFilters() {
   const t = useT();
   const { filters, setFilters } = useShopStore();
-  const unlocked = isUntrustedSourcesUnlocked();
-
-  const SOURCES: { value: "all" | "booth" | "riperstore"; label: string }[] = [
-    { value: "all", label: t("shop_filters_all_sources") },
-    { value: "booth", label: t("shop_filters_booth") },
-    ...(unlocked ? [{ value: "riperstore" as const, label: t("shop_filters_riperstore") }] : []),
-  ];
 
   const PRICE_TYPES = [
     { value: "all",  label: t("shop_filters_price_any") },
@@ -19,24 +12,10 @@ export function ShopFilters() {
     { value: "paid", label: t("shop_filters_paid") },
   ] as const;
 
+  const isOwned = filters.priceType === "owned";
+
   return (
     <div className="flex flex-wrap gap-2 items-center">
-      <div className="flex gap-1.5">
-        {SOURCES.map((s) => (
-          <button
-            key={s.value}
-            onClick={() => setFilters({ source: s.value })}
-            className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-              filters.source === s.value
-                ? "bg-red-600 border-red-600 text-white"
-                : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-      <div className="w-px h-4 bg-zinc-700" />
       <div className="flex gap-1.5">
         {PRICE_TYPES.map((p) => (
           <button
@@ -51,6 +30,17 @@ export function ShopFilters() {
             {p.label}
           </button>
         ))}
+        <button
+          onClick={() => setFilters({ priceType: isOwned ? "all" : "owned" })}
+          className={`flex items-center gap-1 px-3 py-1 text-xs rounded-full border transition-colors ${
+            isOwned
+              ? "bg-violet-600 border-violet-600 text-white"
+              : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+          }`}
+        >
+          <ShoppingBag className="h-3 w-3" />
+          Owned
+        </button>
       </div>
       <div className="flex gap-1 bg-zinc-800 rounded-lg p-1">
         <button
