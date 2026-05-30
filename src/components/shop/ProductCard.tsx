@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShopProduct, tauriStartDownload } from "../../lib/tauri";
 import { useShopStore } from "../../store/shopStore";
-import { useInventoryStore } from "../../store/inventoryStore";
+import { useInventoryStore, } from "../../store/inventoryStore";
 import { useAppStore } from "../../store/app";
 import { useDownloadProgress } from "../../hooks/useDownloadProgress";
-import { useCollectionsStore } from "../../store/collectionsStore";
+import { useCollectionsStore, } from "../../store/collectionsStore";
 import { Bookmark } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
-import { Download, CheckCircle2, Package, Loader2, ShoppingCart } from "lucide-react";
+import { CheckCircle2, Package } from "lucide-react";
 import { useT } from "@/i18n";
 
 interface Props {
@@ -16,7 +16,6 @@ interface Props {
 
 const SOURCE_STYLES: Record<string, string> = {
   booth: "bg-pink-500/20 text-pink-300 border-pink-500/30",
-  riperstore: "bg-blue-500/20 text-blue-300 border-blue-500/30",
 };
 
 export function ProductCard({ product }: Props) {
@@ -27,7 +26,7 @@ export function ProductCard({ product }: Props) {
   const { downloads } = useDownloadProgress();
   const { addItem: addToCart, isInCart, setOpen: setCartOpen } = useCartStore();
   const alreadyInCart = isInCart(product.source, product.source_id);
-  const { openPicker } = useCollectionsStore();
+  const { openPicker, getItemCollectionIds } = useCollectionsStore();
   const [imgError, setImgError] = useState(false);
 
   const isPurchased =
@@ -52,9 +51,19 @@ export function ProductCard({ product }: Props) {
     dl !== null && (dl.status === "downloading" || dl.status === "extracting");
   const isDone = dl?.status === "done";
 
+  const [isInAnyCollection, setIsInAnyCollection] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+
+  useEffect(() => {
+    getItemCollectionIds(product.source, product.source_id).then((ids) => {
+      setIsInAnyCollection(ids.length > 0);
+    }).catch(() => { });
+  }, [product.source_id]);
+
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isInInventory || isDownloading) return;
+    if (isInInventory || isDownloading || isStarting) return;
+    setIsStarting(true);
     try {
       await tauriStartDownload({
         source: product.source,
@@ -65,25 +74,8 @@ export function ProductCard({ product }: Props) {
       });
     } catch (err) {
       console.error("Download failed:", err);
-    }
-  };
-
-  const handleRipperDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const ripperSource = product.extra_sources?.find(
-      (s) => s.source === "riperstore"
-    );
-    if (!ripperSource) return;
-    try {
-      await tauriStartDownload({
-        source: ripperSource.source,
-        source_id: ripperSource.source_id,
-        name: product.name,
-        author: product.author,
-        thumbnail_url: product.thumbnail_url,
-      });
-    } catch (err) {
-      console.error("Riperstore download failed:", err);
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -91,13 +83,6 @@ export function ProductCard({ product }: Props) {
     e.stopPropagation();
     setActiveSection("inventory");
   };
-
-  const ripperExtra =
-    product.extra_sources?.find((s) => s.source === "riperstore") ?? null;
-  const allSources: Array<{ source: string }> = [
-    { source: product.source },
-    ...(product.extra_sources ?? []),
-  ];
 
   const showImage = product.thumbnail_url && !imgError;
 
@@ -122,6 +107,7 @@ export function ProductCard({ product }: Props) {
           </div>
         )}
 
+        {/* ── Status badge (top-left) — inventory > purchased ── */}
         {isInInventory ? (
           <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-violet-950/90 text-violet-300 border border-violet-700/50 shadow">
             <Package className="h-2.5 w-2.5" />
@@ -134,13 +120,18 @@ export function ProductCard({ product }: Props) {
           </span>
         ) : null}
 
-        {/* ── Bookmark button (bottom‑right of image) ── */}
+        {/* ── Collection bookmark (top-right, siempre visible) ── */}
         <button
-          className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 rounded bg-zinc-900/80 border border-zinc-700/50 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 transition-all"
+          className={[
+            "absolute top-1.5 right-1.5 p-1.5 rounded-md border transition-all",
+            isInAnyCollection
+              ? "bg-amber-500/90 border-amber-400/50 text-zinc-900 opacity-90 hover:opacity-100 hover:scale-110"
+              : "bg-zinc-900/70 border-zinc-700/50 text-zinc-400 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-amber-400 hover:border-amber-500/50 hover:scale-110",
+          ].join(" ")}
           onClick={handleBookmark}
-          title="Save to collection"
+          title={isInAnyCollection ? "In a collection · Click to manage" : "Save to collection"}
         >
-          <Bookmark className="h-3 w-3" />
+          <Bookmark className={`h-3 w-3 ${isInAnyCollection ? "fill-current" : ""}`} />
         </button>
       </div>
 
@@ -152,8 +143,8 @@ export function ProductCard({ product }: Props) {
               isDone
                 ? "bg-emerald-500"
                 : dl?.status === "extracting"
-                ? "bg-violet-500"
-                : "bg-blue-500",
+                  ? "bg-violet-500"
+                  : "bg-blue-500",
             ].join(" ")}
             style={{ width: `${isDone ? 100 : dl?.percentage ?? 0}%` }}
           />
@@ -192,89 +183,11 @@ export function ProductCard({ product }: Props) {
             {product.price_display}
           </span>
           <div className="flex items-center gap-1">
-            {allSources.map(({ source }) => (
-              <span
-                key={source}
-                className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
-                  SOURCE_STYLES[source] ?? "bg-zinc-700 text-zinc-300 border-zinc-600"
-                }`}
-              >
-                {source === "booth" ? t("shop_source_booth") : source === "riperstore" ? t("shop_source_ripper") : source}
-              </span>
-            ))}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${SOURCE_STYLES[product.source] ?? "bg-zinc-700 text-zinc-300 border-zinc-600"}`}>
+              {t("shop_source_booth")}
+            </span>
           </div>
         </div>
-      </div>
-
-      {/* ─── Top-right action buttons (cart + download) ─── */}
-      <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {isInInventory ? (
-          <button
-            className="flex items-center gap-1 bg-violet-900/80 hover:bg-violet-800 border border-violet-500/50 rounded-md px-2 py-1.5 text-[10px] font-semibold text-violet-200 whitespace-nowrap"
-            onClick={handleGoToInventory}
-            title={t("shop_card_view_in_inventory")}
-          >
-            <Package className="h-3 w-3" />
-            {t("shop_card_view_in_inventory")}
-          </button>
-        ) : isDownloading ? (
-          <div
-            className="flex items-center gap-1 bg-zinc-800/90 border border-zinc-700 rounded-md px-2 py-1.5 text-[10px] font-semibold text-zinc-300"
-            title={`${dl?.status} ${Math.round(dl?.percentage ?? 0)}%`}
-          >
-            <Loader2 className="h-3 w-3 animate-spin text-blue-400" />
-            {dl?.status === "extracting" ? t("shop_card_extracting") : `${Math.round(dl?.percentage ?? 0)}%`}
-          </div>
-        ) : (
-          <>
-            {/* ── Add to cart button ── */}
-            <button
-              className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-semibold border transition-colors ${
-                alreadyInCart
-                  ? "bg-amber-900/80 border-amber-500/50 text-amber-300 hover:bg-amber-800/80"
-                  : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300"
-              }`}
-              onClick={
-                alreadyInCart
-                  ? (e) => {
-                      e.stopPropagation();
-                      setCartOpen(true);
-                    }
-                  : handleAddToCart
-              }
-              title={alreadyInCart ? "View in cart" : "Add to cart"}
-            >
-              <ShoppingCart className="h-3 w-3" />
-              {alreadyInCart ? "In cart" : "Add to cart"}
-            </button>
-
-            {/* ── Download button (Booth / original source) ── */}
-            <button
-              className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md p-1.5"
-              onClick={handleDownload}
-              title={
-                product.source === "booth"
-                  ? isPurchased
-                    ? t("shop_card_download")
-                    : t("shop_card_open_booth")
-                  : t("shop_card_download")
-              }
-            >
-              <Download className="h-3.5 w-3.5 text-zinc-300" />
-            </button>
-
-            {/* ── Ripper alternative download button ── */}
-            {ripperExtra && (
-              <button
-                className="bg-blue-900/70 hover:bg-blue-800/80 border border-blue-500/40 rounded-md p-1.5"
-                onClick={handleRipperDownload}
-                title={`${t("shop_card_download")} (${t("shop_card_free")})`}
-              >
-                <Download className="h-3.5 w-3.5 text-blue-300" />
-              </button>
-            )}
-          </>
-        )}
       </div>
     </div>
   );

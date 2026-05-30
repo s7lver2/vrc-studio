@@ -7,7 +7,7 @@
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::services::{auth_store, booth, downloader, riperstore};
+use crate::services::{auth_store, booth, downloader};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -25,7 +25,7 @@ pub struct ShopProduct {
     pub thumbnail_url: String,
     pub price_display: String,
     pub url: String,
-    pub source: String, // "booth" | "riperstore"
+    pub source: String,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -45,14 +45,29 @@ async fn booth_resolve_download_url_via_webview(
     let parsed_url =
         Url::parse(downloadables_url).map_err(|e| format!("Invalid downloadables URL: {}", e))?;
 
-    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed_url))
+    // Capture navigation events to detect when Booth redirects to the CDN file URL.
+    // booth.pm/downloadables/XXXX does an HTTP redirect to the actual file on S3/CDN.
+    // We can't follow that redirect from JS (CORS), so we do it here via on_navigation.
+    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed_url.clone()))
         .title("")
         .inner_size(1.0, 1.0)
-        .visible(false) // invisible
-        .decorations(false) // sin bordes
-        .skip_taskbar(true) // no aparece en la barra de tareas
+        .visible(false)
+        .decorations(false)
+        .skip_taskbar(true)
         .always_on_top(false)
-        .transparent(true) // fondo transparente
+        .transparent(true)
+        .on_navigation(move |url: &tauri::Url| {
+            let url_str = url.as_str().to_string();
+            // Capture the redirect to CDN (S3, Cloudfront, or any non-booth.pm URL)
+            let is_cdn = !url_str.contains("booth.pm") && !url_str.contains("accounts.booth.pm");
+            if is_cdn {
+                if let Some(sender) = tx_nav.lock().ok().and_then(|mut g| g.take()) {
+                    let _ = sender.send(url_str);
+                }
+                return false; // stop navigation — we have the URL
+            }
+            true
+        })
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -61,16 +76,13 @@ async fn booth_resolve_download_url_via_webview(
     let result = match tokio::time::timeout(Duration::from_secs(30), rx).await {
         Ok(Ok(url)) => Ok(url),
         Ok(Err(_)) => Err("Channel closed".to_string()),
-        Err(_) => Err("Timeout resolving download URL".to_string()),
+        Err(_) => Err("Timeout resolving download URL via WebView navigation".to_string()),
     };
     let _ = win.close();
     result
 }
 
-pub fn merge_results(
-    booth_res: Vec<booth::BoothProduct>,
-    riper_res: Vec<riperstore::RiperstoreProduct>,
-) -> Vec<ShopProduct> {
+pub fn booth_products_to_shop(booth_res: Vec<booth::BoothProduct>) -> Vec<ShopProduct> {
     booth_res
         .into_iter()
         .map(|p| ShopProduct {
@@ -82,23 +94,25 @@ pub fn merge_results(
             url: p.url,
             source: p.source,
         })
-        .chain(riper_res.into_iter().map(|p| ShopProduct {
-            source_id: p.source_id,
-            name: p.name,
-            author: p.author,
-            thumbnail_url: p.thumbnail_url,
-            price_display: p.price_display,
-            url: p.url,
-            source: p.source,
-        }))
         .collect()
 }
 
 fn build_client(session_token: Option<String>) -> Result<reqwest::Client, String> {
-    let builder = reqwest::Client::builder()
+    let mut builder = reqwest::Client::builder()
         .cookie_store(true)
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-    // Si hay token de sesión, se puede inyectar como header o cookie según la plataforma
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
+            // If a session token is provided, inject it as the Booth authentication cookie.
+            if let Some(ref token) = session_token {
+                let cookie_header = format!("_plaza_session_nktz7u={}", token);
+                if let Ok(val) = cookie_header.parse() {
+                    headers.insert(reqwest::header::COOKIE, val);
+                }
+            }
+            headers
+        });
     builder.build().map_err(|e| e.to_string())
 }
 
@@ -165,41 +179,37 @@ pub async fn booth_capture_session_cookie(app: AppHandle) -> Result<bool, String
     Ok(false)
 }
 
-/// Búsqueda en Booth. Riperstore se busca por separado via `ripper_search_via_webview`.
+/// Búsqueda en Booth.
 #[tauri::command]
 pub async fn search_shop(query: String, page: u32) -> Result<Vec<ShopProduct>, String> {
-    let booth_cookie =
-        crate::services::auth_store::get_token("booth_session_cookie").unwrap_or(None);
+    // Retrieve the Booth session cookie from the keyring (if any)
+    let booth_token = crate::services::auth_store::get_token("booth").unwrap_or(None);
 
-    let client = if let Some(cookie) = &booth_cookie {
-        reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .default_headers({
-                let mut h = reqwest::header::HeaderMap::new();
-                h.insert(
-                    reqwest::header::COOKIE,
-                    reqwest::header::HeaderValue::from_str(cookie)
-                        .unwrap_or_else(|_| reqwest::header::HeaderValue::from_static("")),
-                );
-                h
-            })
-            .build()
-            .map_err(|e| e.to_string())?
-    } else {
-        build_client(None).map_err(|e| e)?
-    };
+    // Build an HTTP client that includes the Booth session cookie
+    let client = build_client(booth_token.clone()).map_err(|e| e)?;
 
-    let booth_results = booth::search(&client, &query, page)
+    let authenticated = booth_token.is_some();
+    let booth_results = booth::search(&client, &query, page, authenticated)
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(merge_results(booth_results, vec![]))
+    Ok(booth_products_to_shop(booth_results))
 }
 
-/// Obtiene la URL final de descarga de un item de Booth.
+/// Obtiene la URL final de descarga de un item de Booth mediante navegación WebView.
+///
+/// Estrategia sin CORS:
+///   1. Abre un WebView oculto directamente en la página del item (booth.pm/en/items/ID).
+///      El WebView hereda las cookies de sesión del perfil de la app.
+///   2. Espera a que cargue la página.
+///   3. Inyecta JS para encontrar el enlace /downloadables/XXXX y navegar a él.
+///   4. on_navigation captura la URL final CDN (S3/Cloudfront) cuando Booth redirige.
+///
+/// Esta aproximación evita todos los problemas de CORS ya que no usa fetch()
+/// cross-origin — solo navegación nativa del WebView.
 async fn booth_get_download_url_via_webview(
     app: &AppHandle,
-    booth_state: &State<'_, BoothState>,
+    _booth_state: &State<'_, BoothState>,
     source_id: &str,
 ) -> Result<String, String> {
     let log = |msg: &str| {
@@ -207,67 +217,105 @@ async fn booth_get_download_url_via_webview(
         let _ = app.emit("booth:download-debug", serde_json::json!({ "msg": msg }));
     };
 
-    log(&format!(
-        "Obteniendo URL de descarga para item {}",
+    log(&format!("Iniciando descarga WebView para item {}", source_id));
+
+    let label = format!(
+        "booth-item-{}",
+        uuid::Uuid::new_v4().to_string().replace('-', "")
+    );
+
+    // Abre directamente en la página del item (con age_confirmation por si acaso)
+    let item_url_str = format!(
+        "https://booth.pm/en/items/{}?age_confirmation=1",
         source_id
-    ));
+    );
+    let item_url = Url::parse(&item_url_str).map_err(|e| format!("URL parse: {}", e))?;
 
-    let label = {
-        let guard = booth_state
-            .webview_label
-            .lock()
-            .map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-    let label = label.ok_or_else(|| "No Booth WebView label".to_string())?;
-
-    let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| "Booth WebView window not found".to_string())?;
-
-    let js = booth_webview::build_ephemeral_download_js(source_id);
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-    let tx_event = tx.clone();
-    let listener_id = app.listen("booth:ephemeral-dl", move |event| {
-        if let Some(sender) = tx_event.lock().unwrap().take() {
-            let _ = sender.send(Ok(event.payload().to_string()));
+    let tx_nav = tx.clone();
+
+    // on_navigation captura la redirección final al CDN (URL que no sea booth.pm)
+    let win = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(item_url))
+        .title("")
+        .inner_size(1.0, 1.0)
+        .visible(false)
+        .decorations(false)
+        .skip_taskbar(true)
+        .always_on_top(false)
+        .transparent(true)
+        .on_navigation(move |url: &tauri::Url| {
+            let url_str = url.as_str().to_string();
+            // La URL CDN de Booth no es booth.pm ni accounts.booth.pm
+            let is_cdn = !url_str.contains("booth.pm");
+            if is_cdn {
+                log::info!("[booth_dl] CDN redirect detected: {}", &url_str[..url_str.len().min(80)]);
+                if let Some(sender) = tx_nav.lock().ok().and_then(|mut g| g.take()) {
+                    let _ = sender.send(url_str);
+                }
+                return false; // detener navegación — ya tenemos la URL
+            }
+            true
+        })
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let _ = win.hide();
+
+    // Esperar a que la página del item cargue completamente
+    tokio::time::sleep(Duration::from_secs(4)).await;
+
+    // También escuchar si el JS reporta que no encontró link de descarga
+    let (err_tx, err_rx) = tokio::sync::oneshot::channel::<String>();
+    let err_tx = std::sync::Arc::new(std::sync::Mutex::new(Some(err_tx)));
+    let err_tx_clone = err_tx.clone();
+    let not_found_listener = app.listen("booth:dl-not-found", move |event| {
+        let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
+        let msg = payload["error"].as_str().unwrap_or("No download link found").to_string();
+        if let Some(sender) = err_tx_clone.lock().ok().and_then(|mut g| g.take()) {
+            let _ = sender.send(msg);
         }
     });
 
-    win.eval(&js).map_err(|e| {
-        app.unlisten(listener_id);
-        format!("eval error: {}", e)
-    })?;
+    // Inyectar JS para encontrar el link /downloadables/ y navegar a él
+    let find_and_navigate_js = booth_webview::build_navigate_to_downloadables_js(source_id);
+    if let Err(e) = win.eval(&find_and_navigate_js) {
+        app.unlisten(not_found_listener);
+        let _ = win.close();
+        return Err(format!("JS eval error: {}", e));
+    }
 
-    let raw = match tokio::time::timeout(Duration::from_secs(30), rx).await {
-        Ok(Ok(Ok(payload))) => payload,
-        Ok(Ok(Err(e))) => {
-            app.unlisten(listener_id);
-            return Err(format!("JS error: {}", e));
+    // Esperar la navegación al CDN (capturada por on_navigation) con timeout
+    // O un error del JS si no se encontró link
+    let result = tokio::select! {
+        cdn = tokio::time::timeout(Duration::from_secs(30), rx) => {
+            match cdn {
+                Ok(Ok(cdn_url)) => {
+                    log(&format!("URL CDN obtenida: {}", &cdn_url[..cdn_url.len().min(80)]));
+                    Ok(cdn_url)
+                }
+                Ok(Err(_)) => Err("Channel closed before CDN redirect".to_string()),
+                Err(_) => Err(
+                    "Timeout: el item puede no estar comprado o Booth cambió su layout.".to_string()
+                ),
+            }
         }
-        Ok(Err(_)) => {
-            app.unlisten(listener_id);
-            return Err("Channel closed".to_string());
-        }
-        Err(_) => {
-            app.unlisten(listener_id);
-            return Err("Timeout getting download URL".to_string());
+        err = tokio::time::timeout(Duration::from_secs(15), err_rx) => {
+            match err {
+                Ok(Ok(msg)) if !msg.is_empty() => Err(msg),
+                Ok(Ok(_)) => Err("Download link not found (empty error)".to_string()),
+                Ok(Err(_)) => {
+                    // Channel closed cleanly (sender dropped without sending) — not an error.
+                    Err("Timeout waiting for download link".to_string())
+                }
+                Err(_) => Err("Timeout waiting for download link".to_string()),
+            }
         }
     };
-    app.unlisten(listener_id);
 
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
-    if parsed["ok"].as_bool() != Some(true) {
-        let err = parsed["error"].as_str().unwrap_or("unknown");
-        return Err(format!("Booth error: {}", err));
-    }
-    parsed["url"]
-        .as_str()
-        .map(String::from)
-        .ok_or_else(|| "Empty URL".to_string())
+    app.unlisten(not_found_listener);
+    let _ = win.close();
+    result
 }
 
 /// Inicia la descarga de un producto y lo registra en el Inventory.
@@ -296,9 +344,6 @@ pub async fn start_download(
                 .await
                 .map_err(AppError::External)?
         }
-        "riperstore" => riperstore::get_download_url(&client, &source_id)
-            .await
-            .map_err(AppError::External)?,
         other => return Err(AppError::External(format!("Unknown source: {}", other))),
     };
 
@@ -373,56 +418,13 @@ pub fn unlink_account(provider: String) -> Result<(), String> {
 /// Devuelve los proveedores que tienen token almacenado.
 #[tauri::command]
 pub fn get_linked_providers() -> Vec<String> {
-    ["booth", "riperstore", "github"]
+    ["booth", "github"]
         .iter()
         .filter(|p| auth_store::get_token(p).unwrap_or(None).is_some())
         .map(|p| p.to_string())
         .collect()
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_unified_results_merge() {
-        let booth = vec![booth::BoothProduct {
-            source_id: "111".to_string(),
-            name: "Avatar A".to_string(),
-            author: "Au".to_string(),
-            thumbnail_url: "".to_string(),
-            price_display: "¥500".to_string(),
-            url: "https://booth.pm/items/111".to_string(),
-            source: "booth".to_string(),
-        }];
-        let riper = vec![riperstore::RiperstoreProduct {
-            source_id: "222".to_string(),
-            name: "Avatar B".to_string(),
-            author: "Rr".to_string(),
-            thumbnail_url: "".to_string(),
-            price_display: "Free".to_string(),
-            url: "https://riperstore.com/threads/222/".to_string(),
-            source: "riperstore".to_string(),
-            booth_ids: vec![],
-            avatar_booth_id: None,
-            downloads: vec![],
-            supported_avatars: vec![],
-        }];
-
-        let merged = merge_results(booth, riper);
-        assert_eq!(merged.len(), 2);
-        assert_eq!(merged[0].source, "booth");
-        assert_eq!(merged[1].source, "riperstore");
-    }
-
-    #[test]
-    fn test_merge_empty_results() {
-        let merged = merge_results(vec![], vec![]);
-        assert_eq!(merged.len(), 0);
-    }
-}
 
 /// Descarga un item GRATUITO de Booth directamente desde la página del producto.
 /// No requiere WebView auth — los items gratuitos tienen URL de descarga pública.
@@ -539,335 +541,9 @@ pub async fn booth_download_free_item(
     Ok(item_id)
 }
 
-// ── Ripper.store WebView commands ─────────────────────────────────────────────
-
 use crate::services::booth_webview;
-use crate::services::ripper_webview;
-use crate::{BoothState, RipperState};
+use crate::{BoothState};
 use tauri::Listener;
-
-/// Abre una ventana WebView en forum.ripper.store para que el usuario resuelva
-/// el CF challenge y haga login.
-#[tauri::command]
-pub async fn open_ripper_auth(app: AppHandle, state: State<'_, RipperState>) -> Result<(), String> {
-    // 1. Deregistrar listener previo
-    {
-        let mut guard = state.session_listener.lock().map_err(|e| e.to_string())?;
-        if let Some(id) = guard.take() {
-            app.unlisten(id);
-        }
-    }
-
-    // 2. Registrar listener persistente
-    let app_auth = app.clone();
-    let listener_id = app.listen("ripper:current-url", move |event| {
-        let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
-        let logged_in = payload["loggedIn"].as_bool().unwrap_or(false);
-        let url = payload["url"].as_str().unwrap_or("");
-
-        if logged_in && ripper_webview::is_logged_in_url(url) {
-            if let Some(win) = app_auth.get_webview_window(ripper_webview::WEBVIEW_LABEL) {
-                let _ = win.hide();
-            }
-            let _ = app_auth.emit("ripper:auth_success", ());
-        }
-    });
-
-    {
-        let mut guard = state.session_listener.lock().map_err(|e| e.to_string())?;
-        *guard = Some(listener_id);
-    }
-
-    // 3. Si la ventana ya existe (reconnect)
-    {
-        let guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-        if let Some(ref label) = *guard {
-            if let Some(win) = app.get_webview_window(label) {
-                win.show().map_err(|e| e.to_string())?;
-                win.set_focus().map_err(|e| e.to_string())?;
-                let app_check = app.clone();
-                let label_check = label.clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    if let Some(w) = app_check.get_webview_window(&label_check) {
-                        let _ = w.eval(&ripper_webview::build_session_check_js());
-                    }
-                });
-                return Ok(());
-            }
-        }
-    }
-
-    // 4. Crear ventana nueva
-    let label = ripper_webview::WEBVIEW_LABEL.to_string();
-    let app_nav = app.clone();
-    let label_nav = label.clone();
-    let is_first_nav = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let is_first_nav_clone = is_first_nav.clone();
-
-    let win = WebviewWindowBuilder::new(
-        &app,
-        &label,
-        WebviewUrl::External(ripper_webview::RIPPER_ORIGIN.parse().unwrap()),
-    )
-    .title("Connect Ripper.store")
-    .inner_size(1024.0, 768.0)
-    .resizable(true)
-    .on_navigation(move |url: &tauri::Url| {
-        if is_first_nav_clone.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            return true;
-        }
-        if ripper_webview::is_logged_in_url(url.as_str()) {
-            let app_spawn = app_nav.clone();
-            let label_spawn = label_nav.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-                if let Some(w) = app_spawn.get_webview_window(&label_spawn) {
-                    let _ = w.eval(&ripper_webview::build_session_check_js());
-                }
-            });
-        }
-        true
-    })
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    let win_hide = win.clone();
-    win.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = win_hide.hide();
-        }
-    });
-
-    {
-        let app_poll = app.clone();
-        let label_poll = label.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            for _ in 0..100 {
-                match app_poll.get_webview_window(&label_poll) {
-                    None => break,
-                    Some(w) => {
-                        let _ = w.eval(&ripper_webview::build_session_check_js());
-                    }
-                }
-                tokio::time::sleep(Duration::from_secs(3)).await;
-            }
-        });
-    }
-
-    let mut guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-    *guard = Some(label);
-    Ok(())
-}
-
-/// Cierra sesión: destruye la WebviewWindow, limpia el estado y deregistra el listener.
-#[tauri::command]
-pub fn ripper_logout(app: AppHandle, state: State<'_, RipperState>) -> Result<(), String> {
-    {
-        let mut guard = state.session_listener.lock().map_err(|e| e.to_string())?;
-        if let Some(id) = guard.take() {
-            app.unlisten(id);
-        }
-    }
-    let mut guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-    if let Some(ref label) = *guard {
-        if let Some(win) = app.get_webview_window(label) {
-            let _ = win.destroy();
-        }
-    }
-    *guard = None;
-    let _ = app.emit("ripper:logged_out", ());
-    Ok(())
-}
-
-/// Devuelve true si hay una WebviewWindow de Ripper activa (= autenticado).
-#[tauri::command]
-pub fn ripper_is_authenticated(app: AppHandle, state: State<'_, RipperState>) -> bool {
-    let mut guard = state
-        .webview_label
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    match guard.as_ref() {
-        None => false,
-        Some(label) => {
-            if app.get_webview_window(label).is_some() {
-                true
-            } else {
-                *guard = None;
-                false
-            }
-        }
-    }
-}
-
-/// Obtiene la descripción e imágenes de un topic de Riperstore inyectando
-/// fetch() en el WebView activo.
-#[tauri::command]
-pub async fn ripper_get_topic_detail(
-    app: AppHandle,
-    state: State<'_, RipperState>,
-    source_id: String,
-) -> Result<(String, Vec<String>, Vec<String>), String> {
-    let label = {
-        let guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-    let label = match label {
-        Some(l) => l,
-        None => return Err("Not authenticated with Ripper.store".to_string()),
-    };
-    let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| "Ripper WebView window not found".to_string())?;
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
-    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-    let tx_clone = tx.clone();
-
-    let listener_id = app.listen("ripper:topic-detail", move |event| {
-        if let Some(sender) = tx_clone.lock().unwrap().take() {
-            let _ = sender.send(Ok(event.payload().to_string()));
-        }
-    });
-
-    let js = ripper_webview::build_topic_detail_js(&source_id);
-    win.eval(&js).map_err(|e| {
-        app.unlisten(listener_id);
-        e.to_string()
-    })?;
-
-    let raw = match tokio::time::timeout(Duration::from_secs(8), rx).await {
-        Ok(Ok(Ok(payload))) => payload,
-        Ok(Ok(Err(e))) => {
-            app.unlisten(listener_id);
-            return Err(format!("JS error: {}", e));
-        }
-        Ok(Err(_)) => {
-            app.unlisten(listener_id);
-            return Err("Channel closed".to_string());
-        }
-        Err(_) => {
-            app.unlisten(listener_id);
-            return Err("Topic detail fetch timed out".to_string());
-        }
-    };
-    app.unlisten(listener_id);
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
-
-    if parsed["ok"].as_bool() != Some(true) {
-        let err = parsed["error"].as_str().unwrap_or("unknown");
-        return Err(format!("Ripper fetch error: {}", err));
-    }
-
-    let description = parsed["description"].as_str().unwrap_or("").to_string();
-    let images = parsed["images"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-    let links = parsed["links"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok((description, images, links))
-}
-
-/// Scrape profundo de un topic de Riperstore.
-#[tauri::command]
-pub async fn ripper_scrape_deep(
-    app: AppHandle,
-    state: State<'_, RipperState>,
-    source_id: String,
-    max_pages: u32,
-) -> Result<Vec<ripper_webview::DownloadLinkContext>, String> {
-    let label = {
-        let guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-    let label = match label {
-        Some(l) => l,
-        None => return Err("Not authenticated with Ripper.store".to_string()),
-    };
-    let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| "Ripper WebView window not found".to_string())?;
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
-    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-    let tx_clone = tx.clone();
-
-    let listener_id = app.listen("ripper:scrape-deep-result", move |event| {
-        if let Some(sender) = tx_clone.lock().unwrap().take() {
-            let _ = sender.send(Ok(event.payload().to_string()));
-        }
-    });
-
-    let pages = max_pages.max(1).min(30);
-    let js = ripper_webview::build_topic_scrape_deep_js(&source_id, pages);
-    win.eval(&js).map_err(|e| {
-        app.unlisten(listener_id);
-        e.to_string()
-    })?;
-
-    let raw = match tokio::time::timeout(Duration::from_secs(45), rx).await {
-        Ok(Ok(Ok(payload))) => payload,
-        Ok(Ok(Err(e))) => {
-            app.unlisten(listener_id);
-            return Err(format!("JS error: {}", e));
-        }
-        Ok(Err(_)) => {
-            app.unlisten(listener_id);
-            return Err("Channel closed".to_string());
-        }
-        Err(_) => {
-            app.unlisten(listener_id);
-            return Err("Deep scrape timed out (45s)".to_string());
-        }
-    };
-    app.unlisten(listener_id);
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("Parse error: {}", e))?;
-
-    if parsed["ok"].as_bool() != Some(true) {
-        let err = parsed["error"].as_str().unwrap_or("unknown");
-        return Err(format!("Scrape error: {}", err));
-    }
-
-    let links = parsed["links"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    let url = v["url"].as_str()?.to_string();
-                    let avatars = v["avatars"]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|av| av.as_str().map(String::from))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    Some(ripper_webview::DownloadLinkContext { url, avatars })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(links)
-}
 
 /// Descarga directamente desde una URL arbitraria ya resuelta.
 #[tauri::command]
@@ -887,7 +563,7 @@ pub async fn download_direct_url(
         .app_cache_dir()
         .map_err(|e| AppError::External(e.to_string()))?
         .join("downloads")
-        .join("riperstore")
+        .join("direct")
         .join(&source_id);
 
     let _ = app.emit(
@@ -921,7 +597,7 @@ pub async fn download_direct_url(
         "INSERT INTO inventory_items
          (id, name, author, source, source_id, local_path, thumbnail_url, download_date, size_bytes, tags)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '[]')",
-        params![item_id, name, author, "riperstore", source_id, local_path, thumbnail_url, now, size_bytes],
+        params![item_id, name, author, "direct", source_id, local_path, thumbnail_url, now, size_bytes],
     )?;
 
     let _ = app.emit(
@@ -936,154 +612,6 @@ pub async fn download_direct_url(
     );
 
     Ok(item_id)
-}
-
-/// Busca en forum.ripper.store inyectando JS en el WebView autenticado.
-#[tauri::command]
-pub async fn ripper_search_via_webview(
-    app: AppHandle,
-    state: State<'_, RipperState>,
-    query: String,
-    page: u32,
-) -> Result<riperstore::RiperstoreSearchResult, String> {
-    let label = {
-        let guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-    let label = match label {
-        Some(l) => l,
-        None => return Err("Not authenticated with Ripper.store".to_string()),
-    };
-    let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| "Ripper WebView window not found".to_string())?;
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
-    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-    let tx_clone = tx.clone();
-
-    let listener_id = app.listen("ripper:search-result", move |event| {
-        if let Some(sender) = tx_clone.lock().unwrap().take() {
-            let _ = sender.send(Ok(event.payload().to_string()));
-        }
-    });
-
-    let js = ripper_webview::build_search_js(&query, page);
-    win.eval(&js).map_err(|e| {
-        app.unlisten(listener_id);
-        format!("eval error: {}", e)
-    })?;
-
-    let raw = match tokio::time::timeout(Duration::from_secs(15), rx).await {
-        Ok(Ok(Ok(payload))) => payload,
-        Ok(Ok(Err(e))) => {
-            app.unlisten(listener_id);
-            return Err(format!("JS error: {}", e));
-        }
-        Ok(Err(_)) => {
-            app.unlisten(listener_id);
-            return Err("Channel closed".to_string());
-        }
-        Err(_) => {
-            app.unlisten(listener_id);
-            let _ = app.emit("ripper:session_expired", ());
-            return Err(
-                "Ripper.store search timed out — check your connection or re-authenticate"
-                    .to_string(),
-            );
-        }
-    };
-    app.unlisten(listener_id);
-
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("Event parse error: {}", e))?;
-
-    if parsed["ok"].as_bool() != Some(true) {
-        let err = parsed["error"].as_str().unwrap_or("unknown error");
-        let is_auth_error = err.contains("401")
-            || err.contains("403")
-            || err.contains("login")
-            || err.contains("non-json");
-        if is_auth_error {
-            let _ = app.emit("ripper:session_expired", ());
-        }
-        return Err(format!("Ripper search error: {}", err));
-    }
-
-    let data_str = parsed["data"].as_str().unwrap_or("{}");
-    ripper_webview::parse_search_response(data_str)
-}
-
-/// Navega una categoría de RipperStore inyectando JS en el WebView autenticado.
-#[tauri::command]
-pub async fn ripper_browse_category(
-    app: AppHandle,
-    state: State<'_, RipperState>,
-    cid: u32,
-    page: u32,
-) -> Result<(), String> {
-    use crate::services::ripper_webview::build_category_browse_js;
-
-    let label = {
-        let guard = state.webview_label.lock().map_err(|e| e.to_string())?;
-        guard.clone()
-    };
-    let label = match label {
-        Some(l) => l,
-        None => return Err("Not authenticated with Ripper.store".to_string()),
-    };
-    let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| "Ripper WebView window not found".to_string())?;
-
-    let js = build_category_browse_js(cid, page);
-    win.eval(&js).map_err(|e| e.to_string())
-}
-
-/// Resuelve un link de `/hidelinks/r/<token>` de Riperstore a través de una
-/// ventana WebView oculta que ya tiene las cookies de sesión del foro.
-#[tauri::command]
-pub async fn ripper_resolve_hidelink(app: AppHandle, url: String) -> Result<String, String> {
-    if !url.contains("/hidelinks/") {
-        return Err("Not a hidelinks URL".to_string());
-    }
-
-    let parsed_url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
-    let label = format!("hl-{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
-
-    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
-    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
-    let tx_nav = tx.clone();
-
-    let win = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-        .title("Resolving download link…")
-        .inner_size(400.0, 300.0)
-        .visible(false)
-        .resizable(false)
-        .on_navigation(move |nav_url| {
-            let url_str = nav_url.to_string();
-            let is_ripper = url_str.contains("ripper.store");
-            let is_cf = url_str.contains("cloudflare.com") || url_str.contains("challenges.");
-            let is_blank = url_str == "about:blank";
-            if !is_ripper && !is_cf && !is_blank {
-                if let Some(sender) = tx_nav.lock().unwrap().take() {
-                    let _ = sender.send(url_str);
-                }
-                false
-            } else {
-                true
-            }
-        })
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let win_close = win.clone();
-    let result = match tokio::time::timeout(Duration::from_secs(15), rx).await {
-        Ok(Ok(resolved)) => Ok(resolved),
-        _ => Err("Timeout: could not resolve hidelink in 15s".to_string()),
-    };
-    let _ = win_close.close();
-    result
 }
 
 /// Abre (o muestra) la ventana WebView de Booth para que el usuario haga login.
@@ -1261,26 +789,43 @@ pub fn booth_logout(app: AppHandle, state: State<'_, BoothState>) -> Result<(), 
 
 /// Devuelve true si hay una WebviewWindow de Booth activa.
 #[tauri::command]
+// Add this import at the top of the file if not already present:
+// use crate::services::auth_store;
+
 pub fn booth_is_authenticated(app: AppHandle, state: State<'_, BoothState>) -> bool {
     let authenticated = state
         .authenticated
         .load(std::sync::atomic::Ordering::SeqCst);
+
     if authenticated {
-        let mut guard = state
-            .webview_label
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        // Verify that the WebView is still alive
+        let mut guard = state.webview_label.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ref label) = *guard {
             if app.get_webview_window(label).is_none() {
                 *guard = None;
-                state
-                    .authenticated
-                    .store(false, std::sync::atomic::Ordering::SeqCst);
-                return false;
+                state.authenticated.store(false, std::sync::atomic::Ordering::SeqCst);
+                // Even if the WebView died, a keyring cookie may still exist
             }
         }
+        // Re‑read the flag in case it was cleared above
+        let still_authenticated = state.authenticated.load(std::sync::atomic::Ordering::SeqCst);
+        if still_authenticated {
+            return true;
+        }
     }
-    authenticated
+
+    // Fallback: if a session cookie exists in the keyring, the session survives restarts
+    let has_persisted_session = auth_store::get_token("booth")
+        .unwrap_or(None)
+        .map(|t| !t.trim().is_empty())
+        .unwrap_or(false);
+
+    if has_persisted_session {
+        // Restore the memory flag for subsequent requests in this session
+        state.authenticated.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    has_persisted_session
 }
 
 /// Devuelve los IDs de items ya cargados como comprados (sin hacer fetch).
@@ -1301,6 +846,11 @@ pub async fn booth_fetch_purchases(
     app: AppHandle,
     state: State<'_, BoothState>,
 ) -> Result<Vec<String>, String> {
+    // ── GUARD: si no hay sesión activa (ni WebView ni cookie en keyring), fallar temprano
+    if !booth_is_authenticated(app.clone(), state.clone()) {
+        return Err("Booth session not active. Please reconnect your account.".to_string());
+    }
+
     ensure_booth_authenticated(&app, &state).await?;
 
     let label = {
@@ -1324,9 +874,6 @@ pub async fn booth_fetch_purchases(
             let win = app
                 .get_webview_window(&label)
                 .ok_or_else(|| format!("WebView '{}' not found", label))?;
-            let page_url = tauri::Url::parse(&format!("{}?page={}", base_url, page))
-                .map_err(|e| format!("{}", e))?;
-            // Para library?type=free ya tiene '?' — usar '&' para page
             let page_url = if base_url.contains('?') {
                 tauri::Url::parse(&format!("{}&page={}", base_url, page))
                     .map_err(|e| format!("{}", e))?
@@ -1380,7 +927,7 @@ pub async fn booth_fetch_purchases(
                     session_retried = true;
                     all_ids.clear();
                     eprintln!("[booth_fetch] Re-authenticated, restarting scrape...");
-                    break 'sections; // Salir del loop de secciones — se reintentará en el bloque de abajo
+                    break 'sections;
                 }
                 break;
             }
@@ -1629,7 +1176,7 @@ pub async fn booth_search_authenticated(
 
     if result == "null" || result.is_empty() {
         let client = build_client(None).map_err(|e| e)?;
-        let booth_results = booth::search(&client, &query, page)
+        let booth_results = booth::search(&client, &query, page, false)
             .await
             .unwrap_or_default();
         return Ok(booth_results
