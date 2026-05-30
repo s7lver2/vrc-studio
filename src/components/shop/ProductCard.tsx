@@ -5,9 +5,10 @@ import { useInventoryStore, } from "../../store/inventoryStore";
 import { useAppStore } from "../../store/app";
 import { useDownloadProgress } from "../../hooks/useDownloadProgress";
 import { useCollectionsStore, } from "../../store/collectionsStore";
-import { Bookmark } from "lucide-react";
+import { Bookmark, Lock } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
 import { CheckCircle2, Package } from "lucide-react";
+import { AdultContentModal } from "./AdultContentModal";
 import { useT } from "@/i18n";
 
 interface Props {
@@ -28,6 +29,9 @@ export function ProductCard({ product }: Props) {
   const alreadyInCart = isInCart(product.source, product.source_id);
   const { openPicker, getItemCollectionIds } = useCollectionsStore();
   const [imgError, setImgError] = useState(false);
+  const showAdultContent = useAppStore((s) => s.showAdultContent);
+  const isR18 = !!product.is_r18;
+  const [showAdultModal, setShowAdultModal] = useState(false);
 
   const isPurchased =
     product.source === "booth" && boothOwnedIds.has(product.source_id);
@@ -91,6 +95,20 @@ export function ProductCard({ product }: Props) {
       className="group relative flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 cursor-pointer hover:border-zinc-600 transition-all duration-150 overflow-hidden"
       onClick={() => selectProduct(product)}
     >
+      {/* ── R18 blur overlay ── */}
+      {isR18 && !showAdultContent && (
+        <>
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg"
+            style={{ backdropFilter: "blur(16px)", background: "rgba(0,0,0,0.55)" }}
+            onClick={(e) => { e.stopPropagation(); setShowAdultModal(true); }}
+          >
+            <Lock className="h-6 w-6 text-zinc-300" />
+            <span className="text-xs font-semibold text-zinc-300">Contenido +18</span>
+          </div>
+          {showAdultModal && <AdultContentModal onClose={() => setShowAdultModal(false)} />}
+        </>
+      )}
       <div className="relative aspect-square overflow-hidden bg-zinc-800">
         {showImage ? (
           <img

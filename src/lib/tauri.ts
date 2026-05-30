@@ -131,7 +131,7 @@ export interface InventoryItem {
   id: string;
   name: string;
   author: string | null;
-  source: "booth" | "riperstore" | "local";
+  source: "booth" | "local";
   source_id: string | null;
   local_path: string;
   thumbnail_url: string | null;
@@ -236,7 +236,7 @@ export const tauriBuildPackage = (id: string): Promise<CustomPackage> =>
 
 // ── Shop ───────────────────────────────────────────────────────
 export interface ShopProductSource {
-  source: "booth" | "riperstore";
+  source: "booth";
   source_id: string;
   url: string;
 }
@@ -254,22 +254,21 @@ export interface ShopProduct {
   thumbnail_url: string;
   price_display: string;
   url: string;
-  source: "booth" | "riperstore";
+  source: "booth";
   extra_sources?: ShopProductSource[];
   booth_ids?: string[];
   avatar_booth_id?: string | null;
   downloads?: DownloadEntry[];
   supported_avatars?: string[];
+  is_r18?: boolean;
 }
 
-export interface RiperstoreSearchResult {
-  products: ShopProduct[];
-  page_count: number;
-  current_page: number;
-}
-
-export const tauriSearchShop = (query: string, page: number): Promise<ShopProduct[]> =>
-  invoke("search_shop", { query, page });
+export const tauriSearchShop = (
+  query: string,
+  page: number,
+  showAdult: boolean = false
+): Promise<ShopProduct[]> =>
+  invoke("search_shop", { query, page, showAdult });
 
 export interface BoothProductDetail {
   source_id: string;
@@ -281,6 +280,7 @@ export interface BoothProductDetail {
   images: string[];
   description: string;
   similar: ShopProduct[];
+  tags?: string[];
 }
 
 export const tauriGetBoothProductDetail = (source_id: string): Promise<BoothProductDetail> =>
@@ -396,32 +396,6 @@ export const tauriImportLocalPackage = (args: {
     detectedAvatars: args.detected_avatars ?? null,
   });
 
-export const tauriRipperIsAuthenticated = (): Promise<boolean> =>
-  invoke("ripper_is_authenticated");
-
-export const tauriOpenRipperAuth = (): Promise<void> =>
-  invoke("open_ripper_auth");
-
-export const tauriRipperLogout = (): Promise<void> =>
-  invoke("ripper_logout");
-
-export const tauriRipperSearch = (query: string, page: number): Promise<RiperstoreSearchResult> =>
-  invoke("ripper_search_via_webview", { query, page });
-
-export const tauriRipperBrowseCategory = (cid: number, page: number): Promise<void> =>
-  invoke("ripper_browse_category", { cid, page });
-
-export const tauriRipperGetTopicDetail = (source_id: string): Promise<[string, string[], string[]]> =>
-  invoke("ripper_get_topic_detail", { sourceId: source_id });
-
-export interface DownloadLinkContext {
-  url: string;
-  avatars: string[];
-}
-
-export const tauriRipperScrapeDeep = (source_id: string, max_pages = 5): Promise<DownloadLinkContext[]> =>
-  invoke("ripper_scrape_deep", { sourceId: source_id, maxPages: max_pages });
-
 export const tauriDownloadDirectUrl = (args: {
   url: string;
   name: string;
@@ -436,9 +410,6 @@ export const tauriDownloadDirectUrl = (args: {
     thumbnailUrl: args.thumbnail_url,
     sourceId: args.source_id,
   });
-
-export const tauriRipperResolveHidelink = (url: string): Promise<string> =>
-  invoke("ripper_resolve_hidelink", { url });
 
 // ── Booth.pm ──────────────────────────────────────────────────
 export const tauriBoothIsAuthenticated = (): Promise<boolean> =>
@@ -585,32 +556,35 @@ export const tauriGetVpmPackageFiles = (url: string): Promise<string[]> =>
   invoke("get_vpm_package_files", { url });
 
 // ── Tracker ───────────────────────────────────────────────────
-export type TrackerKind = "item" | "author";
+export type TrackerKind = "item" | "author" | "keyword";
 
 export interface TrackerItem {
   id: string;
   kind: TrackerKind;
-  booth_id: string | null;
-  item_name: string | null;
-  item_author: string | null;
-  item_thumbnail_url: string | null;
-  item_url: string | null;
-  last_known_price: string | null;
-  track_price_drops: boolean;
-  track_availability: boolean;
-  author_name: string | null;
-  author_booth_shop_id: string | null;
-  track_new_items: boolean;
-  check_interval_minutes: number;
-  last_checked_at: string | null;
-  is_active: boolean;
+  booth_id?: string;
+  item_name?: string;
+  item_author?: string;
+  item_thumbnail_url?: string | null;
+  item_url?: string;
+  last_known_price?: string | null;
+  track_price_drops?: boolean;
+  track_availability?: boolean;
+  author_name?: string | null;
+  author_booth_shop_id?: string | null;
+  track_new_items?: boolean;
+  // ✨ Añadir estos dos campos
+  search_keyword?: string | null;
+  search_category?: string | null;
+  check_interval_minutes?: number;
+  last_checked_at?: string | null;
+  is_active?: boolean;
   created_at: string;
 }
 
 export interface TrackerEvent {
   id: string;
   tracker_item_id: string;
-  event_type: "price_drop" | "price_change" | "back_in_stock" | "new_item";
+  event_type: "price_drop" | "price_change" | "back_in_stock" | "new_item" | "keyword_seen";
   payload: string;
   detected_at: string;
   is_read: boolean;
@@ -618,6 +592,7 @@ export interface TrackerEvent {
 
 export interface CreateTrackerItemPayload {
   kind: TrackerKind;
+  // Item fields
   booth_id?: string;
   item_name?: string;
   item_author?: string;
@@ -625,9 +600,14 @@ export interface CreateTrackerItemPayload {
   item_url?: string;
   track_price_drops?: boolean;
   track_availability?: boolean;
+  // Author fields
   author_name?: string;
   author_booth_shop_id?: string;
   track_new_items?: boolean;
+  // Keyword fields
+  search_keyword?: string;
+  search_category?: string;
+  // Common
   check_interval_minutes?: number;
 }
 
@@ -833,22 +813,34 @@ export const tauriCartGetItems = () =>
 export const tauriCartAddItem = (item: {
   source: string; source_id: string; name: string; author: string;
   thumbnail_url: string; price_display: string; url: string;
-}) => invoke<CartItem>("cart_add_item", item);
+}) => invoke<CartItem>("cart_add_item", {
+  source: item.source,
+  sourceId: item.source_id,
+  name: item.name,
+  author: item.author,
+  thumbnailUrl: item.thumbnail_url,
+  priceDisplay: item.price_display,
+  url: item.url,
+});
 
 export const tauriCartRemoveItem = (source: string, source_id: string) =>
-  invoke<void>("cart_remove_item", { source, source_id });
+  invoke<void>("cart_remove_item", { source, sourceId: source_id });
 
 export const tauriCartClear = () =>
   invoke<void>("cart_clear");
 
 export const tauriCartIsInCart = (source: string, source_id: string) =>
-  invoke<boolean>("cart_is_in_cart", { source, source_id });
+  invoke<boolean>("cart_is_in_cart", { source, sourceId: source_id });
+
+export const tauriCollectionUpdateDescription = (collectionId: string, description: string) =>
+  invoke<void>("collection_update_description", { collectionId, description });
 
 // ── Collections ───────────────────────────────────────────────────────────────
 export interface Collection {
   id: string;
   name: string;
   cover_url: string;
+  description: string;
   created_at: string;
   updated_at: string;
   item_count: number;
@@ -875,10 +867,72 @@ export const tauriCollectionSetCover = (collectionId: string, coverUrl: string) 
 export const tauriCollectionAddItem = (collectionId: string, item: {
   source: string; source_id: string; name: string; author: string;
   thumbnail_url: string; price_display: string; url: string;
-}) => invoke<void>("collection_add_item", { collectionId, ...item });
+}) => invoke<void>("collection_add_item", {
+  collectionId,
+  source: item.source,
+  sourceId: item.source_id,
+  name: item.name,
+  author: item.author,
+  thumbnailUrl: item.thumbnail_url,
+  priceDisplay: item.price_display,
+  url: item.url,
+});
 export const tauriCollectionRemoveItem = (collectionId: string, source: string, source_id: string) =>
-  invoke<void>("collection_remove_item", { collectionId, source, source_id });
+  invoke<void>("collection_remove_item", { collectionId, source, sourceId: source_id });
 export const tauriCollectionGetItems = (collectionId: string) =>
   invoke<CollectionItem[]>("collection_get_items", { collectionId });
 export const tauriCollectionGetItemCollections = (source: string, source_id: string) =>
-  invoke<string[]>("collection_get_item_collections", { source, source_id });
+  invoke<string[]>("collection_get_item_collections", { source, sourceId: source_id });
+// ── Booth Dependencies ──────────────────────────────────────────────────────
+
+export interface BoothDepEntry {
+  source: string;
+  source_id: string;
+  name: string;
+  author: string;
+  version_hash: string;
+  install_path: string;
+  added_at: string;
+  modified: boolean;
+}
+
+export interface CloneResult {
+  path: string;
+  has_booth_deps: boolean;
+}
+
+export const tauriBoothDepsRead = (projectPath: string): Promise<BoothDepEntry[]> =>
+  invoke("booth_deps_read", { projectPath });
+
+export const tauriBoothDepsAdd = (args: {
+  projectPath: string;
+  sourceId: string;
+  name: string;
+  author: string;
+  zipPath: string;
+  installPath: string;
+}): Promise<void> =>
+  invoke("booth_deps_add", {
+    projectPath: args.projectPath,
+    sourceId: args.sourceId,
+    name: args.name,
+    author: args.author,
+    zipPath: args.zipPath,
+    installPath: args.installPath,
+  });
+
+export const tauriBoothDepsUpdateGitignore = (args: {
+  projectPath: string;
+  installPath: string;
+  add: boolean;
+}): Promise<void> =>
+  invoke("booth_deps_update_gitignore", args);
+
+export const tauriBoothDepsCheckModifications = (projectPath: string): Promise<string[]> =>
+  invoke("booth_deps_check_modifications", { projectPath });
+
+export const tauriProjectCloneFromGithub = (args: {
+  url: string;
+  dest: string;
+}): Promise<CloneResult> =>
+  invoke("project_clone_from_github", args);
