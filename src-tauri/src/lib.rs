@@ -44,6 +44,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
         .manage(BoothState::default())
         .manage(commands::build_monitor::BuildMonitorState::default())
         .manage(crate::services::discord_rpc::DiscordRpcState::default())
+        .manage(crate::services::discord_auth::DiscordAuthState::default())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -260,6 +261,9 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             crate::services::discord_rpc::discord_rpc_update,
             crate::services::discord_rpc::discord_rpc_clear,
             crate::services::discord_rpc::discord_rpc_set_enabled,
-            crate::services::discord_rpc::discord_rpc_configure,
+            // ── Discord Auth ──
+            crate::services::discord_auth::discord_authorize,
+            crate::services::discord_auth::discord_reauthenticate,
+            crate::services::discord_auth::discord_logout,
         ])
 }
