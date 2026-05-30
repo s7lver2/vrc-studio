@@ -3,28 +3,28 @@ import { StorageCompressionSection } from "@/components/settings/StorageCompress
 import { ConnectionHub } from "@/components/settings/ConnectionsHub";
 import React, { useState, useCallback, useEffect } from "react";
 import {
-  Globe, Tags, Save, Check, Beaker,
+  Globe, Tags, Save, Check,
   RefreshCw, Package, Plus, Upload,
   Loader2, AlertTriangle, CheckCircle2,
   Trash2, ExternalLink, ChevronRight,
-  Settings as SettingsIcon, Plug, Bug,
+  Settings as SettingsIcon, Bug,
   Archive, Download, Shield, Wifi, Palette,
-  Lock, FolderOpen, Terminal, FileText, Play, 
-  LogOut, X
+  Lock, FolderOpen, Terminal, FileText, Play,
+  LogOut, X, FlaskConical
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CompressionSection } from "@/components/settings/CompressionSection";
 import {
   tauriPing,
-  tauriFetchVpmRepo,     
-  tauriGetAppSettings,       
-  tauriSetAppSettings,       
+  tauriFetchVpmRepo,
+  tauriGetAppSettings,
+  tauriSetAppSettings,
   VpmPackage,
   tauriExportDatabase,
   tauriImportDatabase,
-  github, GithubUserInfo
+  github, GithubUserInfo,
+  tauriDiscordRpcSetEnabled,
 } from "@/lib/tauri";
-import { useRipperStatus, RipperStatus } from "@/hooks/useRipperStatus";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
 import { useT, useLocale, setLocale, Locale } from "@/i18n";
 import { useTagStore, BehaviorSlot } from "@/store/tagStore";
@@ -32,7 +32,6 @@ import { useAppStore } from "@/store/app";
 import { UpdateSettingsPanel } from "@/components/settings/UpdateSettingsPanel";
 import { invoke } from "@tauri-apps/api/core";
 import { useInventoryStore } from "@/store/inventoryStore";
-import { DeveloperCodeModal } from "@/components/settings/DeveloperCodeModal";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -712,6 +711,8 @@ function GeneralSection() {
   const { behaviorLabels, setBehaviorLabel } = useTagStore();
   const [draft, setDraft] = useState({ ...behaviorLabels });
   const [saved, setSaved] = useState(false);
+  const discordRpcEnabled = useAppStore((s) => s.discordRpcEnabled);
+  const setDiscordRpcEnabled = useAppStore((s) => s.setDiscordRpcEnabled);
 
   const handleSave = () => {
     (Object.keys(draft) as BehaviorSlot[]).forEach((slot) => {
@@ -813,271 +814,33 @@ function GeneralSection() {
             {saved ? <><Check className="h-3.5 w-3.5" /> {t("settings_saved")}</> : <><Save className="h-3.5 w-3.5" /> Save</>}
           </button>
         </div>
-      </div>
-    </>
-  );
-}
 
-// ── BoothBlock ────────────────────────────────────────────────────────────────
-
-function BoothBlock() {
-  const t = useT();
-  const { status, purchaseCount, loadingPurchases, connect, disconnect, refreshPurchases } = useBoothStatus();
-  const statusColor = status === "connected" ? "text-emerald-400" : status === "unknown" ? "text-zinc-400" : "text-zinc-500";
-  const statusText = status === "connected"
-    ? purchaseCount !== null
-      ? `${t("ripper_connected")} — ${purchaseCount} purchased item${purchaseCount !== 1 ? "s" : ""} detected`
-      : t("ripper_connected")
-    : status === "unknown" ? t("ripper_checking") : t("ripper_disconnected");
-
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
-      <SettingsField name="Booth.pm" desc={statusText}>
-        <div className="flex gap-2 justify-end">
-          {status === "connected" && (
-            <>
-              <button onClick={refreshPurchases} disabled={loadingPurchases} className="p-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors disabled:opacity-40">
-                <RefreshCw className={cn("h-3.5 w-3.5", loadingPurchases && "animate-spin")} />
-              </button>
-              <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>
-            </>
-          )}
-          {(status === "disconnected" || status === "unknown") && (
-            <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>
-          )}
-        </div>
-      </SettingsField>
-      {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2 pb-3">{t("booth_connect_msg")}</p>}
-    </div>
-  );
-}
-
-// ── RipperBlock ───────────────────────────────────────────────────────────────
-
-function RipperBlock() {
-  const t = useT();
-  const { status, connect, disconnect, reconnect } = useRipperStatus();
-  const statusColor: Record<RipperStatus, string> = {
-    unknown: "text-zinc-400", connected: "text-emerald-400", disconnected: "text-zinc-500", expired: "text-amber-400",
-  };
-  const statusLabel: Record<RipperStatus, string> = {
-    unknown: t("ripper_checking"), connected: t("ripper_connected"), disconnected: t("ripper_disconnected"), expired: t("ripper_expired"),
-  };
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-1">
-      <SettingsField name="Ripper.store" desc={statusLabel[status]}>
-        <div className="flex gap-2 justify-end">
-          {status === "connected" && <button onClick={disconnect} className="px-3 py-1.5 text-xs rounded-lg border border-zinc-700 text-zinc-400 hover:text-red-400 hover:border-red-900/50 transition-colors">{t("ripper_disconnect")}</button>}
-          {(status === "disconnected" || status === "unknown") && <button onClick={connect} className="px-3 py-1.5 text-xs rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-100 transition-colors">{t("ripper_connect")}</button>}
-          {status === "expired" && <button onClick={reconnect} className="px-3 py-1.5 text-xs rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 transition-colors">{t("ripper_reconnect")}</button>}
-        </div>
-      </SettingsField>
-      {status === "expired" && <p className="text-xs text-amber-400/80 mt-2 pb-3">{t("ripper_expired_msg")}</p>}
-      {status === "disconnected" && <p className="text-xs text-zinc-500 mt-2 pb-3">{t("ripper_connect_msg")}</p>}
-    </div>
-  );
-}
-
-// ── ConnectionsSection ────────────────────────────────────────────────────────
-
-function ConnectionsSection() {
-  const t = useT();
-  const { untrustedSourcesUnlocked, setUntrustedSourcesUnlocked } = useAppStore();
-  const { riperstoreExperimental, setRiperstoreExperimental } = useAppStore();
-  const [showCodeModal, setShowCodeModal] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState<string | null>(null); // id de la integración a autenticar
-
-  const { status: boothStatus, connect: boothConnect, disconnect: boothDisconnect } = useBoothStatus();
-  const { status: ripperStatus, connect: ripperConnect, disconnect: ripperDisconnect } = useRipperStatus();
-  const [githubUser, setGithubUser] = useState<GithubUserInfo | null>(null);
-  const [githubAuthStep, setGithubAuthStep] = useState<"idle" | "waiting" | "done">("idle");
-  const [devicePrompt, setDevicePrompt] = useState<{ user_code: string; verification_uri: string } | null>(null);
-
-  useEffect(() => {
-    github.getUser().then(setGithubUser).catch(() => setGithubUser(null));
-  }, []);
-
-  const startGithubAuth = async () => {
-    setGithubAuthStep("waiting");
-    setShowAuthModal("github");
-    try {
-      const prompt = await github.startDeviceAuth();
-      setDevicePrompt(prompt);
-      const info = await github.pollToken();
-      setGithubUser(info);
-      setGithubAuthStep("done");
-      setDevicePrompt(null);
-    } catch {
-      setGithubAuthStep("idle");
-    }
-  };
-
-  const integrations: Integration[] = [
-    {
-      id: "github",
-      name: "GitHub",
-      logo: (
-        <svg viewBox="0 0 98 96" className="w-6 h-6 text-zinc-300" fill="currentColor">
-          <path fillRule="evenodd" clipRule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" />
-        </svg>
-      ),
-      status: githubUser ? "connected" : "disconnected",
-      requiresDevCode: false,
-      onConnect: startGithubAuth,
-      onDisconnect: async () => { await github.logout(); setGithubUser(null); },
-      detailContent: githubUser ? (
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <img src={githubUser.avatar_url ?? undefined} className="w-12 h-12 rounded-full ring-2 ring-emerald-700/50" alt="" />
-            <div>
-              <p className="text-sm font-bold text-zinc-100">{githubUser.name ?? githubUser.login}</p>
-              <p className="text-xs text-zinc-500">@{githubUser.login}</p>
-            </div>
-          </div>
-          <a
-            href={`https://github.com/${githubUser.login}`}
-            target="_blank" rel="noreferrer"
-            className="flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
-          >
-            <ExternalLink className="h-3 w-3" /> See profile on Github
-          </a>
-        </div>
-      ) : undefined,
-    },
-    {
-      id: "booth",
-      name: "Booth.pm",
-      logo: <span className="text-2xl">🛒</span>,
-      status: boothStatus === "connected" ? "connected" : boothStatus === "unknown" ? "unknown" : "disconnected",
-      requiresDevCode: false,
-      onConnect: boothConnect,
-      onDisconnect: boothDisconnect,
-      detailContent: (
-        <p className="text-xs text-zinc-400">Booth.pm connected.</p>
-      ),
-    },
-    {
-      id: "riperstore",
-      name: "Riperstore",
-      logo: <span className="text-2xl">🔮</span>,
-      status: ripperStatus === "connected" ? "connected" : "disconnected",
-      requiresDevCode: true,
-      onConnect: () => { setRiperstoreExperimental(true); ripperConnect(); },
-      onDisconnect: () => { ripperDisconnect(); setRiperstoreExperimental(false); },
-      detailContent: (
-        <p className="text-xs text-zinc-400">Experimental integration with ripperstore forums enabled.</p>
-      ),
-    },
-  ];
-
-  return (
-    <>
-      {showCodeModal && (
-        <DeveloperCodeModal
-          onClose={() => setShowCodeModal(false)}
-          onUnlocked={() => { setUntrustedSourcesUnlocked(true); setShowCodeModal(false); }}
-        />
-      )}
-
-      <SectionHeader
-        icon={Wifi}
-        title="Connections"
-        description="How much we can do with your favourite apps"
-      />
-
-      {/* Auth modal para GitHub (device flow) */}
-      {showAuthModal === "github" && githubAuthStep === "waiting" && devicePrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
-          <div className="w-[380px] rounded-2xl border border-zinc-800 bg-zinc-950 p-6 flex flex-col gap-4 shadow-2xl">
-            <h3 className="text-sm font-bold text-zinc-100">Connect Github</h3>
-            <p className="text-xs text-zinc-400">
-              Open <a href={devicePrompt.verification_uri} target="_blank" rel="noreferrer" className="text-violet-400 underline">{devicePrompt.verification_uri}</a> and introduce:
-            </p>
-            <div className="font-mono text-2xl font-bold tracking-widest text-zinc-100 text-center py-3 rounded-xl border border-zinc-800 bg-zinc-900">
-              {devicePrompt.user_code}
-            </div>
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Waiting auth…
-            </div>
-            <button onClick={() => { setShowAuthModal(null); setGithubAuthStep("idle"); }} className="self-end text-xs text-zinc-600 hover:text-zinc-400 transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-6">
-        {/* Grid de tiles */}
-        <div className="flex flex-col gap-3">
+        {/* Discord Rich Presence */}
+        <section className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Integrations</p>
-            {untrustedSourcesUnlocked && (
-              <button
-                onClick={() => setUntrustedSourcesUnlocked(false)}
-                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-600 hover:text-zinc-400 transition-colors"
-              >
-                <Lock className="h-2.5 w-2.5" /> Block Dev
-              </button>
-            )}
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Discord</span>
           </div>
-
-          <div className="flex gap-3 flex-wrap">
-            {integrations.map((integ) => (
-              <IntegrationTile
-                key={integ.id}
-                integration={integ}
-                isLocked={integ.requiresDevCode && !untrustedSourcesUnlocked}
-                onLockedClick={() => setShowCodeModal(true)}
-              />
-            ))}
-          </div>
-
-          {/* Hint cuando hay integraciones bloqueadas */}
-          {!untrustedSourcesUnlocked && (
-            <p className="text-[10px] text-zinc-700 flex items-center gap-1">
-              <Lock className="h-3 w-3" />
-              Some integrations maybe require a code 🔒.
-            </p>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ── IntegrationsSection (legacy, not used in current navigation) ──────────────
-function IntegrationsSection() {
-  const t = useT();
-  const { riperstoreExperimental, setRiperstoreExperimental } = useAppStore();
-
-  return (
-    <>
-      <SectionHeader icon={Plug} title={t("settings_integrations_title")} description={t("settings_integrations_desc")} />
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Booth.pm</p>
-          <BoothBlock />
-        </div>
-        <div className="flex flex-col gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-            <Beaker className="h-3.5 w-3.5 text-blue-400" />
-            Riperstore
-            <span className="text-[9px] bg-blue-600/20 border border-blue-500/30 text-blue-400 px-1.5 py-0.5 rounded font-semibold tracking-wider">EXPERIMENTAL</span>
-          </p>
-          <SettingsCard>
-            <CardRow last={!riperstoreExperimental}>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-zinc-100">{t("settings_riperstore_enable_label")}</p>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">{t("settings_riperstore_enable_desc")}</p>
-                </div>
-                <Toggle value={riperstoreExperimental} onChange={setRiperstoreExperimental} accent="blue" />
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 divide-y divide-zinc-800">
+            <div className="flex items-center justify-between px-5 py-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Rich Presence</p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Muestra tu proyecto, sección y tiempo de sesión en Discord.
+                </p>
               </div>
-            </CardRow>
-          </SettingsCard>
-          {riperstoreExperimental && <RipperBlock />}
-        </div>
+              <button
+                onClick={() => {
+                  const next = !discordRpcEnabled;
+                  setDiscordRpcEnabled(next);
+                  tauriDiscordRpcSetEnabled(next).catch(console.error);
+                }}
+                className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${discordRpcEnabled ? "bg-emerald-600" : "bg-zinc-700"}`}
+              >
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${discordRpcEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </>
   );
@@ -1513,8 +1276,8 @@ function DebugSection() {
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 
-type SettingsTab = "general" | "packages" | "integrations" | "connections" |
-  "storage-compression" | "updates" | "debug" | "appearance" | "logs" | "import";
+type SettingsTab = "general" | "packages" | "connections" |
+  "storage-compression" | "updates" | "debug" | "appearance" | "logs";
 
 interface NavGroup {
   groupKey: "settings_group_app" | "settings_group_connect" | "settings_group_system";
@@ -1581,7 +1344,13 @@ export default function Settings() {
                   >
                     <item.icon className="h-3.5 w-3.5" />
                   </span>
-                  {t(item.labelKey as any)}
+                  <span className="flex-1 truncate">{t(item.labelKey as any)}</span>
+                  {item.id === "appearance" && (
+                    <span className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-wider px-1 py-0.5 rounded shrink-0"
+                      style={{ background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.4)", color: "#fbbf24" }}>
+                      <FlaskConical className="h-2 w-2" />β
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -1589,7 +1358,7 @@ export default function Settings() {
         ))}
       </aside>
 
-      <main className="flex-1 overflow-y-auto px-10 py-8 max-w-2xl">
+      <main className="flex-1 overflow-y-auto px-8 py-8 max-w-3xl">
         {activeTab === "general" && <GeneralSection />}
         {activeTab === "appearance" && <AppearanceSection />}
         {activeTab === "packages" && <PackagesSection />}

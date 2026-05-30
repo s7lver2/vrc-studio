@@ -948,3 +948,25 @@ export const tauriProjectCloneFromGithub = (args: {
   dest: string;
 }): Promise<CloneResult> =>
   invoke("project_clone_from_github", args);
+
+// ── Discord Rich Presence ──────────────────────────────────────────────────────
+
+export interface DiscordActivity {
+  project_name?: string | null;
+  section: string;
+  github_url?: string | null;
+  unity_open: boolean;
+  session_start_ts: number;
+}
+
+export async function tauriDiscordRpcUpdate(activity: DiscordActivity): Promise<void> {
+  return invoke<void>("discord_rpc_update", { activity });
+}
+
+export async function tauriDiscordRpcClear(): Promise<void> {
+  return invoke<void>("discord_rpc_clear");
+}
+
+export async function tauriDiscordRpcSetEnabled(enabled: boolean): Promise<void> {
+  return invoke<void>("discord_rpc_set_enabled", { enabled });
+}
