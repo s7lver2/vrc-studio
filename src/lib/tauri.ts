@@ -971,6 +971,30 @@ export async function tauriDiscordRpcSetEnabled(enabled: boolean): Promise<void>
   return invoke<void>("discord_rpc_set_enabled", { enabled });
 }
 
-export async function tauriDiscordRpcConfigure(appId: string): Promise<void> {
-  return invoke<void>("discord_rpc_configure", { appId });
+// ── Discord Auth ────────────────────────────────────────────────────────────
+
+export interface DiscordUserInfo {
+  username: string;
+  discriminator: string;
+  avatar_url: string | null;
+}
+
+export interface DiscordAuthResult {
+  user: DiscordUserInfo;
+  access_token: string;
+}
+
+/** Full OAuth flow — triggers native Discord popup. Returns user info + token. */
+export async function tauriDiscordAuthorize(): Promise<DiscordAuthResult> {
+  return invoke<DiscordAuthResult>("discord_authorize");
+}
+
+/** Silent re-auth with a saved token. Fails if token expired or Discord not running. */
+export async function tauriDiscordReauthenticate(accessToken: string): Promise<DiscordUserInfo> {
+  return invoke<DiscordUserInfo>("discord_reauthenticate", { accessToken });
+}
+
+/** Clears the in-memory token on the backend side. */
+export async function tauriDiscordLogout(): Promise<void> {
+  return invoke<void>("discord_logout");
 }

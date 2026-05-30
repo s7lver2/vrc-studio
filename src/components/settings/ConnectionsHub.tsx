@@ -4,7 +4,7 @@ import {
   AlertTriangle, Copy, Check, Wifi, MessageSquare,
 } from "lucide-react";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
-import { github, GithubUserInfo, tauriDiscordRpcConfigure, tauriDiscordRpcSetEnabled } from "@/lib/tauri";
+import { github, GithubUserInfo, tauriDiscordRpcSetEnabled } from "@/lib/tauri";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useAppStore } from "@/store/app";
 
@@ -190,27 +190,24 @@ function ConnectionCard({ card }: { card: CardConfig }) {
 function DiscordRpcSection() {
   const discordRpcEnabled = useAppStore((s) => s.discordRpcEnabled);
   const setDiscordRpcEnabled = useAppStore((s) => s.setDiscordRpcEnabled);
-  const discordAppId = useAppStore((s) => s.discordAppId);
-  const setDiscordAppId = useAppStore((s) => s.setDiscordAppId);
 
-  const [appIdInput, setAppIdInput] = useState(discordAppId);
+  const [appIdInput, setAppIdInput] = useState("");
   const [connectStatus, setConnectStatus] = useState<"idle" | "connecting" | "ok" | "error">("idle");
   const [connectError, setConnectError] = useState<string | null>(null);
 
+  // TODO(Task 5): replace with OAuth flow
   const handleConnect = useCallback(async () => {
     const id = appIdInput.trim();
     if (!id) return;
     setConnectStatus("connecting");
     setConnectError(null);
     try {
-      await tauriDiscordRpcConfigure(id);
-      setDiscordAppId(id);
       setConnectStatus("ok");
     } catch (e: unknown) {
       setConnectError(e instanceof Error ? e.message : String(e));
       setConnectStatus("error");
     }
-  }, [appIdInput, setDiscordAppId]);
+  }, [appIdInput]);
 
   const handleToggle = useCallback(async (v: boolean) => {
     setDiscordRpcEnabled(v);
