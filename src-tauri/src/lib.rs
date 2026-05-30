@@ -43,6 +43,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_fs::init())
         .manage(BoothState::default())
         .manage(commands::build_monitor::BuildMonitorState::default())
+        .manage(crate::services::discord_rpc::DiscordRpcState::default())
         .setup(|app| {
             let app_data_dir = app
                 .path()
@@ -255,5 +256,9 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::booth_deps::booth_deps_update_gitignore,
             commands::booth_deps::booth_deps_check_modifications,
             commands::booth_deps::project_clone_from_github,
+            // ── Discord Rich Presence ──
+            crate::services::discord_rpc::discord_rpc_update,
+            crate::services::discord_rpc::discord_rpc_clear,
+            crate::services::discord_rpc::discord_rpc_set_enabled,
         ])
 }
