@@ -970,3 +970,7 @@ export async function tauriDiscordRpcClear(): Promise<void> {
 export async function tauriDiscordRpcSetEnabled(enabled: boolean): Promise<void> {
   return invoke<void>("discord_rpc_set_enabled", { enabled });
 }
+
+export async function tauriDiscordRpcConfigure(appId: string): Promise<void> {
+  return invoke<void>("discord_rpc_configure", { appId });
+}

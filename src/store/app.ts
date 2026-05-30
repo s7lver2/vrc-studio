@@ -14,7 +14,9 @@ interface AppState {
   showAdultContent: boolean;
 
   discordRpcEnabled: boolean;
+  discordAppId: string;
   setDiscordRpcEnabled: (v: boolean) => void;
+  setDiscordAppId: (v: string) => void;
   setShowAdultContent: (v: boolean) => void;
   setActiveSection: (section: Section) => void;
   setLoading: (loading: boolean, message?: string) => void;
@@ -38,9 +40,17 @@ export const useAppStore = create<AppState>((set) => ({
     try { return localStorage.getItem("discord_rpc_enabled") === "true"; }
     catch { return false; }
   })(),
+  discordAppId: (() => {
+    try { return localStorage.getItem("discord_app_id") ?? ""; }
+    catch { return ""; }
+  })(),
   setDiscordRpcEnabled: (v) => {
     set({ discordRpcEnabled: v });
     try { localStorage.setItem("discord_rpc_enabled", String(v)); } catch {}
+  },
+  setDiscordAppId: (v) => {
+    set({ discordAppId: v });
+    try { localStorage.setItem("discord_app_id", v); } catch {}
   },
   setActiveSection: (section) => set({ activeSection: section }),
   setLoading: (loading, message) =>

@@ -5,13 +5,11 @@ use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-/// The Discord Application ID.
-/// Replace with a real app ID from https://discord.com/developers/applications
-const DISCORD_APP_ID: &str = "1234567890123456789";
-
 pub struct DiscordRpcState {
     pub client: Mutex<Option<DiscordIpcClient>>,
     pub enabled: Mutex<bool>,
+    /// Discord Application ID configured by the user at runtime.
+    pub app_id: Mutex<String>,
 }
 
 impl Default for DiscordRpcState {
@@ -19,6 +17,7 @@ impl Default for DiscordRpcState {
         Self {
             client: Mutex::new(None),
             enabled: Mutex::new(false),
+            app_id: Mutex::new(String::new()),
         }
     }
 }
@@ -32,8 +31,11 @@ pub struct DiscordActivity {
     pub session_start_ts: u64,
 }
 
-fn connect_client() -> Result<DiscordIpcClient, String> {
-    let mut client = DiscordIpcClient::new(DISCORD_APP_ID);
+fn connect_client(app_id: &str) -> Result<DiscordIpcClient, String> {
+    if app_id.is_empty() {
+        return Err("Discord App ID not configured. Enter your App ID in Settings → Connections.".to_string());
+    }
+    let mut client = DiscordIpcClient::new(app_id);
     client
         .connect()
         .map_err(|e| format!("Discord IPC connect: {e}"))?;
@@ -41,10 +43,11 @@ fn connect_client() -> Result<DiscordIpcClient, String> {
 }
 
 fn update_activity_inner(state: &DiscordRpcState, act: &DiscordActivity) -> Result<(), String> {
+    let app_id = state.app_id.lock().map_err(|e| e.to_string())?.clone();
     let mut guard = state.client.lock().map_err(|e| e.to_string())?;
 
     if guard.is_none() {
-        match connect_client() {
+        match connect_client(&app_id) {
             Ok(c) => *guard = Some(c),
             Err(e) => return Err(e),
         }
@@ -128,5 +131,28 @@ pub fn discord_rpc_set_enabled(
     if !enabled {
         clear_activity_inner(&state)?;
     }
+    Ok(())
+}
+
+/// Sets the Discord Application ID and tests the connection.
+/// Drops any existing client so it reconnects with the new ID on the next update.
+/// Returns Ok(()) if the connection succeeds, Err if the ID is invalid or Discord is not running.
+#[tauri::command]
+pub fn discord_rpc_configure(
+    state: tauri::State<'_, DiscordRpcState>,
+    app_id: String,
+) -> Result<(), String> {
+    // Store the new app ID
+    *state.app_id.lock().map_err(|e| e.to_string())? = app_id.clone();
+    // Drop existing client so next update reconnects with the new ID
+    let mut guard = state.client.lock().map_err(|e| e.to_string())?;
+    if let Some(ref mut client) = *guard {
+        let _ = client.close();
+    }
+    *guard = None;
+    // Test connection immediately
+    drop(guard);
+    let test = connect_client(&app_id)?;
+    *state.client.lock().map_err(|e| e.to_string())? = Some(test);
     Ok(())
 }

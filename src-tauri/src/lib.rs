@@ -260,5 +260,6 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             crate::services::discord_rpc::discord_rpc_update,
             crate::services::discord_rpc::discord_rpc_clear,
             crate::services::discord_rpc::discord_rpc_set_enabled,
+            crate::services::discord_rpc::discord_rpc_configure,
         ])
 }

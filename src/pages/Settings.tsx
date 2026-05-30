@@ -23,7 +23,6 @@ import {
   tauriExportDatabase,
   tauriImportDatabase,
   github, GithubUserInfo,
-  tauriDiscordRpcSetEnabled,
 } from "@/lib/tauri";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
 import { useT, useLocale, setLocale, Locale } from "@/i18n";
@@ -711,9 +710,6 @@ function GeneralSection() {
   const { behaviorLabels, setBehaviorLabel } = useTagStore();
   const [draft, setDraft] = useState({ ...behaviorLabels });
   const [saved, setSaved] = useState(false);
-  const discordRpcEnabled = useAppStore((s) => s.discordRpcEnabled);
-  const setDiscordRpcEnabled = useAppStore((s) => s.setDiscordRpcEnabled);
-
   const handleSave = () => {
     (Object.keys(draft) as BehaviorSlot[]).forEach((slot) => {
       if (draft[slot] !== behaviorLabels[slot]) setBehaviorLabel(slot, draft[slot]);
@@ -815,32 +811,6 @@ function GeneralSection() {
           </button>
         </div>
 
-        {/* Discord Rich Presence */}
-        <section className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Discord</span>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 divide-y divide-zinc-800">
-            <div className="flex items-center justify-between px-5 py-4">
-              <div>
-                <p className="text-sm font-medium text-zinc-200">Rich Presence</p>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Muestra tu proyecto, sección y tiempo de sesión en Discord.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  const next = !discordRpcEnabled;
-                  setDiscordRpcEnabled(next);
-                  tauriDiscordRpcSetEnabled(next).catch(console.error);
-                }}
-                className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${discordRpcEnabled ? "bg-emerald-600" : "bg-zinc-700"}`}
-              >
-                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${discordRpcEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
-              </button>
-            </div>
-          </div>
-        </section>
       </div>
     </>
   );

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   LogOut, ExternalLink, Loader2,
-  AlertTriangle, Copy, Check, Wifi,
+  AlertTriangle, Copy, Check, Wifi, MessageSquare,
 } from "lucide-react";
 import { useBoothStatus } from "@/hooks/useBoothStatus";
-import { github, GithubUserInfo } from "@/lib/tauri";
+import { github, GithubUserInfo, tauriDiscordRpcConfigure, tauriDiscordRpcSetEnabled } from "@/lib/tauri";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useAppStore } from "@/store/app";
 
@@ -187,6 +187,174 @@ function ConnectionCard({ card }: { card: CardConfig }) {
   );
 }
 
+function DiscordRpcSection() {
+  const discordRpcEnabled = useAppStore((s) => s.discordRpcEnabled);
+  const setDiscordRpcEnabled = useAppStore((s) => s.setDiscordRpcEnabled);
+  const discordAppId = useAppStore((s) => s.discordAppId);
+  const setDiscordAppId = useAppStore((s) => s.setDiscordAppId);
+
+  const [appIdInput, setAppIdInput] = useState(discordAppId);
+  const [connectStatus, setConnectStatus] = useState<"idle" | "connecting" | "ok" | "error">("idle");
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const handleConnect = useCallback(async () => {
+    const id = appIdInput.trim();
+    if (!id) return;
+    setConnectStatus("connecting");
+    setConnectError(null);
+    try {
+      await tauriDiscordRpcConfigure(id);
+      setDiscordAppId(id);
+      setConnectStatus("ok");
+    } catch (e: unknown) {
+      setConnectError(e instanceof Error ? e.message : String(e));
+      setConnectStatus("error");
+    }
+  }, [appIdInput, setDiscordAppId]);
+
+  const handleToggle = useCallback(async (v: boolean) => {
+    setDiscordRpcEnabled(v);
+    try {
+      await tauriDiscordRpcSetEnabled(v);
+    } catch {}
+  }, [setDiscordRpcEnabled]);
+
+  const isConnected = connectStatus === "ok";
+
+  return (
+    <div className="flex flex-col gap-4 mt-2">
+      <div className="flex items-center gap-2">
+        <MessageSquare className="h-3.5 w-3.5 text-zinc-500" />
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Discord Rich Presence</p>
+      </div>
+
+      <div
+        className={cn(
+          "rounded-2xl border overflow-hidden",
+          isConnected ? "border-emerald-800/60" : "border-zinc-800"
+        )}
+        style={{
+          background: isConnected
+            ? "radial-gradient(ellipse at 0% 0%, rgba(88,101,242,0.08) 0%, #09090b 60%)"
+            : "#0f0f11",
+          boxShadow: isConnected
+            ? "0 0 0 1px rgba(88,101,242,0.12), 0 4px 24px rgba(88,101,242,0.07)"
+            : "none",
+        }}
+      >
+        {/* Header row */}
+        <div className="flex items-center gap-4 px-5 py-4">
+          <div className="relative shrink-0">
+            <div className={cn(
+              "w-11 h-11 rounded-xl flex items-center justify-center bg-zinc-900 border",
+              isConnected ? "border-indigo-700/40" : "border-zinc-800"
+            )}>
+              {/* Discord blurple logo */}
+              <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#5865F2">
+                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+              </svg>
+            </div>
+            <div
+              className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-zinc-950"
+              style={{ background: isConnected ? "#34d399" : "#52525b" }}
+            />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-sm font-semibold text-zinc-100">Discord</p>
+              <span className="text-[10px] font-medium" style={{ color: isConnected ? "#34d399" : "#52525b" }}>
+                {isConnected ? "Connected" : "Disconnected"}
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
+              Show your current project and session time on your Discord profile.
+            </p>
+          </div>
+
+          {/* Enable toggle */}
+          <button
+            onClick={() => handleToggle(!discordRpcEnabled)}
+            className={cn(
+              "overflow-hidden w-9 h-5 rounded-full transition-colors relative shrink-0",
+              discordRpcEnabled ? "bg-indigo-600" : "bg-zinc-700"
+            )}
+            title={discordRpcEnabled ? "Disable Rich Presence" : "Enable Rich Presence"}
+          >
+            <span className={cn(
+              "absolute top-0.5 left-0 w-4 h-4 rounded-full bg-white transition-transform",
+              discordRpcEnabled ? "translate-x-4" : "translate-x-0.5"
+            )} />
+          </button>
+        </div>
+
+        {/* App ID input row */}
+        <div className="border-t border-zinc-800/60 px-5 py-4 flex flex-col gap-3">
+          <div>
+            <p className="text-xs font-medium text-zinc-300 mb-1">Application ID</p>
+            <p className="text-[11px] text-zinc-500 mb-2">
+              Create an app at{" "}
+              <a
+                href="https://discord.com/developers/applications"
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-zinc-300 transition-colors"
+                style={{ color: "#5865F2" }}
+              >
+                discord.com/developers
+              </a>{" "}
+              and paste your Application ID here.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={appIdInput}
+                onChange={(e) => { setAppIdInput(e.target.value); setConnectStatus("idle"); }}
+                onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                placeholder="000000000000000000"
+                className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 focus:border-zinc-600 text-xs text-zinc-200 placeholder-zinc-600 outline-none font-mono transition-colors"
+              />
+              <button
+                onClick={handleConnect}
+                disabled={connectStatus === "connecting" || !appIdInput.trim()}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5",
+                  connectStatus === "connecting"
+                    ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                    : "text-zinc-100"
+                )}
+                style={connectStatus !== "connecting" ? { background: "#5865F2" } : {}}
+              >
+                {connectStatus === "connecting" ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Testing…</>
+                ) : connectStatus === "ok" ? (
+                  <><Check className="h-3.5 w-3.5" /> Connected</>
+                ) : (
+                  "Connect"
+                )}
+              </button>
+            </div>
+          </div>
+
+          {connectStatus === "error" && connectError && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-950/30 border border-red-900/40">
+              <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-red-400">{connectError}</p>
+            </div>
+          )}
+
+          {connectStatus === "ok" && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-950/30 border border-emerald-900/40">
+              <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+              <p className="text-[11px] text-emerald-400">Connection successful. Rich Presence is active.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConnectionHub() {
   const showAdultContent = useAppStore((s) => s.showAdultContent);
   const setShowAdultContent = useAppStore((s) => s.setShowAdultContent);
@@ -296,6 +464,7 @@ export function ConnectionHub() {
           <ConnectionCard key={card.id} card={card} />
         ))}
       </div>
+      <DiscordRpcSection />
     </div>
   );
 }
