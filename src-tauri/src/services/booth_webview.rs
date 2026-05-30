@@ -1,6 +1,6 @@
 //! Booth.pm WebView auth service.
 //!
-//! Mismo patrón que ripper_webview: abrimos un WebView en booth.pm,
+//! Abrimos un WebView en booth.pm,
 //! el usuario se loguea, detectamos la URL post-login y ocultamos la ventana.
 //! La sesión (cookies) vive en el WebView mientras el proceso esté corriendo.
 
@@ -291,14 +291,170 @@ pub fn build_ephemeral_download_js(source_id: &str) -> String {
         let dlUrl = match[1];
         if (dlUrl.startsWith('/')) dlUrl = 'https://booth.pm' + dlUrl;
 
-        // 4. Seguir redirect (evita CORS porque usamos fetch con redirect)
-        const dlResp = await fetch(dlUrl, {{ credentials: 'include', redirect: 'follow' }});
-        const finalUrl = dlResp.url;
-
-        await emit({{ ok: true, url: finalUrl }});
+        // 4. Emitir la URL de downloadables directamente; Rust la resolverá via WebView navigation
+        // (no usamos fetch para el redirect porque falla por CORS al cruzar a la CDN/S3)
+        await emit({{ ok: true, url: dlUrl }});
     }} catch (e) {{
         await emit({{ ok: false, error: e.message || String(e) }});
     }}
+}})();
+"#,
+        source_id = source_id
+    )
+}
+
+/// JS que se ejecuta en el WebView ya cargado en la página del item de Booth.
+/// Busca el enlace /downloadables/ en el DOM y navega a él.
+/// La redirección final al CDN es capturada por on_navigation en Rust.
+pub fn build_navigate_to_downloadables_js(source_id: &str) -> String {
+    format!(
+        r#"
+(function() {{
+    const sourceId = '{source_id}';
+    // Buscar enlace de descarga en el DOM (la página ya está cargada)
+    function findDownloadLink() {{
+        // Patrones del HTML de booth.pm
+        const selectors = [
+            'a[href*="/downloadables/"]',
+            'a[data-product-id][href*="download"]',
+            '.download-btn',
+            'a[href*="downloadables"]',
+        ];
+        for (const sel of selectors) {{
+            const el = document.querySelector(sel);
+            if (el && el.href) return el.href;
+        }}
+        // Fallback: buscar en el HTML de la página
+        const html = document.documentElement.innerHTML;
+        let m = html.match(/href="(\/downloadables\/[^"]+)"/);
+        if (m) return 'https://booth.pm' + m[1];
+        m = html.match(/href="(https?:\/\/booth\.pm\/downloadables\/[^"]+)"/);
+        if (m) return m[1];
+        return null;
+    }}
+
+    const dlUrl = findDownloadLink();
+    if (dlUrl) {{
+        console.log('[booth_dl] Navigating to:', dlUrl);
+        window.location.href = dlUrl;
+    }} else {{
+        console.warn('[booth_dl] No download link found for item', sourceId);
+        // Si no hay link, el item quizás no está comprado — emitir error
+        try {{
+            window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
+                event: 'booth:dl-not-found',
+                target: {{ kind: 'Any' }},
+                payload: {{ source_id: sourceId, error: 'No download link found. Item may not be purchased.' }}
+            }});
+        }} catch(_) {{}}
+    }}
+}})();
+"#,
+        source_id = source_id
+    )
+}
+
+/// JS que extrae TODOS los links /downloadables/ de la página de un item de Booth.
+/// Retorna una lista de { id, name, size_label } vía evento `booth:downloadables-list`.
+pub fn build_list_downloadables_js(source_id: &str) -> String {
+    format!(
+        r#"
+(async () => {{
+  const SOURCE_ID = '{source_id}';
+
+  async function emit(payload) {{
+    try {{
+      await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
+        event: 'booth:downloadables-list',
+        target: {{ kind: 'Any' }},
+        payload
+      }});
+    }} catch(e) {{ console.error('[booth-dl-list] emit error:', e); }}
+  }}
+
+  try {{
+    const itemUrl = 'https://booth.pm/en/items/' + SOURCE_ID;
+    let resp = await fetch(itemUrl, {{
+      credentials: 'include',
+      headers: {{ 'Accept': 'text/html' }},
+    }});
+
+    if (!resp.ok) {{
+      await emit({{ ok: false, error: `HTTP ${{resp.status}}` }});
+      return;
+    }}
+
+    let html = await resp.text();
+
+    // Age gate bypass
+    if (html.includes('age_confirmation') || html.includes('この商品は年齢確認')) {{
+      const ageResp = await fetch(itemUrl + '?age_confirmation=1', {{
+        credentials: 'include',
+        headers: {{ 'Accept': 'text/html' }},
+      }});
+      if (ageResp.ok) html = await ageResp.text();
+    }}
+
+    if (html.includes('sign_in') || html.includes('accounts.booth.pm/sign')) {{
+      await emit({{ ok: false, error: 'Not authenticated with Booth.pm' }});
+      return;
+    }}
+
+    // Parse the page HTML with a DOM parser to find all downloadable links
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const results = [];
+
+    // Strategy 1: find all <a href="/downloadables/ID"> links
+    const links = Array.from(doc.querySelectorAll('a[href*="/downloadables/"]'));
+    for (const link of links) {{
+      const hrefMatch = link.href.match(/\/downloadables\/(\d+)/);
+      if (!hrefMatch) continue;
+      const id = hrefMatch[1];
+      if (results.find(r => r.id === id)) continue; // deduplicate
+
+      // Name: try the download link text, or nearest label/filename element
+      let name = (link.textContent || '').trim();
+      if (!name) {{
+        const row = link.closest('[class*="download"]') || link.closest('li') || link.closest('tr');
+        if (row) name = (row.querySelector('[class*="name"], [class*="file"], .name') || row)?.textContent?.trim() || '';
+      }}
+      if (!name) name = `File ${{results.length + 1}}`;
+
+      // Size: look for sibling element containing size info
+      let size_label = '';
+      const row = link.closest('[class*="download"]') || link.closest('li') || link.closest('tr');
+      if (row) {{
+        const sizeEl = row.querySelector('[class*="size"], [class*="byte"]');
+        if (sizeEl) size_label = (sizeEl.textContent || '').trim();
+      }}
+      // Fallback: search nearby text for byte patterns
+      if (!size_label) {{
+        const nearby = (link.closest('li') || link.parentElement)?.textContent || '';
+        const sizeMatch = nearby.match(/[\d,]+\s*(MB|KB|GB|bytes?)/i);
+        if (sizeMatch) size_label = sizeMatch[0].trim();
+      }}
+
+      results.push({{ id, name, size_label }});
+    }}
+
+    if (results.length === 0) {{
+      // Fallback: regex on raw HTML
+      const regex = /href="(\/downloadables\/(\d+)[^"]*)"/g;
+      let m;
+      while ((m = regex.exec(html)) !== null) {{
+        const id = m[2];
+        if (!results.find(r => r.id === id)) {{
+          results.push({{ id, name: `File ${{results.length + 1}}`, size_label: '' }});
+        }}
+      }}
+    }}
+
+    await emit({{ ok: true, items: results }});
+  }} catch(e) {{
+    await emit({{ ok: false, error: e.message || String(e) }});
+  }}
 }})();
 "#,
         source_id = source_id

@@ -8,23 +8,6 @@ use std::sync::Mutex;
 use tauri::Manager;
 use crate::db::DbPool;
 
-/// Estado de autenticación de Ripper.store.
-/// Guardamos el label de la WebviewWindow activa; None = no autenticado.
-/// `session_listener` almacena el EventId del listener persistente
-/// de `ripper:current-url` para poder deregistrarlo en logout.
-pub struct RipperState {
-    pub webview_label: Mutex<Option<String>>,
-    pub session_listener: Mutex<Option<tauri::EventId>>,
-}
-impl Default for RipperState {
-    fn default() -> Self {
-        Self {
-            webview_label: Mutex::new(None),
-            session_listener: Mutex::new(None),
-        }
-    }
-}
-
 /// Estado de autenticación de Booth.pm.
 /// `purchased_ids`: IDs de items comprados, cargados tras el login.
 pub struct BoothState {
@@ -58,7 +41,6 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(RipperState::default())
         .manage(BoothState::default())
         .manage(commands::build_monitor::BuildMonitorState::default())
         .setup(|app| {
@@ -147,15 +129,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::shop::booth_is_authenticated,
             commands::shop::booth_fetch_purchases,
             commands::shop::booth_get_owned_ids,
-            // ── Shop — Ripper.store WebView auth ──
-            commands::shop::open_ripper_auth,
-            commands::shop::ripper_logout,
-            commands::shop::ripper_is_authenticated,
-            commands::shop::ripper_search_via_webview,
-            commands::shop::ripper_get_topic_detail,
-            commands::shop::ripper_scrape_deep,
-            commands::shop::ripper_browse_category,
-            commands::shop::ripper_resolve_hidelink,
+            commands::shop::booth_list_downloadables,
             commands::shop::download_direct_url,
             // ── Inventory ──
             commands::inventory::list_inventory,
@@ -215,7 +189,6 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::tracker::tracker_list_events,
             commands::tracker::tracker_mark_events_read,
             commands::tracker::tracker_unread_count,
-            commands::sandbox::parse_prefab,
             // ── App settings / Storage ──
             commands::app_settings::get_app_settings,
             commands::app_settings::set_app_settings,
@@ -276,5 +249,11 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::collections::collection_remove_item,
             commands::collections::collection_get_items,
             commands::collections::collection_get_item_collections,
+            // ── Booth Dependencies ──
+            commands::booth_deps::booth_deps_read,
+            commands::booth_deps::booth_deps_add,
+            commands::booth_deps::booth_deps_update_gitignore,
+            commands::booth_deps::booth_deps_check_modifications,
+            commands::booth_deps::project_clone_from_github,
         ])
 }

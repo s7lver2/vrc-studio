@@ -28,6 +28,13 @@ pub struct ShopProduct {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoothDownloadable {
+    pub id: String,
+    pub name: String,
+    pub size_label: String,
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async fn booth_resolve_download_url_via_webview(
@@ -1066,6 +1073,69 @@ async fn ensure_booth_authenticated(
     };
 
     app.unlisten(listener_id);
+    result
+}
+
+/// Lists all downloadable files for a Booth item.
+/// Uses the authenticated Booth WebView to fetch the item page and extract all /downloadables/ links.
+#[tauri::command]
+pub async fn booth_list_downloadables(
+    app: AppHandle,
+    booth_state: State<'_, BoothState>,
+    source_id: String,
+) -> Result<Vec<BoothDownloadable>, String> {
+    use crate::services::booth_webview;
+    use std::time::Duration;
+
+    ensure_booth_authenticated(&app, &booth_state).await?;
+
+    // Get the label of the existing Booth auth WebView
+    let label = {
+        let guard = booth_state.webview_label.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    let win = label
+        .as_deref()
+        .and_then(|lbl| app.get_webview_window(lbl))
+        .ok_or_else(|| "Booth WebView not available — please re-authenticate".to_string())?;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<BoothDownloadable>, String>>();
+    let tx = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+    let tx_clone = tx.clone();
+
+    let listener = app.listen("booth:downloadables-list", move |event| {
+        let payload: serde_json::Value =
+            serde_json::from_str(event.payload()).unwrap_or_default();
+        if let Some(sender) = tx_clone.lock().ok().and_then(|mut g| g.take()) {
+            if payload["ok"].as_bool().unwrap_or(false) {
+                let items: Vec<BoothDownloadable> = payload["items"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                    .collect();
+                let _ = sender.send(Ok(items));
+            } else {
+                let err = payload["error"].as_str().unwrap_or("Unknown error").to_string();
+                let _ = sender.send(Err(err));
+            }
+        }
+    });
+
+    let js = booth_webview::build_list_downloadables_js(&source_id);
+    if let Err(e) = win.eval(&js) {
+        app.unlisten(listener);
+        return Err(format!("JS eval error: {e}"));
+    }
+
+    let result = match tokio::time::timeout(Duration::from_secs(20), rx).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(_)) => Err("Channel closed".to_string()),
+        Err(_) => Err("Timeout listing downloadables".to_string()),
+    };
+
+    app.unlisten(listener);
     result
 }
 

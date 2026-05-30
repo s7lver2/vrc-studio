@@ -883,6 +883,18 @@ export const tauriCollectionGetItems = (collectionId: string) =>
   invoke<CollectionItem[]>("collection_get_items", { collectionId });
 export const tauriCollectionGetItemCollections = (source: string, source_id: string) =>
   invoke<string[]>("collection_get_item_collections", { source, sourceId: source_id });
+// ── Booth Downloadables ─────────────────────────────────────────────────────
+
+export interface BoothDownloadable {
+  id: string;
+  name: string;
+  size_label: string;
+}
+
+export async function tauriBoothListDownloadables(sourceId: string): Promise<BoothDownloadable[]> {
+  return invoke<BoothDownloadable[]>("booth_list_downloadables", { sourceId });
+}
+
 // ── Booth Dependencies ──────────────────────────────────────────────────────
 
 export interface BoothDepEntry {
