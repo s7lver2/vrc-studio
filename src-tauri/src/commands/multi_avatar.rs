@@ -4,6 +4,7 @@ use crate::error::AppError;
 use crate::models::{ImportMultiAvatarArgs, ItemVariant};
 use rusqlite::params;
 use std::io::Read;
+use std::path::Path;
 use tauri::State;
 use uuid::Uuid;
 use zip::ZipArchive;
@@ -375,4 +376,87 @@ pub async fn decompress_variant(
     .map_err(|e| AppError::External(e))?;
 
     Ok(())
+}
+
+/// Copies the SQLite DB file and all inventory zip files to a timestamped backup folder.
+/// Returns the backup directory path.
+#[tauri::command]
+pub async fn create_migration_backup(app: tauri::AppHandle) -> Result<String, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let backup_dir = data_dir.join("backups").join(&timestamp);
+    std::fs::create_dir_all(&backup_dir)
+        .map_err(|e| format!("Cannot create backup dir: {e}"))?;
+
+    // Copy DB file
+    let db_path = data_dir.join("vrc-studio.db");
+    if db_path.exists() {
+        std::fs::copy(&db_path, backup_dir.join("vrc-studio.db"))
+            .map_err(|e| format!("Cannot backup DB: {e}"))?;
+    }
+
+    // Copy all .zip files in the inventory directory
+    let inventory_dir = data_dir.join("inventory");
+    if inventory_dir.exists() {
+        let zip_backup = backup_dir.join("inventory");
+        std::fs::create_dir_all(&zip_backup)
+            .map_err(|e| format!("Cannot create inventory backup dir: {e}"))?;
+        for entry in std::fs::read_dir(&inventory_dir)
+            .map_err(|e| format!("Cannot read inventory dir: {e}"))?
+        {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("zip") {
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                std::fs::copy(&path, zip_backup.join(&filename))
+                    .map_err(|e| format!("Cannot backup {filename}: {e}"))?;
+            }
+        }
+    }
+
+    Ok(backup_dir.to_string_lossy().to_string())
+}
+
+/// Creates a new zip container whose top-level entries are the files at `source_paths`.
+/// Each file is added using its filename only (no directory structure).
+#[tauri::command]
+pub async fn create_container_zip(
+    source_paths: Vec<String>,
+    output_path: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        use std::io::Write;
+
+        let out_file = std::fs::File::create(&output_path)
+            .map_err(|e| format!("Cannot create output zip: {e}"))?;
+        let mut writer = zip::ZipWriter::new(out_file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        for src in &source_paths {
+            let filename = Path::new(src)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| format!("Invalid path: {src}"))?;
+
+            let bytes = std::fs::read(src)
+                .map_err(|e| format!("Cannot read {src}: {e}"))?;
+
+            writer
+                .start_file(filename, options)
+                .map_err(|e| format!("Zip write error: {e}"))?;
+            writer
+                .write_all(&bytes)
+                .map_err(|e| format!("Zip write error: {e}"))?;
+        }
+
+        writer.finish().map_err(|e| format!("Zip finish error: {e}"))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
