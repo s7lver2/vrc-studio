@@ -20,12 +20,13 @@ export function Sidebar() {
     label: string;
     icon: typeof Boxes;
     wip?: boolean;
+    tourId?: string;
   }[] = [
-    { section: "projects",  label: t("nav_projects"),  icon: Boxes },
-    { section: "packages",  label: t("nav_packages"),  icon: Package },
-    { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag, wip: true },
-    { section: "inventory", label: t("nav_inventory"), icon: Archive },
-    { section: "tracker",   label: t("nav_tracker"),   icon: Bell,        wip: true },
+    { section: "projects",  label: t("nav_projects"),  icon: Boxes,       tourId: "nav-projects"  },
+    { section: "packages",  label: t("nav_packages"),  icon: Package,     tourId: "nav-packages"  },
+    { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag, tourId: "nav-shop",      wip: true },
+    { section: "inventory", label: t("nav_inventory"), icon: Archive,     tourId: "nav-inventory" },
+    { section: "tracker",   label: t("nav_tracker"),   icon: Bell,        tourId: "nav-tracker",   wip: true },
     { section: "git",       label: "Git",              icon: GitBranch },
   ];
 
@@ -60,7 +61,7 @@ export function Sidebar() {
 
       {/* Main Navigation Loop */}
       <nav className="flex flex-col gap-1 flex-1">
-        {navItems.map(({ section, label, icon, wip }) => (
+        {navItems.map(({ section, label, icon, wip, tourId }) => (
           <NavItem
             key={section}
             icon={icon}
@@ -70,6 +71,7 @@ export function Sidebar() {
             badge={section === "tracker" && trackerUnread > 0 ? trackerUnread : undefined}
             compact={isNarrow}
             wip={wip}
+            data-tour-id={tourId}
           />
         ))}
       </nav>
@@ -82,6 +84,7 @@ export function Sidebar() {
         style={{ borderTop: "1px solid var(--border-color)" }}
       >
         <button
+          data-tour-id="nav-settings"
           onClick={() => setActiveSection("settings")}
           className={`p-2 rounded-lg transition-all ${
             activeSection === "settings"
