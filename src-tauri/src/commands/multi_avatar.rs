@@ -3,6 +3,7 @@ use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::{ImportMultiAvatarArgs, ItemVariant};
 use rusqlite::params;
+use std::io::Read;
 use tauri::State;
 use uuid::Uuid;
 use zip::ZipArchive;
@@ -194,4 +195,184 @@ pub async fn import_multi_avatar_package(
     }
 
     Ok(item_id)
+}
+
+/// Rewrites the container zip at `zip_path` replacing the bytes of `entry_name`
+/// with `new_bytes`. If `new_bytes` is None, the entry is deleted entirely.
+fn rewrite_zip_entry(
+    zip_path: &str,
+    entry_name: &str,
+    new_bytes: Option<Vec<u8>>,
+    compression: zip::CompressionMethod,
+) -> Result<(), String> {
+    use std::io::Write;
+
+    let original = std::fs::read(zip_path)
+        .map_err(|e| format!("Cannot read zip: {e}"))?;
+    let mut old_archive = ZipArchive::new(std::io::Cursor::new(&original))
+        .map_err(|e| format!("Invalid zip: {e}"))?;
+
+    let tmp_path = format!("{}.tmp", zip_path);
+    let out_file = std::fs::File::create(&tmp_path)
+        .map_err(|e| format!("Cannot create tmp file: {e}"))?;
+    let mut writer = zip::ZipWriter::new(out_file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    for i in 0..old_archive.len() {
+        let mut entry = old_archive
+            .by_index(i)
+            .map_err(|e| format!("Zip read error: {e}"))?;
+        let name = entry.name().to_string();
+
+        if name == entry_name {
+            if let Some(ref bytes) = new_bytes {
+                // Replace with new bytes using specified compression
+                let opts = zip::write::SimpleFileOptions::default()
+                    .compression_method(compression);
+                writer
+                    .start_file(&name, opts)
+                    .map_err(|e| format!("Zip write error: {e}"))?;
+                writer
+                    .write_all(bytes)
+                    .map_err(|e| format!("Zip write error: {e}"))?;
+            }
+            // If new_bytes is None, skip entry (delete it)
+        } else {
+            let mut buf = Vec::new();
+            entry
+                .read_to_end(&mut buf)
+                .map_err(|e| format!("Zip read error: {e}"))?;
+            writer
+                .start_file(&name, options)
+                .map_err(|e| format!("Zip write error: {e}"))?;
+            writer
+                .write_all(&buf)
+                .map_err(|e| format!("Zip write error: {e}"))?;
+        }
+    }
+
+    writer
+        .finish()
+        .map_err(|e| format!("Zip finish error: {e}"))?;
+
+    std::fs::rename(&tmp_path, zip_path)
+        .map_err(|e| format!("Cannot replace zip: {e}"))?;
+
+    Ok(())
+}
+
+/// Deletes a variant: removes DB row + removes entry from container zip.
+#[tauri::command]
+pub async fn delete_variant(
+    pool: State<'_, DbPool>,
+    item_id: String,
+    variant_id: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+
+    let (sub_zip_name, zip_path): (String, String) = conn.query_row(
+        "SELECT v.sub_zip_name, i.local_path
+         FROM inventory_item_variants v
+         JOIN inventory_items i ON i.id = v.item_id
+         WHERE v.id = ?1 AND v.item_id = ?2",
+        params![variant_id, item_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    tokio::task::spawn_blocking(move || {
+        rewrite_zip_entry(&zip_path, &sub_zip_name, None, zip::CompressionMethod::Deflated)
+    })
+    .await
+    .map_err(|e| AppError::External(e.to_string()))?
+    .map_err(|e| AppError::External(e))?;
+
+    conn.execute(
+        "DELETE FROM inventory_item_variants WHERE id = ?1",
+        params![variant_id],
+    )?;
+
+    Ok(())
+}
+
+/// Compresses a variant sub-zip in place using Deflated compression.
+#[tauri::command]
+pub async fn compress_variant(
+    pool: State<'_, DbPool>,
+    item_id: String,
+    variant_id: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    let (sub_zip_name, zip_path): (String, String) = conn.query_row(
+        "SELECT v.sub_zip_name, i.local_path
+         FROM inventory_item_variants v
+         JOIN inventory_items i ON i.id = v.item_id
+         WHERE v.id = ?1 AND v.item_id = ?2",
+        params![variant_id, item_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let file = std::fs::File::open(&zip_path)
+            .map_err(|e| format!("Cannot open zip: {e}"))?;
+        let mut archive = ZipArchive::new(file)
+            .map_err(|e| format!("Invalid zip: {e}"))?;
+        let mut entry = archive
+            .by_name(&sub_zip_name)
+            .map_err(|_| format!("Entry not found: {sub_zip_name}"))?;
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("Read error: {e}"))?;
+        drop(entry);
+        drop(archive);
+
+        rewrite_zip_entry(&zip_path, &sub_zip_name, Some(bytes), zip::CompressionMethod::Deflated)
+    })
+    .await
+    .map_err(|e| AppError::External(e.to_string()))?
+    .map_err(|e| AppError::External(e))?;
+
+    Ok(())
+}
+
+/// Decompresses a variant sub-zip in place (stores uncompressed).
+#[tauri::command]
+pub async fn decompress_variant(
+    pool: State<'_, DbPool>,
+    item_id: String,
+    variant_id: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    let (sub_zip_name, zip_path): (String, String) = conn.query_row(
+        "SELECT v.sub_zip_name, i.local_path
+         FROM inventory_item_variants v
+         JOIN inventory_items i ON i.id = v.item_id
+         WHERE v.id = ?1 AND v.item_id = ?2",
+        params![variant_id, item_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let file = std::fs::File::open(&zip_path)
+            .map_err(|e| format!("Cannot open zip: {e}"))?;
+        let mut archive = ZipArchive::new(file)
+            .map_err(|e| format!("Invalid zip: {e}"))?;
+        let mut entry = archive
+            .by_name(&sub_zip_name)
+            .map_err(|_| format!("Entry not found: {sub_zip_name}"))?;
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("Read error: {e}"))?;
+        drop(entry);
+        drop(archive);
+
+        rewrite_zip_entry(&zip_path, &sub_zip_name, Some(bytes), zip::CompressionMethod::Stored)
+    })
+    .await
+    .map_err(|e| AppError::External(e.to_string()))?
+    .map_err(|e| AppError::External(e))?;
+
+    Ok(())
 }
