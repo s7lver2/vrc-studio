@@ -5,7 +5,7 @@ use crate::models::{ImportMultiAvatarArgs, ItemVariant};
 use rusqlite::params;
 use std::io::Read;
 use std::path::Path;
-use tauri::State;
+use tauri::{Manager, State};
 use uuid::Uuid;
 use zip::ZipArchive;
 

@@ -204,11 +204,22 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::inventory::reorder_items,
             commands::inventory::set_item_custom_images,
             commands::inventory::update_folder,
+            commands::inventory::move_folder_to_parent,
             commands::inventory::delete_inventory_folder,
             commands::inventory::reset_all_folder_assignments,
             commands::inventory::export_database_data,        // si también añadiste backup
             commands::inventory::import_database_data,        // si también añadiste backup
             commands::inventory::check_duplicate_items,
+            // ── Multi-Avatar ──
+            commands::multi_avatar::list_zip_contents,
+            commands::multi_avatar::extract_sub_zip_to_temp,
+            commands::multi_avatar::get_item_variants,
+            commands::multi_avatar::import_multi_avatar_package,
+            commands::multi_avatar::delete_variant,
+            commands::multi_avatar::compress_variant,
+            commands::multi_avatar::decompress_variant,
+            commands::multi_avatar::create_migration_backup,
+            commands::multi_avatar::create_container_zip,
             commands::tracker::tracker_run_now,
             commands::app_settings::scan_reclaimable_files,
             commands::app_settings::delete_reclaimable_files,
