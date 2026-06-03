@@ -16,6 +16,8 @@ import { MigrationPopup } from "@/components/inventory/MigrationPopup";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { useAppearanceStore, applyTheme, applyUiScale, applyAccentColor, applyFontSize, applyAnimSpeed, applySidebarWidth, applyBgStyle, applyWallpaperCSS, THEMES,  } from "@/store/appearanceStore";
 import { WallpaperBackground } from "@/components/shared/WallpaperBackground";
+import { useTour } from "@/hooks/useTour";
+import { TourOverlay } from "@/components/onboarding/TourOverlay";
 
 
 const PackagesPage  = lazy(() => import("@/pages/Packages"));
@@ -65,7 +67,11 @@ export default function App() {
   const discordRpcEnabled = useAppStore((s) => s.discordRpcEnabled);
   useDiscordRpc(discordRpcEnabled);
   const [splashDone, setSplashDone] = useState(false);
-  const handleSplashDone = useCallback(() => setSplashDone(true), []);
+  const { tourVisible, step, totalSteps, currentStep, startTour, advance, skip, complete } = useTour();
+  const handleSplashDone = useCallback(() => {
+    setSplashDone(true);
+    setTimeout(startTour, 600);
+  }, [startTour]);
   const showGetStarted = useAppStore((s) => s.showGetStarted);
   const closeGetStarted = useAppStore((s) => s.closeGetStarted);
   const inventoryItems = useInventoryStore((s) => s.items);
@@ -119,6 +125,16 @@ export default function App() {
         <GetStarted onClose={closeGetStarted} />
       )}
       <MigrationPopup hasItems={inventoryItems.length > 0} />
+      {splashDone && tourVisible && (
+        <TourOverlay
+          step={step}
+          totalSteps={totalSteps}
+          currentStep={currentStep}
+          onAdvance={advance}
+          onSkip={skip}
+          onComplete={complete}
+        />
+      )}
     </>
   );
 }
