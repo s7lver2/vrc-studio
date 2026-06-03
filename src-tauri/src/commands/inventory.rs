@@ -17,7 +17,6 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> InventoryItem {
     let source_str: String = row.get("source").unwrap_or_else(|_| "local".to_string());
     let source = match source_str.as_str() {
         "booth" => InventorySource::Booth,
-        "riperstore" => InventorySource::Riperstore,
         _ => InventorySource::Local,
     };
 
@@ -55,6 +54,7 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> InventoryItem {
         product_images,
         custom_images,
         folder_id: row.get("folder_id").ok(),
+        is_multi_avatar: row.get::<_, bool>("is_multi_avatar").unwrap_or(false),
     }
 }
 
@@ -1404,6 +1404,27 @@ pub async fn update_folder(
     };
 
     Ok(folder)
+}
+
+/// Move a folder to a new parent (or to root when parent_id is None).
+/// Guards against self-assignment; does NOT check for deeper cycles
+/// (the UI prevents those by not showing a folder as a drop target for its own ancestor).
+#[tauri::command]
+pub async fn move_folder_to_parent(
+    pool: State<'_, DbPool>,
+    folder_id: String,
+    parent_id: Option<String>,
+) -> Result<(), AppError> {
+    // Prevent a folder from becoming its own parent
+    if parent_id.as_deref() == Some(folder_id.as_str()) {
+        return Err(AppError::InvalidInput("A folder cannot contain itself".into()));
+    }
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE inventory_folders SET parent_id = ?1 WHERE id = ?2",
+        params![parent_id, folder_id],
+    )?;
+    Ok(())
 }
 
 #[tauri::command]

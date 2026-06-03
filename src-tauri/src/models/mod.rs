@@ -61,7 +61,6 @@ pub struct CreatePackagePayload {
 #[serde(rename_all = "snake_case")]
 pub enum InventorySource {
     Booth,
-    Riperstore,
     Local,
 }
 
@@ -86,6 +85,7 @@ pub struct InventoryItem {
     pub custom_images: Vec<String>,
     /// ID de la carpeta a la que pertenece este item (None = raíz)
     pub folder_id: Option<String>,
+    pub is_multi_avatar: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +98,37 @@ pub struct InventoryFolder {
     pub sort_order: Option<i32>,
     pub emoji: Option<String>,
     pub custom_image_fill: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemVariant {
+    pub id: String,
+    pub item_id: String,
+    pub label: String,
+    pub is_materials: bool,
+    pub sub_zip_name: String,
+    pub sort_order: i64,
+    pub size_bytes: Option<u64>,
+    pub is_compressed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VariantArg {
+    pub label: String,
+    pub is_materials: bool,
+    pub sub_zip_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportMultiAvatarArgs {
+    pub zip_path: String,
+    pub name: String,
+    pub author: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub booth_id: Option<String>,
+    pub product_images: Vec<String>,
+    pub variants: Vec<VariantArg>,
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +231,7 @@ impl VpmPackage {
 pub enum TrackerKind {
     Item,
     Author,
+    Keyword,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,6 +256,8 @@ pub struct TrackerItem {
     pub last_checked_at: Option<String>,
     pub is_active: bool,
     pub created_at: String,
+    pub search_keyword: Option<String>,
+    pub search_category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +288,8 @@ pub struct CreateTrackerItemPayload {
     pub track_new_items: Option<bool>,
     // common
     pub check_interval_minutes: Option<i64>,
+    pub search_keyword: Option<String>,
+    pub search_category: Option<String>,
 }
 
 /// Payload para actualizar configuración de un tracker item existente.
