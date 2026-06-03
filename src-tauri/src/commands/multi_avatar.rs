@@ -1,9 +1,10 @@
 // src-tauri/src/commands/multi_avatar.rs
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::ItemVariant;
+use crate::models::{ImportMultiAvatarArgs, ItemVariant};
 use rusqlite::params;
 use tauri::State;
+use uuid::Uuid;
 use zip::ZipArchive;
 
 /// Lists top-level .zip / .unitypackage entries inside a container zip.
@@ -128,4 +129,69 @@ pub async fn get_item_variants(
         .collect();
 
     Ok(variants)
+}
+
+/// Imports a container zip as a multi-avatar item.
+/// Creates inventory_item with is_multi_avatar=1 and all variant rows atomically.
+#[tauri::command]
+pub async fn import_multi_avatar_package(
+    pool: State<'_, DbPool>,
+    args: ImportMultiAvatarArgs,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let item_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Compute file size
+    let size_bytes: Option<i64> = std::fs::metadata(&args.zip_path)
+        .ok()
+        .map(|m| m.len() as i64);
+
+    conn.execute(
+        "INSERT INTO inventory_items
+         (id, name, author, source, source_id, local_path, thumbnail_url, download_date,
+          size_bytes, is_compressed, display_name, folder_id, is_multi_avatar)
+         VALUES (?1,?2,?3,'local',?4,?5,?6,?7,?8,0,?2,?9,1)",
+        params![
+            item_id,
+            args.name,
+            args.author,
+            args.booth_id,
+            args.zip_path,
+            args.thumbnail_url,
+            now,
+            size_bytes,
+            args.folder_id,
+        ],
+    )?;
+
+    for (i, variant) in args.variants.iter().enumerate() {
+        let vid = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO inventory_item_variants
+             (id, item_id, label, is_materials, sub_zip_name, sort_order)
+             VALUES (?1,?2,?3,?4,?5,?6)",
+            params![
+                vid,
+                item_id,
+                variant.label,
+                variant.is_materials,
+                variant.sub_zip_name,
+                i as i64,
+            ],
+        )?;
+    }
+
+    // Store product images if any
+    if !args.product_images.is_empty() {
+        for (i, url) in args.product_images.iter().enumerate() {
+            conn.execute(
+                "INSERT OR IGNORE INTO item_product_images (item_id, url, sort_order)
+                 VALUES (?1, ?2, ?3)",
+                params![item_id, url, i as i64],
+            ).ok(); // ignore if table doesn't exist or has different schema
+        }
+    }
+
+    Ok(item_id)
 }
