@@ -12,6 +12,8 @@ import { useCollectionsStore } from "./store/collectionsStore";
 import { SplashScreenCarousel } from "@/components/SplashScreenCarousel";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { UpdateDialog } from "@/components/updates/UpdateDialog";
+import { MigrationPopup } from "@/components/inventory/MigrationPopup";
+import { useInventoryStore } from "@/store/inventoryStore";
 import { useAppearanceStore, applyTheme, applyUiScale, applyAccentColor, applyFontSize, applyAnimSpeed, applySidebarWidth, applyBgStyle, applyWallpaperCSS, THEMES,  } from "@/store/appearanceStore";
 import { WallpaperBackground } from "@/components/shared/WallpaperBackground";
 
@@ -66,6 +68,7 @@ export default function App() {
   const handleSplashDone = useCallback(() => setSplashDone(true), []);
   const showGetStarted = useAppStore((s) => s.showGetStarted);
   const closeGetStarted = useAppStore((s) => s.closeGetStarted);
+  const inventoryItems = useInventoryStore((s) => s.items);
 
   const loadingScreen = useAppearanceStore((s) => s.loadingScreen);
   const betaFeaturesEnabled = useAppearanceStore((s) => s.betaFeaturesEnabled);
@@ -115,6 +118,7 @@ export default function App() {
       {splashDone && showGetStarted && (
         <GetStarted onClose={closeGetStarted} />
       )}
+      <MigrationPopup hasItems={inventoryItems.length > 0} />
     </>
   );
 }
