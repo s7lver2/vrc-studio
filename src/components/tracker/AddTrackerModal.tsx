@@ -37,6 +37,8 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
   const [trackPriceDrops, setTrackPriceDrops] = useState(true);
   const [trackAvailability, setTrackAvailability] = useState(true);
   const [trackNewItems, setTrackNewItems] = useState(true);
+  const [keywordQuery, setKeywordQuery] = useState("");
+  const [keywordCategory, setKeywordCategory] = useState("");
   const [interval, setInterval] = useState(60);
   const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,7 +55,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
         setItemAuthor(detail.author);
         setItemThumbnail(detail.images[0] ?? "");
         setItemUrl(detail.url);
-      } catch { /* ignorar */ }
+      } catch { /* ignore */ }
       setFetching(false);
     }, 800);
     return () => clearTimeout(timer);
@@ -63,25 +65,37 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
     setError(null);
     setSaving(true);
     try {
-      const payload: CreateTrackerItemPayload = {
+      let payload: CreateTrackerItemPayload = {
         kind,
         check_interval_minutes: interval,
-        ...(kind === "item"
-          ? {
-              booth_id: boothId || undefined,
-              item_name: itemName || undefined,
-              item_author: itemAuthor || undefined,
-              item_thumbnail_url: itemThumbnail || undefined,
-              item_url: itemUrl || undefined,
-              track_price_drops: trackPriceDrops,
-              track_availability: trackAvailability,
-            }
-          : {
-              author_name: authorName || undefined,
-              author_booth_shop_id: authorShopId || undefined,
-              track_new_items: trackNewItems,
-            }),
       };
+
+      if (kind === "item") {
+        payload = {
+          ...payload,
+          booth_id: boothId || undefined,
+          item_name: itemName || undefined,
+          item_author: itemAuthor || undefined,
+          item_thumbnail_url: itemThumbnail || undefined,
+          item_url: itemUrl || undefined,
+          track_price_drops: trackPriceDrops,
+          track_availability: trackAvailability,
+        };
+      } else if (kind === "author") {
+        payload = {
+          ...payload,
+          author_name: authorName || undefined,
+          author_booth_shop_id: authorShopId || undefined,
+          track_new_items: trackNewItems,
+        };
+      } else if (kind === "keyword") {
+        payload = {
+          ...payload,
+          search_keyword: keywordQuery || undefined,
+          search_category: keywordCategory || undefined,
+        };
+      }
+
       await createItem(payload);
       onCreated?.();
       onClose();
@@ -133,7 +147,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
         {!prefill && (
           <div className="px-6 pt-5 shrink-0">
             <div className="flex gap-2 p-1 rounded-xl bg-zinc-900 border border-zinc-800">
-              {(["item", "author"] as TrackerKind[]).map((k) => (
+              {(["item", "author", "keyword"] as TrackerKind[]).map((k) => (
                 <button
                   key={k}
                   onClick={() => setKind(k)}
@@ -144,7 +158,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
                       : "text-zinc-500 hover:text-zinc-300"
                   )}
                 >
-                  {k === "item" ? "Booth Item" : "Author / Shop"}
+                  {k === "item" ? "Booth Item" : k === "author" ? "Author / Shop" : "Keyword"}
                 </button>
               ))}
             </div>
@@ -219,7 +233,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
                 ))}
               </div>
             </>
-          ) : (
+          ) : kind === "author" ? (
             <>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Author Name</label>
@@ -264,7 +278,35 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
                 </label>
               </div>
             </>
-          )}
+          ) : kind === "keyword" ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Search keyword
+                </label>
+                <input
+                  value={keywordQuery}
+                  onChange={(e) => setKeywordQuery(e.target.value)}
+                  placeholder="e.g. Karin avatar, kemono ears..."
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors"
+                />
+                <p className="text-[10px] text-zinc-600">
+                  VRC Studio will monitor Booth search results for new items matching this query.
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  Category <span className="text-zinc-700 normal-case">(optional)</span>
+                </label>
+                <input
+                  value={keywordCategory}
+                  onChange={(e) => setKeywordCategory(e.target.value)}
+                  placeholder="e.g. 3D models"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors"
+                />
+              </div>
+            </>
+          ) : null}
 
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Check Every</label>

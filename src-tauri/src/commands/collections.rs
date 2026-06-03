@@ -12,6 +12,7 @@ pub struct Collection {
     pub name: String,
     pub cover_url: String,
     pub created_at: String,
+    pub description: String,
     pub updated_at: String,
     pub item_count: i64,
 }
@@ -34,24 +35,25 @@ pub struct CollectionItem {
 pub fn collections_list(pool: State<'_, DbPool>) -> Result<Vec<Collection>, AppError> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
-        "SELECT c.id, c.name, c.cover_url, c.created_at, c.updated_at,
-                COUNT(ci.id) as item_count
-         FROM shop_collections c
-         LEFT JOIN shop_collection_items ci ON ci.collection_id = c.id
-         GROUP BY c.id
-         ORDER BY c.updated_at DESC",
-    )?;
-    let cols = stmt
-        .query_map([], |row| {
-            Ok(Collection {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                cover_url: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
-                item_count: row.get(5)?,
-            })
-        })?
+    "SELECT c.id, c.name, c.cover_url, c.description, c.created_at, c.updated_at,
+            COUNT(ci.id) as item_count
+     FROM shop_collections c
+     LEFT JOIN shop_collection_items ci ON ci.collection_id = c.id
+     GROUP BY c.id
+     ORDER BY c.updated_at DESC",
+)?;
+let cols = stmt
+    .query_map([], |row| {
+        Ok(Collection {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            cover_url: row.get(2)?,
+            description: row.get(3)?,
+            created_at: row.get(4)?,
+            updated_at: row.get(5)?,
+            item_count: row.get(6)?,
+        })
+    })?
         .filter_map(|r| r.ok())
         .collect();
     Ok(cols)
@@ -66,11 +68,19 @@ pub fn collection_create(
     let now = chrono::Utc::now().to_rfc3339();
     let conn = pool.get()?;
     conn.execute(
-        "INSERT INTO shop_collections (id, name, cover_url, created_at, updated_at)
-         VALUES (?1, ?2, '', ?3, ?3)",
+        "INSERT INTO shop_collections (id, name, cover_url, description, created_at, updated_at)
+         VALUES (?1, ?2, '', '', ?3, ?3)",
         params![id, name, now],
     )?;
-    Ok(Collection { id, name, cover_url: String::new(), created_at: now.clone(), updated_at: now, item_count: 0 })
+    Ok(Collection {
+        id,
+        name,
+        cover_url: String::new(),
+        description: String::new(),
+        created_at: now.clone(),
+        updated_at: now,
+        item_count: 0,
+    })
 }
 
 #[tauri::command]
@@ -207,4 +217,19 @@ pub fn collection_get_item_collections(
         .filter_map(|r| r.ok())
         .collect();
     Ok(ids)
+}
+
+#[tauri::command]
+pub fn collection_update_description(
+    pool: State<'_, DbPool>,
+    collection_id: String,
+    description: String,
+) -> Result<(), AppError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE shop_collections SET description = ?1, updated_at = ?2 WHERE id = ?3",
+        params![description, now, collection_id],
+    )?;
+    Ok(())
 }

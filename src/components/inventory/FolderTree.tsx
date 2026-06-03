@@ -62,7 +62,7 @@ export function FolderTree() {
     if (!name || loading) return;
     setLoading(true);
     try {
-      await addFolder(name);
+      await addFolder(name, selectedFolderId ?? undefined);
       setNewFolderName("");
       setCreating(false);
     } finally {

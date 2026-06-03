@@ -5,12 +5,14 @@
 use crate::db::DbPool;
 use crate::models::{TrackerItem, TrackerKind};
 use crate::services::booth;
-use rusqlite::{params, OptionalExtension};
-use tauri::{AppHandle, Emitter, Manager};
+use anyhow::{anyhow, Result};
 use chrono::Utc;
-use uuid::Uuid;
+use regex::Regex;
+use rusqlite::{params, OptionalExtension};
 use serde_json::json;
-use anyhow::{Result, anyhow};
+use std::collections::HashSet;
+use tauri::{AppHandle, Emitter, Manager};
+use uuid::Uuid;
 
 const EVENT_TRACKER_UPDATE: &str = "tracker:update";
 
@@ -18,7 +20,13 @@ fn row_to_tracker_item(row: &rusqlite::Row<'_>) -> TrackerItem {
     let kind_s: String = row.get("kind").unwrap_or_default();
     TrackerItem {
         id: row.get("id").unwrap_or_default(),
-        kind: if kind_s == "author" { TrackerKind::Author } else { TrackerKind::Item },
+        kind: if kind_s == "author" {
+            TrackerKind::Author
+        } else if kind_s == "keyword" {
+            TrackerKind::Keyword
+        } else {
+            TrackerKind::Item
+        },
         booth_id: row.get("booth_id").unwrap_or_default(),
         item_name: row.get("item_name").unwrap_or_default(),
         item_author: row.get("item_author").unwrap_or_default(),
@@ -30,6 +38,8 @@ fn row_to_tracker_item(row: &rusqlite::Row<'_>) -> TrackerItem {
         author_name: row.get("author_name").ok(),
         author_booth_shop_id: row.get("author_booth_shop_id").ok(),
         track_new_items: row.get::<_, i64>("track_new_items").unwrap_or(0) != 0,
+        search_keyword: row.get("search_keyword").ok(),
+        search_category: row.get("search_category").ok(),
         check_interval_minutes: row.get("check_interval_minutes").unwrap_or(60),
         last_checked_at: row.get("last_checked_at").ok(),
         is_active: row.get::<_, i64>("is_active").unwrap_or(0) != 0,
@@ -52,11 +62,7 @@ async fn run_checks(app: &AppHandle, db: &DbPool) -> Result<()> {
     run_checks_now(app, db, None).await
 }
 
-pub async fn run_checks_now(
-    app: &AppHandle,
-    db: &DbPool,
-    filter_id: Option<String>,
-) -> Result<()> {
+pub async fn run_checks_now(app: &AppHandle, db: &DbPool, filter_id: Option<String>) -> Result<()> {
     // 1. Fetch active tracker items in a blocking task
     let items = tokio::task::spawn_blocking({
         let db = db.clone();
@@ -73,7 +79,8 @@ pub async fn run_checks_now(
             let rows = stmt.query_map(param_refs.as_slice(), |row| Ok(row_to_tracker_item(row)))?;
             rows.collect::<Result<Vec<_>, _>>().map_err(|e| anyhow!(e))
         }
-    }).await??;
+    })
+    .await??;
 
     let client = reqwest::Client::builder()
         .user_agent("VRC-Studio/1.0")
@@ -141,7 +148,8 @@ pub async fn run_checks_now(
                 if search_query.is_empty() {
                     0u32
                 } else {
-                    let products = booth::search(&client, &search_query, 1)
+                    // 👇 añadir el cuarto argumento `false`
+                    let products = booth::search(&client, &search_query, 1, false)
                         .await
                         .map_err(|e| anyhow!("Booth search error: {}", e))?;
 
@@ -154,7 +162,7 @@ pub async fn run_checks_now(
                         let mut created = 0u32;
                         let mut stmt = conn.prepare(
                             "SELECT json_extract(payload, '$.booth_id') FROM tracker_events
-                             WHERE tracker_item_id = ?1 AND event_type = 'new_item'"
+                             WHERE tracker_item_id = ?1 AND event_type = 'new_item'",
                         )?;
                         let known_ids: Vec<String> = stmt
                             .query_map(params![&item_id], |row| row.get::<_, String>(0))?
@@ -168,7 +176,13 @@ pub async fn run_checks_now(
                                     "url": product.url,
                                     "thumbnail": product.thumbnail_url,
                                 });
-                                insert_event_sync(&conn, &item_id, "new_item", &payload.to_string(), &now)?;
+                                insert_event_sync(
+                                    &conn,
+                                    &item_id,
+                                    "new_item",
+                                    &payload.to_string(),
+                                    &now,
+                                )?;
                                 created += 1;
                             }
                         }
@@ -177,7 +191,16 @@ pub async fn run_checks_now(
                             params![now, item_id],
                         )?;
                         Ok(created)
-                    }).await??
+                    })
+                    .await??
+                }
+            }
+            TrackerKind::Keyword => {
+                if let Some(ref kw) = item.search_keyword {
+                    // Call async function that handles everything (including DB updates)
+                    check_keyword_results(db, item, kw, &now_str).await?
+                } else {
+                    0u32
                 }
             }
         };
@@ -219,10 +242,107 @@ fn send_os_notification(app: &AppHandle, item: &TrackerItem) {
     #[cfg(target_os = "windows")]
     {
         use tauri_plugin_notification::NotificationExt;
-        let _ = app.notification()
+        let _ = app
+            .notification()
             .builder()
             .title("VRC Studio Tracker")
             .body(format!("Cambio detectado en: {}", label))
             .show();
     }
+}
+
+/// Check keyword results: fetch search page, detect new items, store events.
+/// Returns number of new events created (u32).
+async fn check_keyword_results(
+    db: &DbPool,
+    item: &TrackerItem,
+    keyword: &str,
+    now_str: &str,
+) -> Result<u32> {
+    let encoded = urlencoding::encode(keyword);
+    let url = format!("https://booth.pm/en/browse?q={}&sort=new", encoded);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0 (compatible; VRCStudio)")
+        .send()
+        .await
+        .map_err(|e| anyhow!("HTTP error: {}", e))?;
+    let html = resp
+        .text()
+        .await
+        .map_err(|e| anyhow!("Body error: {}", e))?;
+
+    // Extract booth IDs
+    let re = Regex::new(r#"/items/(\d{5,8})"#).unwrap();
+    let found_ids: HashSet<String> = re
+        .captures_iter(&html)
+        .filter_map(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+        .collect();
+
+    if found_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let item_id = item.id.clone();
+    let keyword_owned = keyword.to_string();
+    let now = now_str.to_string();
+    let db = db.clone();
+
+    let created = tokio::task::spawn_blocking(move || -> Result<u32> {
+        let conn = db.get().map_err(|e| anyhow!("{}", e))?;
+        let mut created = 0u32;
+
+        // Get previously seen IDs from last 'keyword_seen' event
+        let seen_ids: HashSet<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT payload FROM tracker_events
+                 WHERE tracker_item_id = ?1 AND event_type = 'keyword_seen'
+                 ORDER BY detected_at DESC LIMIT 1"
+            )?;
+            let snapshot: Option<String> = stmt
+                .query_row(params![&item_id], |row| row.get(0))
+                .optional()?;
+            snapshot
+                .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .collect()
+        };
+
+        let new_ids: Vec<&String> = found_ids.iter().filter(|id| !seen_ids.contains(*id)).collect();
+        if !new_ids.is_empty() {
+            for booth_id in new_ids.iter().take(10) {
+                let payload = json!({
+                    "booth_id": booth_id,
+                    "keyword": keyword_owned,
+                    "url": format!("https://booth.pm/items/{}", booth_id)
+                });
+                insert_event_sync(&conn, &item_id, "new_item", &payload.to_string(), &now)?;
+                created += 1;
+            }
+        }
+
+        // Save updated snapshot
+        let all_ids: Vec<String> = seen_ids.union(&found_ids).cloned().collect();
+        let snapshot_payload = serde_json::to_string(&all_ids).unwrap_or_default();
+        let snapshot_id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO tracker_events (id, tracker_item_id, event_type, payload, detected_at, is_read)
+             VALUES (?1, ?2, 'keyword_seen', ?3, ?4, 1)",
+            params![snapshot_id, item_id, snapshot_payload, now],
+        )?;
+
+        // Update last_checked_at
+        conn.execute(
+            "UPDATE tracker_items SET last_checked_at = ?1 WHERE id = ?2",
+            params![now, item_id],
+        )?;
+
+        Ok(created)
+    }).await??;
+
+    Ok(created)
 }

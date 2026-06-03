@@ -18,8 +18,214 @@
   --accent-s: 72%;
   --accent-l: 51%;
   --accent-color: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+
+  /* ── Theme System Variables ───────────────────────────────── */
+  --card-bg:        rgba(24, 24, 27, 1);
+  --surface-bg:     rgba(39, 39, 42, 1);
+  --border-color:   rgba(63, 63, 70, 0.8);
+  --border-strong:  rgba(82, 82, 91, 1);
+  --sidebar-bg:     rgba(9, 9, 11, 0.97);
+  --text-primary:   rgba(228, 228, 231, 1);
+  --text-muted:     rgba(113, 113, 122, 1);
+  --radius-card:    12px;
+  --radius-sm:      8px;
+  --glass-blur:     0px;
+  --noise-opacity:  0;
+  --font-family:    inherit;
+  --card-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  --accent-glow: 0 0 10px rgba(220,38,38,0.35);
+  --scanline-opacity: 0;
+  --bg-gradient: none;
+  --border-glow: none;
+  --sidebar-accent-line: 0px;
 }
 
+/* Gradient overlay from preset */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--bg-gradient);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanline overlay */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, var(--scanline-opacity)) 3px,
+    rgba(0, 0, 0, var(--scanline-opacity)) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Noise overlay — se activa via --noise-opacity en temas que lo usan */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: var(--noise-opacity, 0);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+  mix-blend-mode: overlay;
+}
+
+/* Font override por tema */
+body {
+  font-family: var(--font-family);
+}
+
+/* Inventory card hover — border usa --border-strong del tema activo */
+.inventory-card:hover {
+  border-color: var(--border-strong) !important;
+}
+
+/* FolderCard base state — hover usa --border-strong */
+.folder-card-base:hover {
+  border-color: var(--border-strong) !important;
+}
+
+/* Glass cards — backdrop blur para temas Aurora/Sakura */
+[data-theme="aurora"] .inventory-card,
+[data-theme="aurora"] .folder-card-base,
+[data-theme="sakura"] .inventory-card,
+[data-theme="sakura"] .folder-card-base {
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   THEME COLOR OVERRIDES — remap Tailwind zinc scale per theme
+   This makes ALL bg-zinc-*, border-zinc-*, text-zinc-* respond to the theme
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── CYBERPUNK: Matrix green on black ── */
+[data-theme="cyberpunk"] {
+  --color-zinc-950: #000000;
+  --color-zinc-900: rgb(0, 7, 0);
+  --color-zinc-800: rgb(0, 14, 0);
+  --color-zinc-700: rgba(0, 220, 70, 0.25);
+  --color-zinc-600: rgba(0, 200, 60, 0.5);
+  --color-zinc-500: rgba(0, 220, 80, 0.75);
+  --color-zinc-400: rgba(0, 255, 90, 0.9);
+  --color-zinc-300: rgba(100, 255, 140, 1);
+  --color-zinc-200: rgba(160, 255, 180, 1);
+  --color-zinc-100: rgba(210, 255, 220, 1);
+}
+
+/* ── AURORA: Deep purple glass ── */
+[data-theme="aurora"] {
+  --color-zinc-950: rgb(3, 0, 18);
+  --color-zinc-900: rgba(15, 5, 48, 0.85);
+  --color-zinc-800: rgba(25, 10, 70, 0.75);
+  --color-zinc-700: rgba(130, 70, 240, 0.3);
+  --color-zinc-600: rgba(150, 90, 255, 0.45);
+  --color-zinc-500: rgba(160, 100, 255, 0.7);
+  --color-zinc-400: rgba(190, 145, 255, 1);
+  --color-zinc-300: rgba(218, 195, 255, 1);
+  --color-zinc-200: rgba(237, 225, 255, 1);
+  --color-zinc-100: rgba(248, 242, 255, 1);
+}
+
+/* ── SAKURA: Dark ocean with cherry blossom ── */
+[data-theme="sakura"] {
+  --color-zinc-950: rgb(3, 6, 18);
+  --color-zinc-900: rgba(5, 9, 30, 0.85);
+  --color-zinc-800: rgba(8, 14, 45, 0.75);
+  --color-zinc-700: rgba(240, 90, 160, 0.28);
+  --color-zinc-600: rgba(240, 100, 165, 0.45);
+  --color-zinc-500: rgba(240, 120, 175, 0.7);
+  --color-zinc-400: rgba(255, 160, 200, 1);
+  --color-zinc-300: rgba(255, 200, 225, 1);
+  --color-zinc-200: rgba(255, 225, 240, 1);
+  --color-zinc-100: rgba(255, 242, 248, 1);
+}
+
+/* ── VOID: Absolute black, cold blue glimmer ── */
+[data-theme="void"] {
+  --color-zinc-950: #000000;
+  --color-zinc-900: rgb(0, 1, 10);
+  --color-zinc-800: rgb(0, 3, 16);
+  --color-zinc-700: rgba(10, 28, 80, 1);
+  --color-zinc-600: rgba(20, 50, 120, 1);
+  --color-zinc-500: rgba(50, 90, 160, 1);
+  --color-zinc-400: rgba(100, 150, 220, 1);
+  --color-zinc-300: rgba(160, 200, 245, 1);
+  --color-zinc-200: rgba(200, 225, 255, 1);
+  --color-zinc-100: rgba(228, 238, 255, 1);
+}
+
+/* ── TERMINAL: Green phosphor CRT ── */
+[data-theme="terminal"] {
+  --color-zinc-950: #010401;
+  --color-zinc-900: rgb(0, 8, 0);
+  --color-zinc-800: rgb(0, 16, 0);
+  --color-zinc-700: rgba(0, 200, 0, 0.25);
+  --color-zinc-600: rgba(0, 180, 0, 0.5);
+  --color-zinc-500: rgba(0, 210, 0, 0.75);
+  --color-zinc-400: rgba(0, 240, 0, 0.9);
+  --color-zinc-300: rgba(80, 255, 80, 1);
+  --color-zinc-200: rgba(150, 255, 150, 1);
+  --color-zinc-100: rgba(210, 255, 210, 1);
+}
+
+/* ── TERMINAL: CRT scanline glow on text ── */
+[data-theme="terminal"] .text-zinc-100,
+[data-theme="terminal"] .text-zinc-200,
+[data-theme="terminal"] .text-zinc-300 {
+  text-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
+}
+[data-theme="cyberpunk"] .text-zinc-100,
+[data-theme="cyberpunk"] .text-zinc-200,
+[data-theme="cyberpunk"] .text-zinc-300 {
+  text-shadow: 0 0 8px rgba(0, 255, 80, 0.5);
+}
+
+.rounded-xl,
+.rounded-2xl {
+  box-shadow: var(--card-shadow);
+}
+
+[data-theme="cyberpunk"] .border-zinc-800,
+[data-theme="terminal"] .border-zinc-800 {
+  box-shadow: var(--border-glow);
+}
+
+/* Línea de acento en sidebar según preset */
+[data-sidebar-accent-line] aside,
+aside {
+  border-right-width: max(1px, 0px); /* siempre tiene borde */
+}
+
+/* La línea de acento izquierda en el sidebar active item */
+.sidebar-accent-indicator {
+  width: var(--sidebar-accent-line);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   WALLPAPER ACTIVE — make all zinc backgrounds semi-transparent
+   so the wallpaper shows through every panel
+   ══════════════════════════════════════════════════════════════════ */
+
+html[data-wallpaper="active"] {
+  background-color: transparent !important;
+}
+
+[data-wallpaper="active"] {
+  --color-zinc-950: rgba(0, 0, 0, 0.18);
+  --color-zinc-900: rgba(0, 0, 0, 0.32);
+  --color-zinc-800: rgba(0, 0, 0, 0.42);
+  --color-zinc-700: rgba(0, 0, 0, 0.5);
+}
 
 
 html {

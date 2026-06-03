@@ -87,6 +87,7 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
     selectFolder,
     folders,
     moveItem,
+    moveFolderToParent,
     reorderItems,
     reorderFolders,
     sortField,
@@ -225,8 +226,30 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
         setLocalOrder(null);
         return;
       }
-      const itemId = String(active.id);
+
+      const rawActiveId = String(active.id);
       const targetId = String(over.id);
+
+      // ── Folder being dragged ─────────────────────────────────────────────
+      if (rawActiveId.startsWith("folder-")) {
+        const sourceFolderId = rawActiveId.replace("folder-", "");
+        if (targetId.startsWith("folder:")) {
+          // Dropped onto another folder — make it a child
+          const destFolderId = targetId.replace("folder:", "");
+          if (destFolderId !== sourceFolderId) {
+            await moveFolderToParent(sourceFolderId, destFolderId);
+          }
+        } else if (targetId === "root") {
+          // Dropped on "go up" zone — move to root
+          await moveFolderToParent(sourceFolderId, null);
+        }
+        // else: reorder among sibling folders — handled by existing reorderFolders logic below
+        setLocalOrder(null);
+        return;
+      }
+
+      // ── Inventory item being dragged ─────────────────────────────────────
+      const itemId = rawActiveId;
       if (targetId.startsWith("folder:")) {
         const folderId = targetId.replace("folder:", "");
         await moveItem(itemId, folderId);
@@ -246,7 +269,7 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
       }
       setLocalOrder(null);
     },
-    [moveItem, selectedFolderId, localOrder, sortField, reorderItems]
+    [moveItem, moveFolderToParent, selectedFolderId, localOrder, sortField, reorderItems]
   );
 
   const handleGridContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {

@@ -85,7 +85,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
             }
           `}
         >
-          {folder.custom_image_path && folder.custom_image_fill !== "grid" ? (
+          {folder.custom_image_path ? (
             <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0">
               <img
                 src={imageUrl || undefined}
@@ -155,56 +155,69 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
           setCtxMenu({ x: e.clientX, y: e.clientY });
         }}
         className={`
-          relative flex flex-col items-center justify-center gap-2 aspect-square rounded-xl border-2
-          cursor-pointer transition-all duration-150 select-none
+          relative flex flex-col items-center justify-center gap-2 aspect-square
+          cursor-pointer transition-all duration-150 select-none border-2
           ${isOver && isDragging
             ? "border-red-500 bg-red-500/10 scale-105"
             : isDragging
-              ? "border-dashed border-zinc-600 bg-zinc-800/40"
-              : "border-zinc-700 bg-zinc-800/60 hover:border-zinc-500 hover:bg-zinc-800"
+              ? "border-dashed border-zinc-600"
+              : "folder-card-base"
           }
         `}
-        style={
-          useGridFill
-            ? {
-                backgroundImage: `url(${imageUrl})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }
-            : undefined
-        }
+        style={{
+          background: isOver && isDragging ? undefined : "var(--card-bg)",
+          borderRadius: "var(--radius-card)",
+          borderColor: isOver && isDragging ? undefined : "var(--border-color)",
+        }}
       >
-        {/* Dark overlay when using grid fill */}
-        {useGridFill && <div className="absolute inset-0 bg-black/40 rounded-xl" />}
-
-        {/* Icon / image area – hidden when grid fill is active (background replaces it) */}
-        {!useGridFill && (
-          folder.custom_image_path && folder.custom_image_fill !== "grid" ? (
-            <img
-              src={imageUrl || undefined}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="w-14 h-14 rounded-lg object-cover z-10"
-            />
-          ) : (
-            isOver && isDragging
-              ? <FolderOpen className="h-10 w-10 z-10" style={{ color: folderColor }} />
-              : <Folder className="h-10 w-10 z-10" style={{ color: folderColor }} />
-          )
+        {/* Full-bleed image (both fill modes) */}
+        {folder.custom_image_path && (
+          <img
+            src={imageUrl || undefined}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 w-full h-full object-cover z-0"
+            style={{ borderRadius: "var(--radius-card)" }}
+          />
         )}
 
-        {/* Folder name – always visible */}
-        <span className="text-[11px] text-zinc-300 font-medium truncate max-w-[90%] text-center px-1 z-10">
+        {/* Overlay: dark scrim for readability */}
+        {folder.custom_image_path ? (
+          /* Gradient from transparent at top to solid at bottom for name legibility */
+          <div
+            className="absolute inset-0 z-10"
+            style={{
+              borderRadius: "var(--radius-card)",
+              background: useGridFill
+                ? "rgba(0,0,0,0.38)"
+                : "linear-gradient(to bottom, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72) 100%)",
+            }}
+          />
+        ) : (
+          /* No image – show folder icon */
+          isOver && isDragging
+            ? <FolderOpen className="h-10 w-10 z-10" style={{ color: folderColor }} />
+            : <Folder className="h-10 w-10 z-10" style={{ color: folderColor }} />
+        )}
+
+        {/* Folder name – pinned to bottom when image present, centered otherwise */}
+        <span
+          className={`text-[11px] font-medium truncate max-w-[90%] text-center px-1 z-20 ${
+            folder.custom_image_path
+              ? "absolute bottom-2 left-0 right-0 text-white drop-shadow-sm"
+              : "text-zinc-300"
+          }`}
+        >
           {folder.name}
         </span>
 
         {itemCount > 0 && (
-          <span className="absolute top-2 right-2 text-[9px] text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded-full z-10">
+          <span className="absolute top-2 right-2 text-[9px] text-zinc-500 bg-zinc-900/80 px-1.5 py-0.5 rounded-full z-20">
             {itemCount}
           </span>
         )}
-        <ChevronRight className="absolute bottom-2 right-2 h-3 w-3 text-zinc-600 z-10" />
+        <ChevronRight className="absolute bottom-2 right-2 h-3 w-3 text-zinc-400 z-20" />
       </div>
 
       {ctxMenu && (
@@ -240,12 +253,13 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
 
 export const FolderCard = React.memo(FolderCardInner, (prev, next) => {
   return (
-    prev.folder.id        === next.folder.id        &&
-    prev.folder.name      === next.folder.name      &&
-    prev.folder.color     === next.folder.color     &&
-    prev.folder.custom_image_fill === next.folder.custom_image_fill &&
-    prev.itemCount        === next.itemCount        &&
-    prev.isDragging       === next.isDragging       &&
-    prev.viewMode         === next.viewMode
+    prev.folder.id                    === next.folder.id                    &&
+    prev.folder.name                  === next.folder.name                  &&
+    prev.folder.color                 === next.folder.color                 &&
+    prev.folder.custom_image_path     === next.folder.custom_image_path     &&  // ← AÑADIDO
+    prev.folder.custom_image_fill     === next.folder.custom_image_fill     &&
+    prev.itemCount                    === next.itemCount                    &&
+    prev.isDragging                   === next.isDragging                   &&
+    prev.viewMode                     === next.viewMode
   );
 });

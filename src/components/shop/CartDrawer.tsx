@@ -1,13 +1,19 @@
-import { X, ShoppingCart, Download, Trash2, Package } from "lucide-react";
+import { X, ShoppingCart, Download, Trash2, Package, ExternalLink, AlertCircle } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
 import { useShopStore } from "../../store/shopStore";
 import { tauriStartDownload } from "../../lib/tauri";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useState } from "react";
 
 export function CartDrawer() {
   const { items, open, setOpen, removeItem, clear } = useCartStore();
   const { boothOwnedIds } = useShopStore();
   const [downloading, setDownloading] = useState(false);
+
+  const unpurchasedItems = items.filter(
+    (item) => item.source === "booth" && !boothOwnedIds.has(item.source_id)
+  );
+  const hasUnpurchased = unpurchasedItems.length > 0;
 
   if (!open) return null;
 
@@ -40,7 +46,7 @@ export function CartDrawer() {
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-zinc-900 border-l border-zinc-800 flex flex-col shadow-2xl">
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-[440px] bg-zinc-900 border-l border-zinc-800 flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -84,15 +90,28 @@ export function CartDrawer() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-zinc-100 truncate">
-                      {item.name}
-                    </p>
-                    <p className="text-[10px] text-zinc-500 truncate">
-                      {item.author}
-                    </p>
-                    <p className="text-[10px] text-red-400 font-semibold mt-0.5">
-                      {item.price_display}
-                    </p>
+                    <p className="text-xs font-medium text-zinc-100 truncate">{item.name}</p>
+                    <p className="text-[10px] text-zinc-500 truncate">{item.author}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-[10px] text-red-400 font-semibold">{item.price_display}</p>
+                      {item.source === "booth" && !boothOwnedIds.has(item.source_id) && (
+                        <span className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                          <AlertCircle className="h-2.5 w-2.5" />
+                          Not purchased
+                        </span>
+                      )}
+                    </div>
+                    {item.source === "booth" && !boothOwnedIds.has(item.source_id) && (
+                      <button
+                        onClick={async () => {
+                          try { await openUrl(item.url); } catch { window.open(item.url, "_blank"); }
+                        }}
+                        className="mt-1 flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                        Buy on Booth
+                      </button>
+                    )}
                   </div>
                   <button
                     onClick={() => removeItem(item.source, item.source_id)}
@@ -110,10 +129,20 @@ export function CartDrawer() {
         {/* Footer actions */}
         {items.length > 0 && (
           <div className="border-t border-zinc-800 p-4 flex flex-col gap-2">
+            {hasUnpurchased && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  {unpurchasedItems.length === 1
+                    ? "1 item hasn't been purchased yet. Buy it on Booth before downloading."
+                    : `${unpurchasedItems.length} items haven't been purchased yet. Buy them on Booth before downloading.`}
+                </span>
+              </div>
+            )}
             <button
               onClick={handleDownloadAll}
-              disabled={downloading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-md bg-red-600 hover:bg-red-700 disabled:opacity-50 text-sm font-semibold text-white transition-colors"
+              disabled={downloading || hasUnpurchased}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-md bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold text-white transition-colors"
             >
               <Download className="h-4 w-4" />
               {downloading ? "Downloading…" : `Download all (${items.length})`}

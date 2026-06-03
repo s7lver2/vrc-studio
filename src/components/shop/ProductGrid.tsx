@@ -21,8 +21,8 @@ function ProductCardSkeleton() {
 }
 
 export function ProductGrid() {
-  const { results, loading, error, loadNextPage, page, ripperPageCount } = useShopStore();
-  const hasMore = page < ripperPageCount;
+  const { results, loading, error, loadNextPage, page } = useShopStore();
+  const hasMore = page < 3; // booth returns at most 3 pages typically
   const shopItemSize = useAppearanceStore((s) => s.shopItemSize);
 
   const cardSizes = {

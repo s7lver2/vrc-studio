@@ -19,6 +19,7 @@ import {
   tauriReorderItems,
   tauriSetItemCustomImages,
   tauriUpdateFolder,
+  tauriMoveFolderToParent,
   tauriDeleteInventoryFolder,
   tauriReorderFolders,
 } from "../lib/tauri";
@@ -161,6 +162,7 @@ interface InventoryState {
   reorderItems: (orderedIds: string[]) => Promise<void>;
   setItemCustomImages: (itemId: string, sourcePaths: string[]) => Promise<string[]>;
   updateFolder: (folderId: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean; image_fill?: "icon" | "grid"; }) => Promise<void>;
+  moveFolderToParent: (folderId: string, parentId: string | null) => Promise<void>;
   removeFolder: (folderId: string) => Promise<void>;
   reorderFolders: (orderedIds: string[]) => Promise<void>;
   rangeSelectItems: (anchorId: string, targetId: string, orderedIds: string[]) => void;
@@ -355,6 +357,15 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   updateFolder: async (folderId, opts) => {
     const updated = await tauriUpdateFolder(folderId, opts);
     set((s) => ({ folders: s.folders.map((f) => (f.id === folderId ? updated : f)) }));
+  },
+
+  moveFolderToParent: async (folderId, parentId) => {
+    await tauriMoveFolderToParent(folderId, parentId);
+    set((s) => ({
+      folders: s.folders.map((f) =>
+        f.id === folderId ? { ...f, parent_id: parentId } : f
+      ),
+    }));
   },
 
   rangeSelectItems: (anchorId, targetId, orderedIds) => set((s) => {

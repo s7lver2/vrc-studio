@@ -26,11 +26,13 @@ pub fn build_search_url(query: &str, page: u32) -> String {
 /// URL del endpoint JSON oficial de Booth (usado como primera opción en `search`).
 /// Booth renderiza los resultados con JavaScript en el cliente, por lo que el HTML SSR
 /// solo contiene 1 item inicial. El endpoint JSON devuelve todos los resultados sin JS.
-fn build_json_search_url(query: &str, page: u32) -> String {
+/// Si `include_adult` es true, añade &adult=1 a la URL para mostrar contenido adulto.
+fn build_json_search_url(query: &str, page: u32, include_adult: bool) -> String {
     let encoded = urlencoding::encode(query);
+    let adult_param = if include_adult { "&adult=1" } else { "" };
     format!(
-        "https://booth.pm/en/browse.json?q={}&page={}&sort=new_arrival",
-        encoded, page
+        "https://booth.pm/en/browse.json?q={}&page={}&sort=new_arrival{}",
+        encoded, page, adult_param
     )
 }
 
@@ -190,13 +192,14 @@ pub async fn search(
     client: &reqwest::Client,
     query: &str,
     page: u32,
+    authenticated: bool,  // si el cliente tiene cookie de sesión de Booth
 ) -> Result<Vec<BoothProduct>, String> {
     // Intento 1 — JSON API (/en/browse.json).
     // Booth renderiza los resultados con JS en el cliente, por lo que el scraping HTML
     // solo obtiene 1 item del SSR. El endpoint JSON devuelve el conjunto completo.
     // parse_json_results ahora devuelve Some(vec![]) cuando el JSON es válido pero vacío,
     // con lo que sólo caemos al fallback HTML si hubo un error de red o de parseo real.
-    let json_url = build_json_search_url(query, page);
+    let json_url = build_json_search_url(query, page, authenticated);
     if let Ok(resp) = client
         .get(&json_url)
         .header("Accept", "application/json")
@@ -584,14 +587,62 @@ mod free_download_tests {
     }
 }
 
+// ── Known avatars catalogue ────────────────────────────────────────────────────
+
+pub const KNOWN_AVATARS: &[(&str, &str)] = &[
+    ("airi",      "Airi"),   ("愛莉",   "Airi"),   ("아이리", "Airi"),
+    ("manuka",    "Manuka"), ("マヌカ", "Manuka"), ("마누카", "Manuka"),
+    ("shinano",   "Shinano"),("しなの", "Shinano"),("시나노", "Shinano"),
+    ("milltina",  "Milltina"),("ミルチナ","Milltina"),
+    ("kikyo",     "Kikyo"),  ("桔梗",   "Kikyo"),
+    ("moe",       "Moe"),    ("萌",     "Moe"),
+    ("sio",       "Sio"),    ("しお",   "Sio"),
+    ("imeris",    "Imeris"), ("イメリス","Imeris"),
+    ("selestia",  "Selestia"),("セレスティア","Selestia"),
+    ("vina",      "Vina"),   ("ビナア", "Vina"),
+    ("tolass",    "Tolass"),
+    ("karin",     "Karin"),
+    ("rindo",     "Rindo"),  ("竜胆",   "Rindo"),
+    ("lime",      "Lime"),   ("らいむ", "Lime"),
+    ("coco",      "Coco"),
+    ("chiffon",   "Chiffon"),
+    ("mira",      "Mira"),
+    ("yuuko",     "Yuuko"),  ("裕子",   "Yuuko"),
+    ("hakka",     "Hakka"),
+    ("kuuta",     "Kuuta"),
+    ("milfy",     "Milfy"),
+    ("nagisa",    "Nagisa"), ("凪",     "Nagisa"),
+    ("shinra",    "Shinra"), ("森羅",   "Shinra"),
+];
+
+pub fn extract_supported_avatars(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    let mut found = std::collections::HashSet::new();
+    for (alias, canonical) in KNOWN_AVATARS {
+        let alias_lower = alias.to_lowercase();
+        let is_ascii_alias = alias.is_ascii();
+        let mut search_from = 0;
+        while let Some(pos) = lower[search_from..].find(alias_lower.as_str()) {
+            let abs = search_from + pos;
+            let boundary_ok = if is_ascii_alias {
+                let before_ok = abs == 0 || { let ch = lower.as_bytes()[abs - 1]; !ch.is_ascii_alphanumeric() && ch != b'_' };
+                let after_pos = abs + alias_lower.len();
+                let after_ok = after_pos >= lower.len() || { let ch = lower.as_bytes()[after_pos]; !ch.is_ascii_alphanumeric() && ch != b'_' };
+                before_ok && after_ok
+            } else { true };
+            if boundary_ok { found.insert(canonical.to_string()); break; }
+            search_from = abs + 1;
+        }
+    }
+    let mut result: Vec<String> = found.into_iter().collect();
+    result.sort();
+    result
+}
+
 // ── Supported avatars from item page ──────────────────────────────────────────
 
 /// Parsea la página de un item de Booth para extraer los avatares soportados.
-/// La descripción suele contener líneas como:
-///   "対応アバター" / "대응 아바타" / "Supported avatars" seguido de una lista.
 pub fn parse_item_supported_avatars(html: &str) -> Vec<String> {
-    use crate::services::ripper_webview::extract_supported_avatars;
-
     let document = Html::parse_document(html);
 
     // Buscar en el cuerpo de la descripción del item

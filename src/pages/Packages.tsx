@@ -984,8 +984,8 @@ function BrowseTab({
                   </span>
                 </div>
 
-                {/* Cards — uniform 2-column grid with fixed height */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* Cards — uniform grid with fixed height */}
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
                 {pkgs.map((pkg) => {
                   const versions = sortedVersions(pkg);
                   const selectedVer = getSelectedVersion(pkg);
@@ -1116,21 +1116,19 @@ function ProjectPickerBar() {
     <div ref={ref} className="relative shrink-0">
       <button onClick={() => setOpen((o) => !o)}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-3 border-b text-left transition-all duration-150",
-          open ? "bg-zinc-900 border-zinc-700/60" : "bg-zinc-950/80 border-zinc-800/80 hover:bg-zinc-900/60 hover:border-zinc-700/60"
+          "w-full flex items-center gap-3 px-6 py-2.5 border-b text-left transition-all duration-150",
+          open ? "bg-zinc-900/80 border-zinc-700/60" : "bg-zinc-950/60 border-zinc-800/60 hover:bg-zinc-900/50"
         )}
       >
-        <div className={cn("shrink-0 rounded-xl border p-1.5 transition-colors",
-          selectedProject ? "bg-red-950/40 border-red-900/50" : "bg-zinc-800/80 border-zinc-700/50")}>
-          <FolderOpen className={cn("h-3.5 w-3.5", selectedProject ? "text-red-400" : "text-zinc-500")} />
-        </div>
+        <FolderOpen className={cn("h-3.5 w-3.5 shrink-0", selectedProject ? "text-red-400" : "text-zinc-600")} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 shrink-0">Project</span>
         {selectedProject ? (
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-zinc-100 truncate leading-tight">{selectedProject.name}</p>
-            <p className="text-[10px] text-zinc-600 font-mono truncate">{selectedProject.path}</p>
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <p className="text-xs font-semibold text-zinc-200 truncate">{selectedProject.name}</p>
+            <span className="text-[10px] text-zinc-600 font-mono truncate hidden sm:block">{selectedProject.unity_version}</span>
           </div>
         ) : (
-          <p className="flex-1 text-sm text-zinc-500">Select A Project…</p>
+          <p className="flex-1 text-xs text-zinc-600 italic">Select a project…</p>
         )}
         <ChevronDown className={cn("h-3.5 w-3.5 text-zinc-500 shrink-0 transition-transform duration-200", open && "rotate-180")} />
         {selectedProject && (
@@ -1330,23 +1328,38 @@ export default function PackagesPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Page header */}
+      <div className="flex items-center justify-between border-b border-zinc-800 px-8 py-5 shrink-0">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-100">Packages</h1>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            {selectedProject
+              ? <>VPM packages for <span className="text-zinc-300 font-medium">{selectedProject.name}</span></>
+              : "Select a project to manage its VPM packages"}
+          </p>
+        </div>
+      </div>
+
       <ProjectPickerBar />
+
       {selectedProject ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <PackagesTab project={selectedProject} />
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 min-h-0">
-          <div className="rounded-2xl bg-gradient-to-b from-zinc-800/40 to-zinc-900/60 border border-zinc-700/40 p-7 shadow-xl shadow-black/30">
-            <Boxes className="h-10 w-10 text-zinc-600" />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-semibold text-zinc-400">No project Selected</p>
-            <p className="text-xs text-zinc-600 mt-1.5 flex items-center justify-center gap-1">
-              Select a project from up there or from
-              <ChevronRight className="h-3 w-3" />
-              Projects
-            </p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 min-h-0">
+          <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+            <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-6">
+              <Package className="h-10 w-10 text-zinc-700 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-zinc-300">No project selected</p>
+              <p className="text-xs text-zinc-600 mt-1.5 leading-relaxed">
+                Use the project picker above to select a Unity project, then browse and manage its VPM packages.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-zinc-600">
+              <FolderOpen className="h-3.5 w-3.5" />
+              <span>Or go to <span className="text-zinc-400 font-medium">Projects</span> to open one</span>
+            </div>
           </div>
         </div>
       )}

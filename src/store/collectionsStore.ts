@@ -12,6 +12,7 @@ import {
   tauriCollectionRemoveItem,
   tauriCollectionGetItems,
   tauriCollectionGetItemCollections,
+  tauriCollectionUpdateDescription,
 } from "../lib/tauri";
 
 interface CollectionsState {
@@ -29,6 +30,7 @@ interface CollectionsState {
   removeItemFromCollection: (collectionId: string, source: string, source_id: string) => Promise<void>;
   getCollectionItems: (collectionId: string) => Promise<CollectionItem[]>;
   getItemCollectionIds: (source: string, source_id: string) => Promise<string[]>;
+  updateDescription: (id: string, description: string) => Promise<void>;
 
   openPicker: (product: ShopProduct) => void;
   closePicker: () => void;
@@ -116,4 +118,12 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
 
   openPicker: (product) => set({ pickerOpen: true, pickerProduct: product }),
   closePicker: () => set({ pickerOpen: false, pickerProduct: null }),
+  updateDescription: async (id, description) => {
+    await tauriCollectionUpdateDescription(id, description);
+    set((s) => ({
+      collections: s.collections.map((c) =>
+        c.id === id ? { ...c, description } : c
+      ),
+    }));
+  },
 }));

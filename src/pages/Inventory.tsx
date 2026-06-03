@@ -113,7 +113,7 @@ function AdvancedSearchBar({
         text: "source:",
         completion: "source:",
         icon: <Globe className="h-3 w-3 text-pink-400" />,
-        description: "booth · local · riperstore",
+        description: "booth · local",
       },
       {
         text: "compressed:yes",
@@ -156,7 +156,7 @@ function AdvancedSearchBar({
       // Completions para source:
       if (lower.startsWith("source:")) {
         const partial = lower.slice(7);
-        const sources = ["booth", "local", "riperstore"];
+        const sources = ["booth", "local"];
         return sources
           .filter((s) => s.startsWith(partial))
           .map((s) => ({

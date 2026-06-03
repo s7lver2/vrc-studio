@@ -4,9 +4,9 @@ import { DownloadProgress } from "../components/shop/DownloadProgress";
 import { ProductGrid } from "../components/shop/ProductGrid";
 import { ProductModal } from "../components/shop/ProductModal";
 import { ShopFilters } from "../components/shop/ShopFilters";
+import { tauriGetBoothProductDetail } from "../lib/tauri";
 import { useShopSearch } from "../hooks/useShopSearch";
 import { ShopHome } from "../components/shop/ShopHome";
-import { useRipperStatus } from "../hooks/useRipperStatus";
 import { useInventoryStore } from "../store/inventoryStore";
 import { CollectionsView } from "../components/shop/CollectionsView";
 import { useAppStore } from "@/store/app";
@@ -16,7 +16,6 @@ import { AuthorModal } from "@/components/shop/AuthorModal";
 import { useShopStore } from "@/store/shopStore";
 import { CartDrawer } from "../components/shop/CartDrawer";
 import { useCartStore } from "../store/cartStore";
-import { isUntrustedSourcesUnlocked } from "@/hooks/useUntrustedSources";
 
 // ── Shop Warning Dialog ───────────────────────────────────────────────────────
 
@@ -69,26 +68,53 @@ function ShopWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
 
 // ── Shop page ─────────────────────────────────────────────────────────────────
 
+function detailToShopProduct(d: import("../lib/tauri").BoothProductDetail): import("../lib/tauri").ShopProduct {
+  return {
+    source_id: d.source_id,
+    name: d.name,
+    author: d.author,
+    thumbnail_url: d.images[0] || "",
+    price_display: d.price_display,
+    url: d.url,
+    source: "booth",
+  };
+}
+
 const SHOP_WARNING_KEY = "shop:warningAccepted";
 
 export default function Shop() {
   const { filters, authorResults, selectedAuthor, setSelectedAuthor } = useShopStore();
   const { query, handleQueryChange } = useShopSearch();
-  const { status: ripperStatus } = useRipperStatus();
   const setActiveSection = useAppStore((s) => s.setActiveSection);
   const { items: inventoryItems, loadItems } = useInventoryStore();
+  const { selectProduct } = useShopStore();
   const { items: cartItems, open: cartOpen, setOpen: setCartOpen } = useCartStore();
   const [collectionsOpen, setCollectionsOpen] = useState(false);
   const { recentSearches } = useShopStore();
   const { search, setQuery: storeSetQuery } = useShopStore();
+  const [surpriseLoading, setSurpriseLoading] = useState(false);
   const [warningAccepted, setWarningAccepted] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOP_WARNING_KEY) === "true"; } catch { return false; }
   });
 
   const handleSurpriseMe = async () => {
-    // Genera un ID de Booth aleatorio entre los rangos de items activos (~1M a ~7M)
-    const randomId = Math.floor(Math.random() * 6_000_000) + 1_000_000;
-    handleQueryChange(String(randomId));
+    if (surpriseLoading) return;
+    setSurpriseLoading(true);
+    let attempts = 0;
+    while (attempts < 5) {
+      const randomId = Math.floor(Math.random() * 6_000_000) + 1_000_000;
+      try {
+        const detail = await tauriGetBoothProductDetail(String(randomId));
+        if (detail?.name) {
+          selectProduct(detailToShopProduct(detail));
+          break;
+        }
+      } catch {
+        // ID inválido, reintentar
+      }
+      attempts++;
+    }
+    setSurpriseLoading(false);
   };
 
   useEffect(() => {
@@ -101,7 +127,7 @@ export default function Shop() {
     return (
       <ShopWarning
         onConfirm={() => {
-          try { localStorage.setItem(SHOP_WARNING_KEY, "true"); } catch {}
+          try { localStorage.setItem(SHOP_WARNING_KEY, "true"); } catch { }
           setWarningAccepted(true);
         }}
         onCancel={() => setActiveSection("projects")}
@@ -139,43 +165,20 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Search bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-        <input
-          className="w-full pl-9 pr-4 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500 transition-colors"
-          placeholder="Search assets, or paste a Booth URL / item ID…"
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-        />
-      </div>
-
-      {/* Filters */}
-      <ShopFilters />
-
-      {/* Ripper.store status banners */}
-      {isUntrustedSourcesUnlocked() && ripperStatus === "disconnected" && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-zinc-800/60 border border-zinc-700/50 text-xs text-zinc-400">
-          <span>Ripper.store not connected — showing Booth results only.</span>
-          <button
-            className="text-zinc-300 underline underline-offset-2 hover:text-zinc-100"
-            onClick={() => setActiveSection("settings")}
-          >
-            Connect in Settings
-          </button>
-        </div>
-      )}
-
-      {isUntrustedSourcesUnlocked() && ripperStatus === "expired" && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-yellow-900/20 border border-yellow-500/30 text-xs text-yellow-400">
-          <span>Ripper.store session expired.</span>
-          <button
-            className="underline underline-offset-2 hover:text-yellow-200"
-            onClick={() => setActiveSection("settings")}
-          >
-            Reconnect in Settings
-          </button>
-        </div>
+      {/* Search bar — solo visible cuando hay resultados activos */}
+      {query.trim() && (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+            <input
+              className="w-full pl-9 pr-4 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500 transition-colors"
+              placeholder="Search assets, or paste a Booth URL / item ID…"
+              value={query}
+              onChange={(e) => handleQueryChange(e.target.value)}
+            />
+          </div>
+          <ShopFilters />
+        </>
       )}
 
       {filters.searchMode === "authors" && authorResults.length > 0 && (
@@ -210,11 +213,12 @@ export default function Shop() {
       {!query.trim() ? (
         <ShopHome
           onSurpriseMe={handleSurpriseMe}
+          surpriseLoading={surpriseLoading}
           onOpenCollections={() => setCollectionsOpen(true)}
           recentSearches={recentSearches}
-          onSearchSuggestion={(q) => {
-            handleQueryChange(q);
-          }}
+          onSearchSuggestion={(q) => handleQueryChange(q)}
+          searchQuery={query}
+          onSearchChange={handleQueryChange}
         />
       ) : (
         <ProductGrid />

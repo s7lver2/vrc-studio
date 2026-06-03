@@ -37,8 +37,12 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col min-h-screen bg-[hsl(var(--sidebar-bg))] border-r border-zinc-800 px-3 py-5 gap-1 relative transition-[width] duration-200"
-      style={{ width: "var(--sidebar-width)" }}
+      className="flex flex-col min-h-screen px-3 py-5 gap-1 relative transition-[width] duration-200"
+      style={{
+        width: "var(--sidebar-width)",
+        background: "var(--sidebar-bg)",
+        borderRight: "1px solid var(--border-color)",
+      }}
     >
       {/* Logo Section */}
       <div className={`flex items-center mb-6 px-3 ${isNarrow ? "justify-center px-0" : "gap-2.5"}`}>
@@ -71,9 +75,12 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom Actions Footer */}
-      <div className={`mt-auto pt-4 border-t border-zinc-800/60 flex items-center px-1 ${
-        isNarrow ? "flex-col gap-2 justify-center" : "flex-row justify-between"
-      }`}>
+      <div
+        className={`mt-auto pt-4 flex items-center px-1 ${
+          isNarrow ? "flex-col gap-2 justify-center" : "flex-row justify-between"
+        }`}
+        style={{ borderTop: "1px solid var(--border-color)" }}
+      >
         <button
           onClick={() => setActiveSection("settings")}
           className={`p-2 rounded-lg transition-all ${

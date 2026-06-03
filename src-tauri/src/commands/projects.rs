@@ -18,8 +18,10 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextW, SetForegroundWindow, ShowWindow, SW_RESTORE};
 
 const INVALID_PATH_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-/// Curated index — includes official + community-vetted packages (same as alcom default).
+/// Curated index — community-vetted packages (lilToon, Modular Avatar, etc.)
 const OFFICIAL_VPM_URL: &str = "https://packages.vrchat.com/curated?download";
+/// Official VRChat SDK repo — com.vrchat.base, com.vrchat.avatars, com.vrchat.worlds, etc.
+const VRCHAT_SDK_VPM_URL: &str = "https://packages.vrchat.com/official?download";
 
 pub fn validate_project_name(name: &str) -> Result<(), AppError> {
     let trimmed = name.trim();
@@ -158,7 +160,7 @@ pub async fn fetch_vpm_index(app: AppHandle) -> Result<Vec<VpmPackage>, AppError
     use crate::services::vcc_reader::read_external_vpm_sources;
 
     let settings = load_settings(&app);
-    let mut urls = vec![OFFICIAL_VPM_URL.to_string()];
+    let mut urls = vec![OFFICIAL_VPM_URL.to_string(), VRCHAT_SDK_VPM_URL.to_string()];
 
     // 1. Manually added sources from Settings
     for src in &settings.extra_vpm_sources {
@@ -244,7 +246,7 @@ pub async fn create_project(
     if !request.vpm_packages.is_empty() {
         // Fetch todos los repos configurados (oficial + extra_vpm_sources)
         let settings = crate::commands::app_settings::load_settings(&app);
-        let mut repo_urls: Vec<String> = vec![OFFICIAL_VPM_URL.to_string()];
+        let mut repo_urls: Vec<String> = vec![OFFICIAL_VPM_URL.to_string(), VRCHAT_SDK_VPM_URL.to_string()];
         for u in &settings.extra_vpm_sources {
             let u = u.trim().to_string();
             if !u.is_empty() && !repo_urls.contains(&u) {
@@ -842,7 +844,7 @@ pub async fn install_vpm_package_to_project(
     // 2. Añadir URLs pasadas por el frontend (si las hay)
     // 3. Añadir AppSettings.extra_vpm_sources como red de seguridad
     let settings = crate::commands::app_settings::load_settings(&app);
-    let mut urls: Vec<String> = vec![OFFICIAL_VPM_URL.to_string()];
+    let mut urls: Vec<String> = vec![OFFICIAL_VPM_URL.to_string(), VRCHAT_SDK_VPM_URL.to_string()];
     if let Some(ref frontend_urls) = repo_urls {
         for u in frontend_urls {
             let u = u.trim().to_string();

@@ -24,7 +24,6 @@ export default defineConfig({
           "vendor-react": ["react", "react-dom"],
           // Páginas pesadas en su propio chunk
           "page-settings": ["src/pages/Settings.tsx"],
-          "page-sandbox":  ["src/pages/Sandbox.tsx"],
           "page-inventory": [
             "src/pages/Inventory.tsx",
             "src/components/inventory/ScanDriveWizard.tsx",

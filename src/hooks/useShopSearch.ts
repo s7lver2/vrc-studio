@@ -1,23 +1,9 @@
 import { useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { useShopStore } from "../store/shopStore";
 
 export function useShopSearch() {
   const { query, search, setQuery } = useShopStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Re-buscar cuando Riperstore se conecta y ya había una query activa
-  useEffect(() => {
-    const unsub = listen("ripper:auth_success", () => {
-      const currentQuery = useShopStore.getState().query;
-      if (currentQuery.trim()) {
-        useShopStore.getState().search();
-      }
-    });
-    return () => {
-      unsub.then((fn) => fn()).catch(() => {});
-    };
-  }, []);
 
   const handleQueryChange = (q: string) => {
     // Si el usuario pega una URL de Booth, normalizarla al ID numérico

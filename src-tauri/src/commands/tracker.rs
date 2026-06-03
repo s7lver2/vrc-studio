@@ -1,23 +1,31 @@
-use crate::error::AppError;
-use crate::models::{TrackerItem, TrackerEvent, CreateTrackerItemPayload, UpdateTrackerItemPayload, TrackerKind};
-use rusqlite::params;
 use crate::db::DbPool;
+use crate::error::AppError;
+use crate::models::{
+    CreateTrackerItemPayload, TrackerEvent, TrackerItem, TrackerKind, UpdateTrackerItemPayload,
+};
+use chrono::Utc;
+use rusqlite::params;
 use tauri::State;
 use uuid::Uuid;
-use chrono::Utc;
 
 fn kind_str(k: &TrackerKind) -> &'static str {
     match k {
         TrackerKind::Item => "item",
         TrackerKind::Author => "author",
+        TrackerKind::Keyword => "keyword",
     }
 }
 
 fn row_to_tracker_item(row: &rusqlite::Row<'_>) -> TrackerItem {
     let kind_s: String = row.get("kind").unwrap_or_default();
+    let kind = match kind_s.as_str() {
+        "author" => TrackerKind::Author,
+        "keyword" => TrackerKind::Keyword,
+        _ => TrackerKind::Item,
+    };
     TrackerItem {
         id: row.get("id").unwrap_or_default(),
-        kind: if kind_s == "author" { TrackerKind::Author } else { TrackerKind::Item },
+        kind,
         booth_id: row.get("booth_id").unwrap_or_default(),
         item_name: row.get("item_name").unwrap_or_default(),
         item_author: row.get("item_author").unwrap_or_default(),
@@ -29,6 +37,8 @@ fn row_to_tracker_item(row: &rusqlite::Row<'_>) -> TrackerItem {
         author_name: row.get("author_name").ok(),
         author_booth_shop_id: row.get("author_booth_shop_id").ok(),
         track_new_items: row.get::<_, i64>("track_new_items").unwrap_or(0) != 0,
+        search_keyword: row.get("search_keyword").ok(),
+        search_category: row.get("search_category").ok(),
         check_interval_minutes: row.get("check_interval_minutes").unwrap_or(60),
         last_checked_at: row.get("last_checked_at").ok(),
         is_active: row.get::<_, i64>("is_active").unwrap_or(0) != 0,
@@ -69,13 +79,15 @@ pub async fn tracker_create(
     let conn = pool.get()?;
     conn.execute(
         "INSERT INTO tracker_items (
-            id, kind, booth_id, item_name, item_author, item_thumbnail_url, item_url,
-            track_price_drops, track_availability,
-            author_name, author_booth_shop_id, track_new_items,
-            check_interval_minutes, is_active, created_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14)",
+        id, kind, booth_id, item_name, item_author, item_thumbnail_url, item_url,
+        track_price_drops, track_availability,
+        author_name, author_booth_shop_id, track_new_items,
+        search_keyword, search_category,
+        check_interval_minutes, is_active, created_at
+     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, ?16)",
         params![
-            id, kind,
+            id,
+            kind,
             payload.booth_id,
             payload.item_name,
             payload.item_author,
@@ -86,6 +98,8 @@ pub async fn tracker_create(
             payload.author_name,
             payload.author_booth_shop_id,
             payload.track_new_items.unwrap_or(true) as i64,
+            payload.search_keyword,
+            payload.search_category,
             payload.check_interval_minutes.unwrap_or(60),
             now,
         ],
@@ -167,14 +181,13 @@ pub async fn tracker_list_events(
         iter.collect::<Result<Vec<_>, _>>()?
     } else if unread_only {
         let mut stmt = conn.prepare(
-            "SELECT * FROM tracker_events WHERE is_read = 0 ORDER BY detected_at DESC LIMIT 100"
+            "SELECT * FROM tracker_events WHERE is_read = 0 ORDER BY detected_at DESC LIMIT 100",
         )?;
         let iter = stmt.query_map([], |row| Ok(row_to_tracker_event(row)))?;
         iter.collect::<Result<Vec<_>, _>>()?
     } else {
-        let mut stmt = conn.prepare(
-            "SELECT * FROM tracker_events ORDER BY detected_at DESC LIMIT 100"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT * FROM tracker_events ORDER BY detected_at DESC LIMIT 100")?;
         let iter = stmt.query_map([], |row| Ok(row_to_tracker_event(row)))?;
         iter.collect::<Result<Vec<_>, _>>()?
     };

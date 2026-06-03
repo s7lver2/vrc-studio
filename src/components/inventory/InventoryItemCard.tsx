@@ -40,7 +40,15 @@ const BEHAVIOR_ICON_CONFIG: Record<
   shader: { icon: Layers, color: "text-green-400", bg: "bg-green-900/30", label: "Shader" },
 };
 
-function InfiniteCarousel({ images, compressed }: { images: string[]; compressed: boolean }) {
+function InfiniteCarousel({
+  images,
+  compressed,
+  behavior,
+}: {
+  images: string[];
+  compressed: boolean;
+  behavior: ItemBehavior;
+}) {
   const [active, setActive] = useState(0);
   const [prev, setPrev] = useState<number | null>(null);
   const [direction, setDirection] = useState<"left" | "right">("left");
@@ -77,7 +85,7 @@ function InfiniteCarousel({ images, compressed }: { images: string[]; compressed
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={handleMouseLeave}
     >
-      {images.length === 0 && <TypePlaceholder behavior={null} size="full" />}
+      {images.length === 0 && <TypePlaceholder behavior={behavior} size="full" />}
       {images.map((src, i) => {
         const isActive = i === active;
         const isPrev = i === prev;
@@ -265,11 +273,11 @@ function ContextMenu({
 }
 
 // Main card component (inner)
-const InventoryItemCardInner = function InventoryItemCard({ 
-  item, viewMode, isSelected, onCheckboxToggle, onShiftClick, isMultiSelectActive, isDragging 
+const InventoryItemCardInner = function InventoryItemCard({
+  item, viewMode, isSelected, onCheckboxToggle, onShiftClick, isMultiSelectActive, isDragging
 }: Props) {
   const t = useT();
-  const { showTagsInGrid } = useAppearanceStore();
+  const { showTagsInGrid, showTypeIcons } = useAppearanceStore();
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [compressPopup, setCompressPopup] = useState(false);
   const [compressMode, setCompressMode] = useState<"compress" | "decompress">("compress");
@@ -286,6 +294,27 @@ const InventoryItemCardInner = function InventoryItemCard({
     zIndex: isSortableDragging ? 1 : undefined,
     contain: "layout",
   };
+
+  function TypeBadge({ behavior }: { behavior: ItemBehavior }) {
+    if (!behavior) return null;
+    const cfg = BEHAVIOR_ICON_CONFIG[behavior];
+    const Icon = cfg.icon;
+    return (
+      <div
+        className={`
+        absolute bottom-1.5 left-1.5 z-10
+        flex items-center gap-0.5 px-1 py-0.5 rounded-md
+        border border-white/10 backdrop-blur-sm
+        ${cfg.bg}
+      `}
+      >
+        <Icon className={`h-2.5 w-2.5 ${cfg.color}`} />
+        <span className={`text-[7px] font-semibold uppercase tracking-wide ${cfg.color} opacity-90`}>
+          {cfg.label}
+        </span>
+      </div>
+    );
+  }
 
   const behavior = resolveItemBehavior(item.tags);
   const sizeMb = item.size_bytes != null
@@ -404,18 +433,32 @@ const InventoryItemCardInner = function InventoryItemCard({
     <>
       <div
         ref={setNodeRef} {...attributes} {...listeners}
-        style={style}
-        className={`group relative flex flex-col rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-all select-none ${isDragging ? "opacity-40 scale-95 drag-overlay-item" : ""}`}
+        className={`group inventory-card relative flex flex-col overflow-hidden cursor-grab active:cursor-grabbing transition-all select-none ${isDragging ? "opacity-40 scale-95 drag-overlay-item" : ""}`}
+        style={{
+          ...style,
+          background: "var(--card-bg)",
+          border: "1px solid var(--border-color)",
+          borderRadius: "var(--radius-card)",
+        }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <InfiniteCarousel images={carouselImages} compressed={item.is_compressed} />
+        <div className="relative">
+          <InfiniteCarousel
+            images={carouselImages}
+            compressed={item.is_compressed}
+            behavior={behavior}
+          />
+          {showTypeIcons && behavior && carouselImages.length > 0 && (
+            <TypeBadge behavior={behavior} />
+          )}
+        </div>
 
         <button
           onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
           className={`absolute top-2 left-2 z-10 rounded-md border transition-all ${isSelected
-              ? "opacity-100 bg-red-600 border-red-600"
-              : "opacity-0 group-hover:opacity-100 bg-zinc-900/80 border-zinc-600"
+            ? "opacity-100 bg-red-600 border-red-600"
+            : "opacity-0 group-hover:opacity-100 bg-zinc-900/80 border-zinc-600"
             } w-5 h-5 flex items-center justify-center`}
         >
           {isSelected && <Check className="h-3 w-3 text-white" />}
@@ -446,8 +489,8 @@ const InventoryItemCardInner = function InventoryItemCard({
             <button
               onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
               className={`shrink-0 rounded border transition-all ${isSelected
-                  ? "bg-red-600 border-red-600"
-                  : "bg-zinc-800 border-zinc-600 hover:border-zinc-400"
+                ? "bg-red-600 border-red-600"
+                : "bg-zinc-800 border-zinc-600 hover:border-zinc-400"
                 } w-4 h-4 flex items-center justify-center`}
             >
               {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
