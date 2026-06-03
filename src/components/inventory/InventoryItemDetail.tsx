@@ -24,6 +24,7 @@ import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { GlobalBoothPickerModal, BoothPickerResult } from "@/components/shared/GlobalBoothPickerModal";
 import { toAssetUrl } from "@/lib/utils";
 import { OpenInUnityModal } from "./OpenInUnityModal";
+import { VersionsTab } from "./VersionsTab";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,6 @@ function timeAgo(iso: string): string {
 
 const SOURCE_LABELS: Record<string, { label: string; color: string; dot: string }> = {
   booth:       { label: "Booth.pm",    color: "bg-pink-900/40 text-pink-300 border-pink-700/50",     dot: "bg-pink-400" },
-  riperstore:  { label: "Riperstore",  color: "bg-purple-900/40 text-purple-300 border-purple-700/50", dot: "bg-purple-400" },
   local:       { label: "Local",       color: "bg-zinc-700/40 text-zinc-300 border-zinc-600/50",     dot: "bg-zinc-400" },
 };
 
@@ -338,7 +338,7 @@ function countFiles(node: FileNode): number {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "files" | "3d";
+type Tab = "overview" | "files" | "3d" | "versions";
 
 // ── Stat pill ────────────────────────────────────────────────────────────────
 
@@ -482,7 +482,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
         return p; // rutas locales normales o http (http se filtrarán abajo)
       });
 
-      // Solo rutas locales (no http/https — esas son de Booth/riperstore)
+      // Solo rutas locales (no http/https — esas son de Booth o remotas)
       const localPaths = resolvedPaths.filter(
         (p) => p && !p.startsWith("http")
       );
@@ -505,7 +505,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
       const url = pathToAssetUrl(p);
       if (url) imgs.push(url);
     }
-    // Imágenes de Booth / riperstore
+    // Imágenes de Booth
     for (const url of productImages) {
       if (url && !imgs.includes(url)) imgs.push(url);
     }
@@ -609,9 +609,12 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
         {/* ── Tabs ── */}
         <div className="flex items-center gap-1 px-6 border-b border-zinc-800/80 shrink-0 bg-zinc-950">
           {([
-            { id: "overview", label: t("inventory_detail_tab_overview"), icon: Info },
-            { id: "files",    label: t("inventory_detail_tab_files"),    icon: FileArchive },
-            { id: "3d",       label: t("inventory_detail_tab_3d"), icon: Box, beta: true },
+            { id: "overview",  label: t("inventory_detail_tab_overview"), icon: Info },
+            { id: "files",     label: t("inventory_detail_tab_files"),    icon: FileArchive },
+            { id: "3d",        label: t("inventory_detail_tab_3d"),        icon: Box, beta: true },
+            ...(item.is_multi_avatar
+              ? [{ id: "versions" as Tab, label: "Versions", icon: Layers, beta: true }]
+              : []),
           ] as { id: Tab; label: string; icon: React.ElementType; beta?: boolean }[]).map(({ id, label, icon: Icon, beta }) => (
             <button
               key={id}
@@ -864,8 +867,14 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
                   <p className="text-xs text-zinc-600 mt-1">Compatible formats: .fbx · .vrm · .glb · .gltf · .obj</p>
                 </div>
               ) : (
-                <Preview3D modelPaths={model3DPaths} localBasePath={item.local_path} inventoryItems={items} currentItem={item} />
+                <Preview3D />
               )}
+            </div>
+          )}
+
+          {tab === "versions" && item.is_multi_avatar && (
+            <div className="p-4">
+              <VersionsTab itemId={item.id} itemZipPath={item.local_path} />
             </div>
           )}
         </div>
