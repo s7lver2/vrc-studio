@@ -11,6 +11,9 @@ import {
   BoothProductDetail,
   tauriCheckDuplicateItems,
   tauriDeleteInventoryItem,
+  tauriListZipContents,
+  tauriImportMultiAvatarPackage,
+  VariantArg,
 } from "../../lib/tauri";
 import { useT } from "../../i18n";
 import { TagInput } from "./TagInput";
@@ -122,6 +125,11 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
   // Duplicate detection
   const [duplicateCheck, setDuplicateCheck] = useState<{ exists: boolean; existing_item_ids: string[] } | null>(null);
 
+  const [importMode, setImportMode] = useState<"single" | "multi">("single");
+  const [zipEntries, setZipEntries] = useState<string[]>([]);
+  const [variantRows, setVariantRows] = useState<Array<{ label: string; subZipName: string; isMaterials: boolean }>>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
   // NEW: tags, avatars, detailImages, autocomplete
   const [tags, setTags] = useState<string[]>([]);
   const [avatars, setAvatars] = useState<string[]>([]);
@@ -199,6 +207,25 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
         const detected = detectAvatarVariants(filename);
         setDetection(detected);
         if (!name) setName(detected ? detected.productName : baseName);
+
+        if (importMode === "multi") {
+          setLoadingEntries(true);
+          try {
+            const entries = await tauriListZipContents(result);
+            setZipEntries(entries);
+            const autoRows = entries.map((filename) => {
+              const detected = detectAvatarVariants(filename);
+              const avatarName = detected?.variants[0]?.avatarName ?? "";
+              const isMaterials = detected?.variants[0]?.isMaterials ?? false;
+              return { label: avatarName || filename, subZipName: filename, isMaterials };
+            });
+            setVariantRows(autoRows);
+          } catch {
+            setZipEntries([]);
+          } finally {
+            setLoadingEntries(false);
+          }
+        }
       }
     } catch (e) {
       console.warn("File picker error:", e);
@@ -271,9 +298,9 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
         thumbnail_url: thumbnailUrl.trim() || boothDetail?.images[0] || undefined,
         booth_id: boothId,
         product_images: detailImages,
-        tags: tags.length > 0 ? tags : undefined,
-        detected_avatars: avatars.length > 0 ? avatars : undefined,
         overwrite,
+        // ❌ tags: tags.length > 0 ? tags : undefined,
+        // ❌ detected_avatars: avatars.length > 0 ? avatars : undefined,
       });
       setImportedId(newId);
       onImported?.(newId);
@@ -334,15 +361,41 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
     if (!zipPath || !name.trim()) return;
     setImportError(null);
     setDuplicateCheck(null);
-    setImporting(true); // mostramos spinner mientras se verifica
+    setImporting(true);
 
     try {
+      if (importMode === "multi") {
+        if (variantRows.length === 0) {
+          setImportError("Add at least one variant before importing.");
+          setImporting(false);
+          return;
+        }
+        const newId = await tauriImportMultiAvatarPackage({
+          zip_path: zipPath,
+          name: name.trim(),
+          author: author.trim() || undefined,
+          thumbnail_url: thumbnailUrl.trim() || boothDetail?.images[0] || undefined,
+          booth_id: extractBoothId(boothInput) ?? undefined,
+          product_images: detailImages,
+          variants: variantRows.map((r) => ({
+            label: r.label || r.subZipName,
+            is_materials: r.isMaterials,
+            sub_zip_name: r.subZipName,
+          })),
+        });
+        // refresh the inventory
+        await useInventoryStore.getState().fetchAll();
+        setImportedId(newId);
+        onImported?.(newId);
+        return;
+      }
+
+      // Single mode — existing duplicate-check flow
       const result = await tauriCheckDuplicateItems(name.trim(), zipPath);
       if (result.exists) {
         setDuplicateCheck(result);
-        setImporting(false); // detenemos spinner, esperamos decisión del usuario
+        setImporting(false);
       } else {
-        // No hay duplicados → importar directamente
         await handleImport(false);
       }
     } catch (e) {
@@ -428,6 +481,35 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
 
           <div className="p-5 flex flex-col gap-5 overflow-y-auto">
 
+            {/* ── Import mode picker ── */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setImportMode("single")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                  importMode === "single"
+                    ? "border-red-600 bg-red-600/10 text-red-300"
+                    : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <Package className="h-3.5 w-3.5" />
+                Single Avatar
+              </button>
+              <button
+                onClick={() => setImportMode("multi")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                  importMode === "multi"
+                    ? "border-violet-600 bg-violet-600/10 text-violet-300"
+                    : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                <Users className="h-3.5 w-3.5" />
+                Multi Avatar
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-900/60 text-violet-300 border border-violet-700/50 font-bold tracking-wide uppercase">
+                  BETA
+                </span>
+              </button>
+            </div>
+
             {/* ── File picker ── */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
@@ -446,6 +528,78 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
                 </button>
               </div>
             </div>
+
+            {/* ── Variant Mapping (multi mode only) ── */}
+            {importMode === "multi" && zipPath && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Users className="h-3 w-3" />
+                    Variants
+                  </label>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setVariantRows([...variantRows, { label: "", subZipName: zipEntries[0] ?? "", isMaterials: false }])}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-[10px] transition-colors"
+                    >
+                      <Plus className="h-3 w-3" /> Add variant
+                    </button>
+                    <button
+                      onClick={() => setVariantRows([...variantRows, { label: "Materials", subZipName: zipEntries[0] ?? "", isMaterials: true }])}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-lime-900/30 hover:bg-lime-900/50 border border-lime-700/50 text-lime-300 text-[10px] transition-colors"
+                    >
+                      <Layers className="h-3 w-3" /> + Materials
+                    </button>
+                  </div>
+                </div>
+
+                {loadingEntries ? (
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning zip…
+                  </div>
+                ) : variantRows.length === 0 ? (
+                  <p className="text-xs text-zinc-600 italic">No variants yet. Add one or pick a zip above.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {variantRows.map((row, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <input
+                          value={row.label}
+                          onChange={(e) => {
+                            const next = [...variantRows];
+                            next[idx] = { ...next[idx], label: e.target.value };
+                            setVariantRows(next);
+                          }}
+                          placeholder="Avatar name"
+                          className={`w-28 px-2 py-1.5 rounded-lg bg-zinc-900 border text-xs outline-none transition-colors ${
+                            row.isMaterials ? "border-lime-700/50 text-lime-300" : "border-zinc-700 text-zinc-200 focus:border-zinc-500"
+                          }`}
+                        />
+                        <select
+                          value={row.subZipName}
+                          onChange={(e) => {
+                            const next = [...variantRows];
+                            next[idx] = { ...next[idx], subZipName: e.target.value };
+                            setVariantRows(next);
+                          }}
+                          className="flex-1 px-2 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 outline-none focus:border-zinc-500 transition-colors"
+                        >
+                          {zipEntries.map((entry) => (
+                            <option key={entry} value={entry}>{entry}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => setVariantRows(variantRows.filter((_, i) => i !== idx))}
+                          className="h-6 w-6 flex items-center justify-center rounded hover:bg-zinc-800 text-zinc-600 hover:text-zinc-300 transition-colors shrink-0"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Avatar variant detection panel ── */}
             {detection && (
@@ -474,8 +628,8 @@ export function ImportLocalDialog({ onClose, onImported, preselectedFile }: Prop
                       <span
                         key={v.filename}
                         className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${v.isMaterials
-                            ? "border-lime-700/50 bg-lime-950/40 text-lime-300"
-                            : "border-amber-700/50 bg-amber-950/40 text-amber-200"
+                          ? "border-lime-700/50 bg-lime-950/40 text-lime-300"
+                          : "border-amber-700/50 bg-amber-950/40 text-amber-200"
                           }`}
                       >
                         {v.isMaterials ? <Layers className="h-2.5 w-2.5" /> : <Users className="h-2.5 w-2.5" />}
