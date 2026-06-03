@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { TourStep } from "@/hooks/useTour";
 import { TourTooltip } from "./TourTooltip";
 
