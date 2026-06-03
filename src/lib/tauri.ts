@@ -145,6 +145,7 @@ export interface InventoryItem {
   product_images: string[];
   custom_images: string[];
   folder_id: string | null;
+  is_multi_avatar?: boolean;
 }
 
 export interface ImportProgressPayload {
@@ -374,6 +375,63 @@ export const tauriSetItemProductImages = (item_id: string, images: string[]): Pr
 
 export const tauriGetItemProductImages = (item_id: string): Promise<string[]> =>
   invoke("get_item_product_images", { itemId: item_id });
+
+// ── Multi-avatar ──────────────────────────────────────────────────────────────
+
+export interface ItemVariant {
+  id: string;
+  item_id: string;
+  label: string;
+  is_materials: boolean;
+  sub_zip_name: string;
+  sort_order: number;
+  size_bytes: number | null;
+  is_compressed: boolean;
+}
+
+export interface VariantArg {
+  label: string;
+  is_materials: boolean;
+  sub_zip_name: string;
+}
+
+export interface ImportMultiAvatarArgs {
+  zip_path: string;
+  name: string;
+  author?: string;
+  thumbnail_url?: string;
+  booth_id?: string;
+  product_images: string[];
+  variants: VariantArg[];
+  folder_id?: string;
+}
+
+export const tauriListZipContents = (zipPath: string): Promise<string[]> =>
+  invoke("list_zip_contents", { zipPath });
+
+export const tauriExtractSubZipToTemp = (zipPath: string, subZipName: string): Promise<string> =>
+  invoke("extract_sub_zip_to_temp", { zipPath, subZipName });
+
+export const tauriGetItemVariants = (itemId: string): Promise<ItemVariant[]> =>
+  invoke("get_item_variants", { itemId });
+
+export const tauriImportMultiAvatarPackage = (args: ImportMultiAvatarArgs): Promise<string> =>
+  invoke("import_multi_avatar_package", { args });
+
+export const tauriDeleteVariant = (itemId: string, variantId: string): Promise<void> =>
+  invoke("delete_variant", { itemId, variantId });
+
+export const tauriCompressVariant = (itemId: string, variantId: string): Promise<void> =>
+  invoke("compress_variant", { itemId, variantId });
+
+export const tauriDecompressVariant = (itemId: string, variantId: string): Promise<void> =>
+  invoke("decompress_variant", { itemId, variantId });
+
+export const tauriCreateMigrationBackup = (): Promise<string> =>
+  invoke("create_migration_backup");
+
+export const tauriCreateContainerZip = (sourcePaths: string[], outputPath: string): Promise<void> =>
+  invoke("create_container_zip", { sourcePaths, outputPath });
 
 export const tauriImportLocalPackage = (args: {
   zip_path: string;
@@ -668,6 +726,10 @@ export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; colo
 
 export async function tauriDeleteInventoryFolder(folderId: string) {
   return await invoke("delete_inventory_folder", { folderId });
+}
+
+export async function tauriMoveFolderToParent(folderId: string, parentId: string | null): Promise<void> {
+  await invoke("move_folder_to_parent", { folderId, parentId });
 }
 
 export async function tauriResetAllFolderAssignments(): Promise<void> {
