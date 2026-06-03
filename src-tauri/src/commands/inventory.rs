@@ -35,6 +35,7 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> InventoryItem {
 
     let is_compressed_int: i64 = row.get("is_compressed").unwrap_or(0);
     let is_compressed = is_compressed_int != 0;
+    let is_multi_avatar_int: i64 = row.get("is_multi_avatar").unwrap_or(0);
 
     InventoryItem {
         id: row.get("id").unwrap_or_default(),
@@ -54,7 +55,7 @@ fn row_to_item(row: &rusqlite::Row<'_>) -> InventoryItem {
         product_images,
         custom_images,
         folder_id: row.get("folder_id").ok(),
-        is_multi_avatar: row.get::<_, bool>("is_multi_avatar").unwrap_or(false),
+        is_multi_avatar: is_multi_avatar_int != 0,
     }
 }
 
