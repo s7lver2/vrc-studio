@@ -1,6 +1,6 @@
 import {
   X, ExternalLink, Trash2, FolderInput, FolderOpen,
-  Info, FileArchive, Box, ChevronLeft, ChevronRight,
+  Info, FileArchive, ChevronLeft, ChevronRight,
   Calendar, HardDrive, User, Link, Tag, Loader2,
   AlertTriangle, Package, Archive, Star,
   FileText, Layers, Pencil, Check as CheckIcon, Upload,
@@ -10,7 +10,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { FileTreeViewer } from "./FileTreeViewver";
 import { FileIcon, ExtBadge } from "./FileIcon";
-import { Preview3D } from "./Preview3D";
 import { TagInput } from "./TagInput";
 import {
   InventoryItem, InventoryFolder, FileNode, UnityAsset,
@@ -324,12 +323,6 @@ function findUnityPackages(node: FileNode, found: string[] = []): string[] {
   return found;
 }
 
-function find3DFiles(node: FileNode, found: string[] = []): string[] {
-  const ext3d = new Set(["fbx", "vrm", "glb", "gltf", "obj"]);
-  if (!node.is_dir && node.extension && ext3d.has(node.extension.toLowerCase())) found.push(node.path);
-  for (const child of node.children ?? []) find3DFiles(child, found);
-  return found;
-}
 
 function countFiles(node: FileNode): number {
   if (!node.is_dir) return 1;
@@ -338,7 +331,7 @@ function countFiles(node: FileNode): number {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "files" | "3d" | "versions";
+type Tab = "overview" | "files" | "versions";
 
 // ── Stat pill ────────────────────────────────────────────────────────────────
 
@@ -376,7 +369,6 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
   const [treeLoading, setTreeLoading] = useState(false);
   const [unityPackagePaths, setUnityPackagePaths] = useState<string[]>([]);
-  const [model3DPaths, setModel3DPaths] = useState<string[]>([]);
   const [selectedUnityPkg, setSelectedUnityPkg] = useState<string | null>(null);
   const [fileCount, setFileCount] = useState<number | null>(null);
   const [showOpenInUnity, setShowOpenInUnity] = useState(false);
@@ -426,7 +418,6 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
     if (prevLocalPath.current !== null && prevLocalPath.current !== item.local_path) {
       setFileTree(null);
       setUnityPackagePaths([]);
-      setModel3DPaths([]);
       setFileCount(null);
       setSelectedUnityPkg(null);
       setTreeLoading(false);
@@ -441,14 +432,13 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
       .then((tree) => {
         setFileTree(tree);
         setUnityPackagePaths(findUnityPackages(tree));
-        setModel3DPaths(find3DFiles(tree));
         setFileCount(countFiles(tree));
       })
       .catch(() => {}).finally(() => setTreeLoading(false));
   }, [item.local_path, fileTree, treeLoading]);
 
   useEffect(() => {
-    if (tab === "files" || tab === "3d") loadTree();
+    if (tab === "files") loadTree();
   }, [tab, loadTree]);
 
   const src = SOURCE_LABELS[item.source] ?? SOURCE_LABELS.local;
@@ -611,7 +601,6 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
           {([
             { id: "overview",  label: t("inventory_detail_tab_overview"), icon: Info },
             { id: "files",     label: t("inventory_detail_tab_files"),    icon: FileArchive },
-            { id: "3d",        label: t("inventory_detail_tab_3d"),        icon: Box, beta: true },
             ...(item.is_multi_avatar
               ? [{ id: "versions" as Tab, label: "Versions", icon: Layers, beta: true }]
               : []),
@@ -848,33 +837,14 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
             </div>
           )}
 
-          {/* ── 3D PREVIEW ── */}
-          {tab === "3d" && (
-            <div className="p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-zinc-800">
-                <span className="text-[10px] bg-amber-900/50 text-amber-400 border border-amber-800/60 rounded-full px-2 py-0.5 font-semibold">BETA</span>
-                <p className="text-xs text-zinc-500">Experimental preview — supports FBX, VRM, GLB/GLTF. Requires 3D models inside the package.</p>
-              </div>
-
-              {treeLoading ? (
-                <div className="flex items-center gap-2 text-zinc-500 text-sm py-4">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Scanning files…
-                </div>
-              ) : model3DPaths.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-zinc-800 p-12 text-center">
-                  <Box className="h-10 w-10 text-zinc-800 mx-auto mb-3" />
-                  <p className="text-sm text-zinc-500">No 3D models found in this package</p>
-                  <p className="text-xs text-zinc-600 mt-1">Compatible formats: .fbx · .vrm · .glb · .gltf · .obj</p>
-                </div>
-              ) : (
-                <Preview3D />
-              )}
-            </div>
-          )}
 
           {tab === "versions" && item.is_multi_avatar && (
             <div className="p-4">
-              <VersionsTab itemId={item.id} itemZipPath={item.local_path} />
+              <VersionsTab itemId={item.id} itemZipPath={item.local_path} itemImages={[
+                ...(item.custom_images ?? []),
+                ...(item.product_images ?? []),
+                ...(item.thumbnail_url ? [item.thumbnail_url] : []),
+              ]} />
             </div>
           )}
         </div>

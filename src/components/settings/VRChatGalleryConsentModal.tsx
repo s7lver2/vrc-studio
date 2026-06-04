@@ -11,6 +11,7 @@ import { Camera, Shield, HardDrive, X, FolderOpen, Check } from "lucide-react";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { tauriGetVRChatPhotosDefaultPath } from "@/lib/tauri";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useT } from "@/i18n";
 
 interface Props {
   onClose: () => void;
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
+  const t = useT();
   const { vrchatGallery, setVRChatGallery } = useAppearanceStore();
   const [folderPath, setFolderPath] = useState(
     vrchatGallery.folderPath || ""
@@ -58,8 +60,8 @@ export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
               <Camera className="h-4.5 w-4.5 text-violet-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">VRChat Photos Gallery</h2>
-              <p className="text-xs text-zinc-500 mt-0.5">Permiso necesario</p>
+              <h2 className="text-sm font-semibold text-zinc-100">{t("vrchat_consent_title")}</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">{t("vrchat_consent_subtitle")}</p>
             </div>
           </div>
           <button onClick={onClose} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300">
@@ -70,17 +72,16 @@ export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
         <div className="px-6 py-5 flex flex-col gap-5">
           {/* Descripción */}
           <p className="text-sm text-zinc-300 leading-relaxed">
-            VRC Studio puede usar tus fotos de VRChat como fondo del carrusel de la pantalla de carga,
-            mostrando tus mejores recuerdos cada vez que arrancas la app.
+            {t("vrchat_consent_description")}
           </p>
 
           {/* Garantías de privacidad */}
           <div className="flex flex-col gap-2.5 p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Privacidad garantizada</p>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">{t("vrchat_consent_privacy_title")}</p>
             {[
-              { icon: HardDrive,  text: "Las fotos se leen directamente desde tu disco. Nunca se copian ni se mueven." },
-              { icon: Shield,     text: "No se comparten ni se suben a ningún servidor. Todo el procesamiento es local." },
-              { icon: Check,      text: "Puedes revocar este permiso en cualquier momento desde Ajustes → Apariencia." },
+              { icon: HardDrive,  text: t("vrchat_consent_guarantee_disk") },
+              { icon: Shield,     text: t("vrchat_consent_guarantee_local") },
+              { icon: Check,      text: t("vrchat_consent_guarantee_revoke") },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-start gap-2.5">
                 <Icon className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
@@ -92,11 +93,11 @@ export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
           {/* Carpeta */}
           <div className="flex flex-col gap-2">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-              Carpeta de fotos de VRChat
+              {t("vrchat_consent_folder_label")}
             </label>
             <div className="flex gap-2">
               <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-300 font-mono truncate min-w-0">
-                {folderPath || <span className="text-zinc-600">Sin seleccionar</span>}
+                {folderPath || <span className="text-zinc-600">{t("vrchat_consent_folder_placeholder")}</span>}
               </div>
               <button
                 onClick={browseFolderPath}
@@ -111,7 +112,7 @@ export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
               disabled={loadingDefault}
               className="text-[11px] text-violet-400 hover:text-violet-300 text-left transition-colors disabled:opacity-50"
             >
-              {loadingDefault ? "Detectando…" : "Usar carpeta predeterminada de VRChat"}
+              {loadingDefault ? t("vrchat_consent_detecting") : t("vrchat_consent_use_default")}
             </button>
           </div>
         </div>
@@ -122,7 +123,7 @@ export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
             onClick={onClose}
             className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm transition-colors"
           >
-            Cancelar
+            {t("vrchat_consent_cancel")}
           </button>
           <button
             onClick={handleAccept}
@@ -130,7 +131,7 @@ export function VRChatGalleryConsentModal({ onClose, onConsented }: Props) {
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
             <Camera className="h-4 w-4" />
-            Permitir acceso
+            {t("vrchat_consent_allow")}
           </button>
         </div>
       </div>

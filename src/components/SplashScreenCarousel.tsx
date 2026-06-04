@@ -65,17 +65,23 @@ export function SplashScreenCarousel({ onDone }: Props) {
   }, [vrchatGallery.consented, vrchatGallery.enabled, vrchatGallery.folderPath]);
 
   // Build the pool of available images
-  // Priority: user custom images → VRChat photos → built-in splash images
   const imageList: CarouselImageEntry[] = (() => {
+    // When VRChat gallery is active, use ONLY VRChat photos
+    if (vrchatGallery.consented && vrchatGallery.enabled) {
+      if (vrchatPhotoPaths.length > 0) {
+        return vrchatPhotoPaths.map((p) => ({
+          id: `vrchat:${p}`,
+          path: p,
+          builtInId: null,
+        }));
+      }
+      // VRChat photos not loaded yet or empty → fall back to built-in
+      return BUILT_IN_SPLASH_IMAGES.map((img) => ({ id: img.id, path: null, builtInId: img.id }));
+    }
+    // Normal mode: custom images → built-in
     const custom = carouselImages;
-    const vrchat: CarouselImageEntry[] = vrchatPhotoPaths.map((p) => ({
-      id: `vrchat:${p}`,
-      path: p,
-      builtInId: null,
-    }));
-    const combined = [...custom, ...vrchat];
-    return combined.length > 0
-      ? combined
+    return custom.length > 0
+      ? custom
       : BUILT_IN_SPLASH_IMAGES.map((img) => ({ id: img.id, path: null, builtInId: img.id }));
   })();
 
