@@ -44,9 +44,30 @@ fn open_file_shared(path: &str) -> Result<std::fs::File, String> {
 }
 
 /// Lists top-level .zip / .unitypackage entries inside a container zip.
+/// Also handles the extracted (directory) case: lists matching files directly.
 #[tauri::command]
 pub async fn list_zip_contents(zip_path: String) -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(move || {
+        let zip_path_p = std::path::Path::new(&zip_path);
+
+        // ── Extracted directory mode ─────────────────────────────────────────
+        if zip_path_p.is_dir() {
+            let mut names: Vec<String> = Vec::new();
+            for entry in std::fs::read_dir(zip_path_p)
+                .map_err(|e| format!("Cannot read directory: {e}"))?
+            {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                let lower = name.to_lowercase();
+                if lower.ends_with(".zip") || lower.ends_with(".unitypackage") {
+                    names.push(name);
+                }
+            }
+            names.sort();
+            return Ok(names);
+        }
+
+        // ── Container zip mode ───────────────────────────────────────────────
         let file = open_file_shared(&zip_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
@@ -78,6 +99,24 @@ pub async fn extract_sub_zip_to_temp(
     sub_zip_name: String,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
+        let zip_path_p = std::path::Path::new(&zip_path);
+
+        // ── Extracted (directory) mode ──────────────────────────────────────
+        // When the inventory item was decompressed with decompress_item, local_path
+        // becomes a directory containing the individual sub-zips directly on disk.
+        // No container zip to open — just return the direct file path.
+        if zip_path_p.is_dir() {
+            let direct = zip_path_p.join(&sub_zip_name);
+            if direct.is_file() {
+                return Ok(direct.to_string_lossy().to_string());
+            }
+            return Err(format!(
+                "Sub-zip '{}' not found in extracted directory '{}'",
+                sub_zip_name, zip_path
+            ));
+        }
+
+        // ── Container zip mode ───────────────────────────────────────────────
         let file = open_file_shared(&zip_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
