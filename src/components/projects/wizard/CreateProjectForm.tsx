@@ -10,10 +10,13 @@ import {
   tauriListUnityInstallations,
   tauriCreateProject,
   tauriFetchVpmIndex,
+  tauriListInventory,
   UnityInstallation,
   Project,
   VpmPackage,
+  InventoryItem,
 } from "@/lib/tauri";
+import { toAssetUrl } from "@/lib/utils";
 import { CreationProgress } from "./CreationProgress";
 import { useProjectEvents } from "@/hooks/useProjectEvents";
 import {
@@ -51,38 +54,139 @@ function sortedVersions(pkg: VpmPackage): string[] {
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
-function StepIndicator({ step }: { step: 1 | 2 }) {
-  const steps = [
+function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
+  const steps: { num: 1 | 2 | 3; label: string }[] = [
     { num: 1, label: "Setup" },
-    { num: 2, label: "Packages" },
+    { num: 2, label: "Paquetes" },
+    { num: 3, label: "Early Import" },
   ];
   return (
-    <div className="flex items-center gap-0 select-none">
-      {steps.map((s, i) => (
-        <div key={s.num} className="flex items-center gap-0">
-          <div className="flex items-center gap-2">
-            <div className={cn(
-              "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors",
-              step > s.num
-                ? "bg-red-600 text-white"
-                : step === s.num
-                ? "bg-red-600 text-white ring-2 ring-red-600/30"
-                : "bg-zinc-800 text-zinc-500"
-            )}>
-              {step > s.num ? <CheckCircle2 className="h-3 w-3" /> : s.num}
+    <div className="flex items-center gap-0 select-none px-6 pt-4">
+      {steps.map((s, i) => {
+        const isDone = step > s.num;
+        const isActive = step === s.num;
+        return (
+          <div key={s.num} className="flex items-center" style={{ flex: i < steps.length - 1 ? 1 : 0 }}>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
+                style={{
+                  background: isDone ? "#16a34a" : isActive ? "#dc2626" : "#27272a",
+                  color: isDone || isActive ? "#fff" : "#52525b",
+                }}
+              >
+                {isDone ? "✓" : s.num}
+              </div>
+              <span
+                className="text-[10px]"
+                style={{ color: isActive ? "#f4f4f5" : isDone ? "#71717a" : "#52525b", fontWeight: isActive ? 600 : 400 }}
+              >
+                {s.label}
+              </span>
             </div>
-            <span className={cn(
-              "text-xs font-medium transition-colors",
-              step === s.num ? "text-zinc-200" : "text-zinc-600"
-            )}>
-              {s.label}
-            </span>
+            {i < steps.length - 1 && (
+              <div className="flex-1 mx-2 h-px bg-zinc-800" style={{ minWidth: 16 }} />
+            )}
           </div>
-          {i < steps.length - 1 && (
-            <div className="h-px w-8 mx-3 bg-zinc-800" />
-          )}
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Early Import step ─────────────────────────────────────────────────────────
+
+interface EarlyImportStepProps {
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+}
+
+function EarlyImportStep({ selectedIds, onToggle }: EarlyImportStepProps) {
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    tauriListInventory().then(setItems).catch(() => {});
+  }, []);
+
+  const filtered = items.filter((item) => {
+    const label = item.display_name ?? item.name;
+    return label.toLowerCase().includes(filter.toLowerCase()) ||
+      (item.author?.toLowerCase().includes(filter.toLowerCase()) ?? false);
+  });
+
+  const coverFor = (item: InventoryItem) => {
+    if (item.custom_cover_path) return toAssetUrl(item.custom_cover_path);
+    if (item.thumbnail_url) return item.thumbnail_url;
+    if (item.product_images.length > 0) {
+      const p = item.product_images[0];
+      return p.startsWith("http") ? p : (toAssetUrl(p) ?? null);
+    }
+    return null;
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 leading-relaxed">
+        <span className="text-yellow-400 mt-0.5">⚡</span>
+        <span>Los items seleccionados se extraerán automáticamente en Unity la primera vez que abras el proyecto, uno a uno, sin confirmación.</span>
+      </div>
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+        <Search className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+        <input
+          className="flex-1 bg-transparent text-xs text-zinc-200 placeholder:text-zinc-600 outline-none"
+          placeholder="Buscar en inventario…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="text-xs text-zinc-600 text-center py-6">
+          {items.length === 0 ? "Tu inventario está vacío" : "Sin resultados"}
+        </p>
+      ) : (
+        <div className="grid grid-cols-5 gap-2 max-h-52 overflow-y-auto pr-1">
+          {filtered.map((item) => {
+            const label = item.display_name ?? item.name;
+            const selected = selectedIds.includes(item.id);
+            const cover = coverFor(item);
+            return (
+              <button
+                key={item.id}
+                onClick={() => onToggle(item.id)}
+                className="flex flex-col items-center gap-1 group focus:outline-none"
+              >
+                <div
+                  className="relative w-full aspect-square rounded-xl overflow-hidden border-2 transition-all"
+                  style={{ borderColor: selected ? "#dc2626" : "#27272a" }}
+                >
+                  {cover ? (
+                    <img src={cover} alt={label} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                      <Package className="h-5 w-5 text-zinc-700" />
+                    </div>
+                  )}
+                  {selected && (
+                    <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                      <CheckCircle2 className="h-2.5 w-2.5 text-white" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-[9px] text-zinc-500 text-center leading-tight line-clamp-2 w-full px-0.5">
+                  {label}
+                </p>
+              </button>
+            );
+          })}
         </div>
-      ))}
+      )}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 w-fit text-xs font-medium text-red-400">
+          <span>⚡</span>
+          <span>{selectedIds.length} item{selectedIds.length !== 1 ? "s" : ""} seleccionado{selectedIds.length !== 1 ? "s" : ""}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -350,7 +454,14 @@ interface Props {
 
 export function CreateProjectForm({ onCreated, onClose }: Props) {
   const t = useT();
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [earlyImportIds, setEarlyImportIds] = useState<string[]>([]);
+
+  const toggleEarlyImport = useCallback((id: string) => {
+    setEarlyImportIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }, []);
 
   // ── Step 1 state
   const [installations, setInstallations] = useState<UnityInstallation[]>([]);
@@ -417,7 +528,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
         vcs_enabled: vcsEnabled,
         vpm_packages: Object.keys(selectedPkgs),
         custom_package_ids: [],
-        early_import_item_ids: [],
+        early_import_item_ids: earlyImportIds,
       });
       onCreated(project);
     } catch (err) {
@@ -575,8 +686,14 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
           </div>
         )}
 
+          {step === 3 && (
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <EarlyImportStep selectedIds={earlyImportIds} onToggle={toggleEarlyImport} />
+            </div>
+          )}
+
         <div className="border-t border-zinc-800 px-6 py-4 flex items-center justify-between shrink-0">
-          {step === 1 ? (
+          {step === 1 && (
             <>
               <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
                 {t("create_project_cancel")}
@@ -589,14 +706,28 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
                 {t("create_project_next")} <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </>
-          ) : (
+          )}
+          {step === 2 && (
             <>
               <button onClick={() => setStep(1)} className="flex items-center gap-1.5 px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
                 <ChevronLeft className="h-3.5 w-3.5" /> {t("create_project_back")}
               </button>
+              <button
+                onClick={() => setStep(3)}
+                className="flex items-center gap-1.5 rounded-md bg-zinc-700 px-5 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-600 transition-colors"
+              >
+                {t("create_project_next")} <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          {step === 3 && (
+            <>
+              <button onClick={() => setStep(2)} className="flex items-center gap-1.5 px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+                <ChevronLeft className="h-3.5 w-3.5" /> {t("create_project_back")}
+              </button>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={handleSubmit}
+                  onClick={() => { setEarlyImportIds([]); handleSubmit(); }}
                   disabled={submitting}
                   className="flex items-center gap-1.5 rounded-md bg-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors disabled:opacity-40"
                 >
@@ -608,12 +739,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
                   className="flex items-center gap-1.5 rounded-md bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {t("create_project_submit")}
-                  {Object.keys(selectedPkgs).length > 0 && (
-                    <span className="rounded-full bg-red-800/60 px-1.5 py-0.5 text-[10px] font-bold">
-                      +{Object.keys(selectedPkgs).length}
-                    </span>
-                  )}
+                  Crear proyecto
                 </button>
               </div>
             </>
