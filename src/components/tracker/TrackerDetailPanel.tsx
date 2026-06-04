@@ -9,6 +9,7 @@ import {
   tauriGetBoothProductDetail, type TrackerItem, type TrackerEvent,
   type BoothProductDetail
 } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 // ── reutilizar helpers de precio del modal antiguo ────────────────────────────
 
@@ -189,6 +190,7 @@ interface Props {
 }
 
 export function TrackerDetailPanel({ item, onBack }: Props) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>("info");
   const { events, loadEvents, runNow, scanning, updateItem, deleteItem } = useTrackerStore();
   const [itemEvents, setItemEvents] = useState<TrackerEvent[]>([]);
@@ -242,10 +244,10 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
   const thumbnail = item.item_thumbnail_url ?? boothDetail?.images?.[0] ?? null;
 
   const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "info",     label: "Info",       icon: Info },
-    { id: "chart",    label: "Price",      icon: BarChart2 },
-    { id: "events",   label: "Events",     icon: Clock },
-    { id: "settings", label: "Settings",   icon: Settings2 },
+    { id: "info",     label: t("tracker_detail_tab_info"),     icon: Info },
+    { id: "chart",    label: t("tracker_detail_tab_price"),    icon: BarChart2 },
+    { id: "events",   label: t("tracker_detail_tab_events"),   icon: Clock },
+    { id: "settings", label: t("tracker_detail_tab_settings"), icon: Settings2 },
   ];
 
   return (
@@ -308,13 +310,13 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
 
         {/* Tab bar */}
         <div className="flex items-center gap-0.5 px-5">
-          {TABS.map((t) => (
+          {TABS.map((tb) => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all -mb-px ${tab === t.id ? "border-red-500 text-zinc-100" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}
+              key={tb.id}
+              onClick={() => setTab(tb.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-all -mb-px ${tab === tb.id ? "border-red-500 text-zinc-100" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}
             >
-              <t.icon className="h-3 w-3" />{t.label}
+              <tb.icon className="h-3 w-3" />{tb.label}
             </button>
           ))}
         </div>
@@ -329,9 +331,9 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Lowest", value: priceHistory.length > 0 ? `¥${Math.min(...priceHistory.map(p => p.price)).toLocaleString()}` : "—", color: "text-emerald-400" },
-                { label: "Drops", value: String(dropCount), color: "text-violet-400" },
-                { label: "Checked", value: item.last_checked_at ? formatRelative(item.last_checked_at) : "Never", color: "text-zinc-300" },
+                { label: t("tracker_detail_lowest"), value: priceHistory.length > 0 ? `¥${Math.min(...priceHistory.map(p => p.price)).toLocaleString()}` : "—", color: "text-emerald-400" },
+                { label: t("tracker_detail_drops"), value: String(dropCount), color: "text-violet-400" },
+                { label: t("tracker_detail_checked"), value: item.last_checked_at ? formatRelative(item.last_checked_at) : t("tracker_card_never"), color: "text-zinc-300" },
               ].map((stat) => (
                 <div key={stat.label} className="flex flex-col px-4 py-3 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
                   <p className="text-[9px] uppercase tracking-widest text-zinc-600 font-semibold">{stat.label}</p>
@@ -343,7 +345,7 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {/* Image gallery (Booth detail) */}
             {item.kind === "item" && (
               <div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-2">Gallery</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-2">{t("tracker_detail_gallery")}</p>
                 {loadingDetail ? (
                   <div className="h-32 rounded-xl bg-zinc-800/40 animate-pulse" />
                 ) : boothDetail?.images?.length ? (
@@ -355,7 +357,7 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
                     </div>
                   ) : (
                     <div className="h-24 rounded-xl bg-zinc-900/40 border border-zinc-800 flex items-center justify-center">
-                      <p className="text-xs text-zinc-600">No images available</p>
+                      <p className="text-xs text-zinc-600">{t("tracker_detail_no_images")}</p>
                     </div>
                   )
                 )}
@@ -365,7 +367,7 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {/* Description */}
             {boothDetail?.description && (
               <div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-2">Description</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-2">{t("tracker_detail_description")}</p>
                 <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/20 px-4 py-3">
                   <p className="text-xs text-zinc-400 leading-relaxed line-clamp-6 whitespace-pre-line">
                     {boothDetail.description}
@@ -377,7 +379,7 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {/* Tags */}
             {boothDetail?.tags && boothDetail.tags.length > 0 && (
               <div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-2">Tags</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold mb-2">{t("tracker_detail_tags")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {boothDetail.tags.map((tag) => (
                     <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full border border-zinc-700/60 bg-zinc-800/60 text-zinc-400">
@@ -391,10 +393,10 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {/* Keyword tracker info */}
             {item.kind === "keyword" && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 flex flex-col gap-1">
-                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Keyword search</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">{t("tracker_detail_keyword_label")}</p>
                 <p className="text-sm font-medium text-violet-300 mt-1">"{item.search_keyword}"</p>
-                {item.search_category && <p className="text-xs text-zinc-500">Category: {item.search_category}</p>}
-                <p className="text-xs text-zinc-600 mt-1">Monitoring Booth for new items matching this query.</p>
+                {item.search_category && <p className="text-xs text-zinc-500">{t("tracker_detail_category")}: {item.search_category}</p>}
+                <p className="text-xs text-zinc-600 mt-1">{t("tracker_detail_keyword_monitoring")}</p>
               </div>
             )}
           </div>
@@ -403,12 +405,12 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
         {/* ── CHART TAB ── */}
         {tab === "chart" && (
           <div className="p-5 flex flex-col gap-4">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Price History</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">{t("tracker_detail_price_history")}</p>
             {priceHistory.length === 0 ? (
               <div className="h-36 flex items-center justify-center rounded-xl border border-zinc-900 bg-zinc-900/20">
                 <div className="text-center">
                   <BarChart2 className="w-6 h-6 text-zinc-800 mx-auto mb-1" />
-                  <p className="text-xs text-zinc-700">No price data yet.</p>
+                  <p className="text-xs text-zinc-700">{t("tracker_detail_no_price_data")}</p>
                 </div>
               </div>
             ) : (
@@ -421,15 +423,15 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
         {tab === "events" && (
           <div className="p-5 flex flex-col gap-2">
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">
-              Event Log ({itemEvents.filter(e => e.event_type !== 'keyword_seen').length})
+              {t("tracker_detail_event_log").replace("{count}", String(itemEvents.filter(e => e.event_type !== 'keyword_seen').length))}
             </p>
             {itemEvents.filter(e => e.event_type !== 'keyword_seen').length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
                 <div className="p-3 rounded-full bg-zinc-900 border border-zinc-800">
                   <Clock className="w-5 h-5 text-zinc-600" />
                 </div>
-                <p className="text-sm text-zinc-400 font-medium">No events yet</p>
-                <p className="text-xs text-zinc-600">Click <strong className="text-zinc-500">Run</strong> to fetch initial data.</p>
+                <p className="text-sm text-zinc-400 font-medium">{t("tracker_detail_no_events")}</p>
+                <p className="text-xs text-zinc-600">{t("tracker_detail_run_hint")}</p>
               </div>
             ) : (
               itemEvents
@@ -465,13 +467,13 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
         {/* ── SETTINGS TAB ── */}
         {tab === "settings" && (
           <div className="p-5 flex flex-col gap-4">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Tracking settings</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">{t("tracker_detail_tracking_settings")}</p>
 
             {/* Interval */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-zinc-100">Check interval</p>
-                <p className="text-xs text-zinc-500 mt-0.5">How often to poll for updates</p>
+                <p className="text-sm font-medium text-zinc-100">{t("tracker_detail_check_interval")}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{t("tracker_detail_interval_desc")}</p>
               </div>
               <select
                 value={item.check_interval_minutes}
@@ -488,8 +490,8 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {item.kind === "item" && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
                 {[
-                  { key: "track_price_drops" as const, label: "Track price changes" },
-                  { key: "track_availability" as const, label: "Track availability" },
+                  { key: "track_price_drops" as const, label: t("tracker_detail_track_price") },
+                  { key: "track_availability" as const, label: t("tracker_detail_track_availability") },
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer">
                     <span className="text-sm text-zinc-300">{label}</span>
@@ -507,7 +509,7 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
             {item.kind === "author" && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900">
                 <label className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer">
-                  <span className="text-sm text-zinc-300">Track new items</span>
+                  <span className="text-sm text-zinc-300">{t("tracker_detail_track_new")}</span>
                   <input
                     type="checkbox"
                     checked={item.track_new_items}
@@ -524,13 +526,13 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
                 onClick={() => updateItem(item.id, { is_active: !item.is_active })}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
               >
-                {item.is_active ? <><Pause className="w-3.5 h-3.5" /> Pause</> : <><Play className="w-3.5 h-3.5" /> Resume</>}
+                {item.is_active ? <><Pause className="w-3.5 h-3.5" /> {t("tracker_detail_pause")}</> : <><Play className="w-3.5 h-3.5" /> {t("tracker_detail_resume")}</>}
               </button>
               <button
                 onClick={() => { deleteItem(item.id); onBack(); }}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-900/40 bg-red-950/20 text-sm text-red-400 hover:bg-red-950/40 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" /> Delete
+                <Trash2 className="w-3.5 h-3.5" /> {t("tracker_detail_delete")}
               </button>
             </div>
           </div>

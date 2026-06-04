@@ -1,5 +1,6 @@
 import { Bell, BellOff, Package } from "lucide-react";
 import type { TrackerItem } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 function formatRelative(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -19,9 +20,10 @@ interface Props {
 }
 
 export function TrackerItemCard({ item, eventCount, isSelected, onSelect }: Props) {
+  const t = useT();
   const thumbnail = item.item_thumbnail_url;
   const title = item.item_name ?? item.author_name ?? item.search_keyword ?? "Unknown";
-  const subtitle = item.kind === "item" ? item.item_author : item.kind === "keyword" ? "Keyword search" : "Author tracker";
+  const subtitle = item.kind === "item" ? item.item_author : item.kind === "keyword" ? t("tracker_modal_tab_keyword") : t("tracker_modal_tab_author");
 
   return (
     <button

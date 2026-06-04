@@ -6,6 +6,7 @@ import { tauriGetBoothProductDetail } from "@/lib/tauri";
 import type { CreateTrackerItemPayload, TrackerKind } from "@/lib/tauri";
 import { BoothProductPickerModal } from "./BoothProductPickerModal";
 import { BoothAuthorPickerModal } from "./BoothAuthorPickerModal";
+import { useT } from "@/i18n";
 
 interface AddTrackerModalProps {
   onClose: () => void;
@@ -23,6 +24,7 @@ interface AddTrackerModalProps {
 }
 
 export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModalProps) {
+  const t = useT();
   const { createItem } = useTrackerStore();
   const [kind, setKind] = useState<TrackerKind>(prefill?.kind ?? "item");
   const [boothId, setBoothId] = useState(prefill?.boothId ?? "");
@@ -135,8 +137,8 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
               <Bell className="h-4 w-4 text-violet-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Add to Tracker</h2>
-              <p className="text-[11px] text-zinc-500 mt-0.5">Monitor price drops, availability and new releases</p>
+              <h2 className="text-sm font-semibold text-zinc-100">{t("tracker_modal_title")}</h2>
+              <p className="text-[11px] text-zinc-500 mt-0.5">{t("tracker_modal_subtitle")}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
@@ -158,7 +160,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
                       : "text-zinc-500 hover:text-zinc-300"
                   )}
                 >
-                  {k === "item" ? "Booth Item" : k === "author" ? "Author / Shop" : "Keyword"}
+                  {k === "item" ? t("tracker_modal_tab_item") : k === "author" ? t("tracker_modal_tab_author") : t("tracker_modal_tab_keyword")}
                 </button>
               ))}
             </div>
@@ -169,13 +171,13 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
           {kind === "item" ? (
             <>
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Booth ID</label>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{t("tracker_modal_booth_id")}</label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <input
                       value={boothId}
                       onChange={(e) => setBoothId(e.target.value)}
-                      placeholder="e.g. 6082686"
+                      placeholder={t("tracker_modal_booth_id_placeholder")}
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors pr-8"
                     />
                     {fetching && (
@@ -185,9 +187,9 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
                   <button
                     onClick={() => setBoothItemPickerOpen(true)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
-                    title="Search Booth"
+                    title={t("tracker_modal_search")}
                   >
-                    <Search className="h-3.5 w-3.5" /> Search
+                    <Search className="h-3.5 w-3.5" /> {t("tracker_modal_search")}
                   </button>
                 </div>
               </div>
@@ -206,11 +208,11 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
 
               {!itemName && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Name (manual)</label>
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{t("tracker_modal_name_manual")}</label>
                   <input
                     value={itemName}
                     onChange={(e) => setItemName(e.target.value)}
-                    placeholder="Item name"
+                    placeholder={t("tracker_modal_name_placeholder")}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors"
                   />
                 </div>
@@ -218,8 +220,8 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
 
               <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
                 {[
-                  { key: "trackPriceDrops" as const, label: "Price changes", setter: setTrackPriceDrops, value: trackPriceDrops },
-                  { key: "trackAvailability" as const, label: "Availability / back in stock", setter: setTrackAvailability, value: trackAvailability },
+                  { key: "trackPriceDrops" as const, label: t("tracker_modal_price_changes"), setter: setTrackPriceDrops, value: trackPriceDrops },
+                  { key: "trackAvailability" as const, label: t("tracker_modal_availability"), setter: setTrackAvailability, value: trackAvailability },
                 ].map(({ key, label, setter, value }) => (
                   <label key={key} className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer">
                     <span className="text-sm text-zinc-300">{label}</span>
@@ -236,27 +238,27 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
           ) : kind === "author" ? (
             <>
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Author Name</label>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{t("tracker_modal_author_name")}</label>
                 <div className="flex gap-2">
                   <input
                     value={authorName}
                     onChange={(e) => setAuthorName(e.target.value)}
-                    placeholder="e.g. Karin Lena"
+                    placeholder={t("tracker_modal_author_placeholder")}
                     className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors"
                   />
                   <button
                     onClick={() => setBoothAuthorPickerOpen(true)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
-                    title="Search Booth author"
+                    title={t("tracker_modal_search")}
                   >
-                    <Search className="h-3.5 w-3.5" /> Search
+                    <Search className="h-3.5 w-3.5" /> {t("tracker_modal_search")}
                   </button>
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Booth Shop ID <span className="text-zinc-700 normal-case">(optional)</span>
+                  {t("tracker_modal_shop_id")} <span className="text-zinc-700 normal-case">{t("tracker_modal_shop_id_optional")}</span>
                 </label>
                 <input
                   value={authorShopId}
@@ -268,7 +270,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
 
               <div className="rounded-xl border border-zinc-800 bg-zinc-900">
                 <label className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer">
-                  <span className="text-sm text-zinc-300">Track new items by this author</span>
+                  <span className="text-sm text-zinc-300">{t("tracker_modal_track_author_items")}</span>
                   <input
                     type="checkbox"
                     checked={trackNewItems}
@@ -282,26 +284,26 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
             <>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Search keyword
+                  {t("tracker_modal_keyword_label")}
                 </label>
                 <input
                   value={keywordQuery}
                   onChange={(e) => setKeywordQuery(e.target.value)}
-                  placeholder="e.g. Karin avatar, kemono ears..."
+                  placeholder={t("tracker_modal_keyword_placeholder")}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors"
                 />
                 <p className="text-[10px] text-zinc-600">
-                  VRC Studio will monitor Booth search results for new items matching this query.
+                  {t("tracker_modal_keyword_hint")}
                 </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Category <span className="text-zinc-700 normal-case">(optional)</span>
+                  {t("tracker_modal_category")} <span className="text-zinc-700 normal-case">{t("tracker_modal_shop_id_optional")}</span>
                 </label>
                 <input
                   value={keywordCategory}
                   onChange={(e) => setKeywordCategory(e.target.value)}
-                  placeholder="e.g. 3D models"
+                  placeholder={t("tracker_modal_category_placeholder")}
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors"
                 />
               </div>
@@ -309,7 +311,7 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
           ) : null}
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Check Every</label>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{t("tracker_modal_check_every")}</label>
             <select
               value={interval}
               onChange={(e) => setInterval(Number(e.target.value))}
@@ -335,14 +337,14 @@ export function AddTrackerModal({ onClose, prefill, onCreated }: AddTrackerModal
 
         <div className="flex gap-2.5 border-t border-zinc-800 px-6 py-4 shrink-0">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
-            Cancel
+            {t("tracker_modal_cancel")}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Add to Tracker"}
+            {saving ? t("tracker_modal_save") : t("tracker_modal_add")}
           </button>
         </div>
       </div>
