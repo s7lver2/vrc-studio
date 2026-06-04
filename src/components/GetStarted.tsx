@@ -44,160 +44,154 @@ interface Step {
   tips: string[];
 }
 
-const STEPS: Step[] = [
-  {
-    id: "welcome",
-    section: null,
-    icon: Sparkles,
-    color: "text-red-400",
-    bgColor: "bg-red-500/10",
-    borderColor: "border-red-500/20",
-    title: "Welcome to VRC Studio",
-    subtitle: "Your all-in-one VRChat creator toolkit",
-    description:
-      "VRC Studio centralizes everything you need as a VRChat creator: manage Unity projects, organize your asset library, track items from Booth, and more — all in one place.",
-    tryLabel: "Let's get started",
-    tryDescription: "This tutorial will walk you through each section of the app. You can skip it at any time.",
-    tips: [
-      "VRC Studio runs in the background even when you close the window",
-      "Click the tray icon in your system tray to reopen it anytime",
-      "All your data is stored locally — nothing is uploaded to external servers",
-    ],
-  },
-  {
-    id: "projects",
-    section: "projects",
-    icon: FolderOpen,
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/20",
-    title: "Projects",
-    subtitle: "Manage your Unity VRChat projects",
-    description:
-      "The Projects section is your home base. Create new VRChat projects, open existing ones in Unity, manage VPM packages, and track your project history.",
-    tryLabel: "Explore Projects",
-    tryDescription: "Click the button to go to Projects, then try scanning for existing projects or creating a new one.",
-    tips: [
-      "Use 'Scan for Projects' to discover Unity projects already on your drive",
-      "Open a project in Unity directly from the card context menu",
-      "The Workspace view gives you a terminal, build monitor, and version control for a project",
-    ],
-  },
-  {
-    id: "shop",
-    section: "shop",
-    icon: ShoppingBag,
-    color: "text-pink-400",
-    bgColor: "bg-pink-500/10",
-    borderColor: "border-pink-500/20",
-    title: "Shop",
-    subtitle: "Browse and download assets from Booth.pm",
-    description:
-      "Search thousands of VRChat assets from Booth.pm. Connect your Booth account to see which items you already own, and download directly into your inventory.",
-    tryLabel: "Explore the Shop",
-    tryDescription: "Head to the Shop and try searching for an avatar or accessory. You can connect your Booth account in Settings → Connections.",
-    tips: [
-      "Connect your Booth account in Settings to see owned items highlighted",
-      "Downloads go directly to your Inventory — no manual file management needed",
-      "Use filters to narrow results by category, price, and more",
-    ],
-  },
-  {
-    id: "inventory",
-    section: "inventory",
-    icon: Archive,
-    color: "text-amber-400",
-    bgColor: "bg-amber-500/10",
-    borderColor: "border-amber-500/20",
-    title: "Inventory",
-    subtitle: "Your personal asset library",
-    description:
-      "Inventory is where all your downloaded and imported assets live. Organize them into folders, tag them, preview 3D models, and install them directly into your Unity projects.",
-    tryLabel: "Open Inventory",
-    tryDescription: "Check out your Inventory. Try creating a folder or importing a local .unitypackage file.",
-    tips: [
-      "Right-click any item to see options like 'Open in Unity' or 'Open file location'",
-      "Use tags to categorize assets (outfit, base, accessory) for quick filtering",
-      "Items can be compressed with BC7 to save disk space",
-    ],
-  },
-  {
-    id: "packages",
-    section: "packages",
-    icon: Package,
-    color: "text-violet-400",
-    bgColor: "bg-violet-500/10",
-    borderColor: "border-violet-500/20",
-    title: "Packages",
-    subtitle: "Build and manage VPM packages",
-    description:
-      "The Packages section lets you create custom VPM packages from your assets, build them, and install them into your projects — perfect for creators who distribute their work.",
-    tryLabel: "Go to Packages",
-    tryDescription: "Take a look at the Packages section. You can create a new package or view the built-in package editor.",
-    tips: [
-      "Packages follow the VPM (VRChat Package Manager) format",
-      "Build a package to generate a .zip ready to distribute",
-      "Link assets from your Inventory to include them in a package",
-    ],
-  },
-  {
-    id: "tracker",
-    section: "tracker",
-    icon: Bell,
-    color: "text-emerald-400",
-    bgColor: "bg-emerald-500/10",
-    borderColor: "border-emerald-500/20",
-    title: "Tracker",
-    subtitle: "Never miss an update from your favorite creators",
-    description:
-      "Add Booth items or authors to your Tracker and get notified when prices change, new items drop, or updates are released — all automatically checked in the background.",
-    tryLabel: "Open Tracker",
-    tryDescription: "Head to Tracker and try adding a Booth item or author you follow. The tracker checks for updates automatically.",
-    tips: [
-      "The tracker runs in the background even when VRC Studio is minimized",
-      "Add both individual items and entire author pages to track",
-      "Configure how often each item is checked in its detail panel",
-    ],
-  },
-  {
-    id: "settings",
-    section: "settings",
-    icon: Settings,
-    color: "text-zinc-400",
-    bgColor: "bg-zinc-500/10",
-    borderColor: "border-zinc-500/20",
-    title: "Settings",
-    subtitle: "Customize VRC Studio to your liking",
-    description:
-      "Adjust the language, appearance (themes, UI scale, accent color), set your assets storage path, configure VPM sources, and manage connections to external platforms.",
-    tryLabel: "Open Settings",
-    tryDescription: "Explore Settings and try changing the accent color or language. Find the Connections tab to link your Booth account.",
-    tips: [
-      "Set a custom Assets directory if you store files on a secondary drive",
-      "VPM Sources lets you add community package repositories",
-      "The Debug tab has tools for reimporting assets and backing up your database",
-    ],
-  },
-  {
-    id: "done",
-    section: null,
-    icon: Check,
-    color: "text-emerald-400",
-    bgColor: "bg-emerald-500/10",
-    borderColor: "border-emerald-500/20",
-    title: "You're all set!",
-    subtitle: "VRC Studio is ready to use",
-    description:
-      "You've explored all the main sections of VRC Studio. Remember, the app stays in your system tray in the background — the Tracker keeps watching even when you're away.",
-    tryLabel: "Start creating",
-    tryDescription: "VRC Studio will remember your setup. You can always replay this tutorial from Settings → Debug → Restart with Get Started.",
-    tips: [
-      "Press the tray icon to bring VRC Studio back at any time",
-      "Check for updates in Settings → Updates",
-      "Join the VRC Studio community for tips, support, and updates",
-    ],
-  },
-];
+function buildSteps(t: (key: import("@/i18n").TranslationKey) => string): Step[] {
+  return [
+    {
+      id: "welcome",
+      section: null,
+      icon: Sparkles,
+      color: "text-red-400",
+      bgColor: "bg-red-500/10",
+      borderColor: "border-red-500/20",
+      title: t("getstarted_s1_title"),
+      subtitle: t("getstarted_s1_subtitle"),
+      description: t("getstarted_s1_desc"),
+      tryLabel: t("getstarted_s1_tryLabel"),
+      tryDescription: t("getstarted_s1_tryDesc"),
+      tips: [
+        t("getstarted_s1_tip1"),
+        t("getstarted_s1_tip2"),
+        t("getstarted_s1_tip3"),
+      ],
+    },
+    {
+      id: "projects",
+      section: "projects",
+      icon: FolderOpen,
+      color: "text-blue-400",
+      bgColor: "bg-blue-500/10",
+      borderColor: "border-blue-500/20",
+      title: t("getstarted_s2_title"),
+      subtitle: t("getstarted_s2_subtitle"),
+      description: t("getstarted_s2_desc"),
+      tryLabel: t("getstarted_s2_tryLabel"),
+      tryDescription: t("getstarted_s2_tryDesc"),
+      tips: [
+        t("getstarted_s2_tip1"),
+        t("getstarted_s2_tip2"),
+        t("getstarted_s2_tip3"),
+      ],
+    },
+    {
+      id: "shop",
+      section: "shop",
+      icon: ShoppingBag,
+      color: "text-pink-400",
+      bgColor: "bg-pink-500/10",
+      borderColor: "border-pink-500/20",
+      title: t("getstarted_s3_title"),
+      subtitle: t("getstarted_s3_subtitle"),
+      description: t("getstarted_s3_desc"),
+      tryLabel: t("getstarted_s3_tryLabel"),
+      tryDescription: t("getstarted_s3_tryDesc"),
+      tips: [
+        t("getstarted_s3_tip1"),
+        t("getstarted_s3_tip2"),
+        t("getstarted_s3_tip3"),
+      ],
+    },
+    {
+      id: "inventory",
+      section: "inventory",
+      icon: Archive,
+      color: "text-amber-400",
+      bgColor: "bg-amber-500/10",
+      borderColor: "border-amber-500/20",
+      title: t("getstarted_s4_title"),
+      subtitle: t("getstarted_s4_subtitle"),
+      description: t("getstarted_s4_desc"),
+      tryLabel: t("getstarted_s4_tryLabel"),
+      tryDescription: t("getstarted_s4_tryDesc"),
+      tips: [
+        t("getstarted_s4_tip1"),
+        t("getstarted_s4_tip2"),
+        t("getstarted_s4_tip3"),
+      ],
+    },
+    {
+      id: "packages",
+      section: "packages",
+      icon: Package,
+      color: "text-violet-400",
+      bgColor: "bg-violet-500/10",
+      borderColor: "border-violet-500/20",
+      title: t("getstarted_s5_title"),
+      subtitle: t("getstarted_s5_subtitle"),
+      description: t("getstarted_s5_desc"),
+      tryLabel: t("getstarted_s5_tryLabel"),
+      tryDescription: t("getstarted_s5_tryDesc"),
+      tips: [
+        t("getstarted_s5_tip1"),
+        t("getstarted_s5_tip2"),
+        t("getstarted_s5_tip3"),
+      ],
+    },
+    {
+      id: "tracker",
+      section: "tracker",
+      icon: Bell,
+      color: "text-emerald-400",
+      bgColor: "bg-emerald-500/10",
+      borderColor: "border-emerald-500/20",
+      title: t("getstarted_s6_title"),
+      subtitle: t("getstarted_s6_subtitle"),
+      description: t("getstarted_s6_desc"),
+      tryLabel: t("getstarted_s6_tryLabel"),
+      tryDescription: t("getstarted_s6_tryDesc"),
+      tips: [
+        t("getstarted_s6_tip1"),
+        t("getstarted_s6_tip2"),
+        t("getstarted_s6_tip3"),
+      ],
+    },
+    {
+      id: "settings",
+      section: "settings",
+      icon: Settings,
+      color: "text-zinc-400",
+      bgColor: "bg-zinc-500/10",
+      borderColor: "border-zinc-500/20",
+      title: t("getstarted_s7_title"),
+      subtitle: t("getstarted_s7_subtitle"),
+      description: t("getstarted_s7_desc"),
+      tryLabel: t("getstarted_s7_tryLabel"),
+      tryDescription: t("getstarted_s7_tryDesc"),
+      tips: [
+        t("getstarted_s7_tip1"),
+        t("getstarted_s7_tip2"),
+        t("getstarted_s7_tip3"),
+      ],
+    },
+    {
+      id: "done",
+      section: null,
+      icon: Check,
+      color: "text-emerald-400",
+      bgColor: "bg-emerald-500/10",
+      borderColor: "border-emerald-500/20",
+      title: t("getstarted_s8_title"),
+      subtitle: t("getstarted_s8_subtitle"),
+      description: t("getstarted_s8_desc"),
+      tryLabel: t("getstarted_s8_tryLabel"),
+      tryDescription: t("getstarted_s8_tryDesc"),
+      tips: [
+        t("getstarted_s8_tip1"),
+        t("getstarted_s8_tip2"),
+        t("getstarted_s8_tip3"),
+      ],
+    },
+  ];
+}
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -211,6 +205,7 @@ function cn(...c: (string | boolean | undefined)[]) {
 
 export function GetStarted({ onClose }: GetStartedProps) {
   const t = useT();
+  const STEPS = buildSteps(t);
   const [stepIndex, setStepIndex] = useState(0);
   const [visitedSections, setVisitedSections] = useState<Set<string>>(new Set(["welcome"]));
   const [exiting, setExiting] = useState(false);
@@ -317,7 +312,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
                 }
               </div>
               <span className={cn("font-medium truncate", active && "text-zinc-100")}>
-                {s.id === "welcome" ? "Welcome" : s.id === "done" ? t("getstarted_done") : s.title}
+                {s.title}
               </span>
             </button>
           );
@@ -359,7 +354,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-zinc-600 mb-1.5">
-                  Step {stepIndex + 1} of {STEPS.length}
+                  {t("getstarted_step_of", { current: String(stepIndex + 1), total: String(STEPS.length) })}
                 </p>
                 <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">{step.title}</h1>
                 <p className="text-sm text-zinc-400 mt-1">{step.subtitle}</p>
@@ -391,8 +386,8 @@ export function GetStarted({ onClose }: GetStartedProps) {
                   )}
                 >
                   {visitedSections.has(step.id)
-                    ? <><Check className="h-3.5 w-3.5" /> Visited</>
-                    : <><ArrowRight className="h-3.5 w-3.5" /> Go to {step.title}</>
+                    ? <><Check className="h-3.5 w-3.5" /> {t("getstarted_visited")}</>
+                    : <><ArrowRight className="h-3.5 w-3.5" /> {t("getstarted_go_to", { title: step.title })}</>
                   }
                 </button>
               </div>
@@ -400,7 +395,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
 
             {/* Tips */}
             <div className="flex flex-col gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">Tips</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600">{t("getstarted_tips_label")}</p>
               <div className="flex flex-col gap-1.5">
                 {step.tips.map((tip, i) => (
                   <div key={i} className="flex items-start gap-2.5">
@@ -443,7 +438,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
 
             {!canAdvance && step.section && (
               <p className="text-center text-[11px] text-zinc-600 -mt-4">
-                Click "Go to {step.title}" above to mark this step as visited
+                {t("getstarted_mark_hint", { title: step.title })}
               </p>
             )}
           </div>
