@@ -110,6 +110,7 @@ pub struct ItemVariant {
     pub sort_order: i64,
     pub size_bytes: Option<u64>,
     pub is_compressed: bool,
+    pub custom_image_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +166,9 @@ pub struct CreateProjectRequest {
     /// IDs de paquetes custom a instalar (sus ZIPs se copian a Packages/)
     #[serde(default)]
     pub custom_package_ids: Vec<String>,
+    /// IDs of inventory items to auto-extract on first Unity open.
+    #[serde(default)]
+    pub early_import_item_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,6 +177,31 @@ pub struct CreateProjectProgress {
     pub progress: f32,
     pub message: String,
     pub done: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarlyImportEntry {
+    pub id: String,
+    pub project_id: String,
+    pub item_id: String,
+    pub item_name: String,
+    pub thumbnail_url: Option<String>,
+    pub local_path: String,
+    pub status: String, // "pending" | "done" | "error"
+    pub imported_at: Option<String>,
+    pub error_msg: Option<String>,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarlyImportProgressEvent {
+    pub project_id: String,
+    pub item_id: String,
+    pub item_name: String,
+    pub current: usize,
+    pub total: usize,
+    pub status: String, // "extracting" | "done" | "error" | "complete"
     pub error: Option<String>,
 }
 
