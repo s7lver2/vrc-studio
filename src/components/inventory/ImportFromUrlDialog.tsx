@@ -166,7 +166,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
               <Loader2 className="h-8 w-8 text-red-400 animate-spin" />
               <div className="w-full flex flex-col gap-1.5">
                 <div className="flex justify-between text-xs text-zinc-400">
-                  <span>Downloading from {labelFromUrl(url)}</span>
+                  <span>{t("import_url_downloading_from").replace("{url}", labelFromUrl(url))}</span>
                   <span>{downloadProgress}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
