@@ -161,7 +161,7 @@ export interface InventoryFolder {
   parent_id: string | null;
   color: string | null;
   custom_image_path: string | null;
-  custom_image_fill: "icon" | "grid" | null;
+  custom_image_fill: "icon" | "cover" | null;
   sort_order?: number;
 }
 
@@ -719,7 +719,7 @@ export const tauriReorderItems = (item_ids: string[]): Promise<void> =>
 export const tauriSetItemCustomImages = (item_id: string, source_paths: string[]): Promise<string[]> =>
   invoke("set_item_custom_images", { itemId: item_id, sourcePaths: source_paths });
 
-export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean; image_fill?: "icon" | "grid"; }): Promise<InventoryFolder> =>
+export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean; image_fill?: "icon" | "cover"; }): Promise<InventoryFolder> =>
   invoke("update_folder", {
     folderId: folder_id,
     name: opts.name ?? null,

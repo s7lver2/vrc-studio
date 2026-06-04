@@ -161,7 +161,7 @@ interface InventoryState {
   setItemCustomCover: (itemId: string, sourcePath: string) => Promise<string>;
   reorderItems: (orderedIds: string[]) => Promise<void>;
   setItemCustomImages: (itemId: string, sourcePaths: string[]) => Promise<string[]>;
-  updateFolder: (folderId: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean; image_fill?: "icon" | "grid"; }) => Promise<void>;
+  updateFolder: (folderId: string, opts: { name?: string; color?: string; image_source_path?: string; clear_image?: boolean; image_fill?: "icon" | "cover"; }) => Promise<void>;
   moveFolderToParent: (folderId: string, parentId: string | null) => Promise<void>;
   removeFolder: (folderId: string) => Promise<void>;
   reorderFolders: (orderedIds: string[]) => Promise<void>;

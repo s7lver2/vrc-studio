@@ -60,7 +60,7 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
   }, [ctxMenu]);
 
   const folderColor = folder.color ?? "#f59e0b";
-  const useGridFill = folder.custom_image_fill === "grid" && !!folder.custom_image_path;
+  const useCoverFill = folder.custom_image_fill === "cover" && !!folder.custom_image_path;
   const imageUrl = folder.custom_image_path ? (toAssetUrl(folder.custom_image_path) ?? "") : "";
 
   // LIST mode
@@ -170,41 +170,51 @@ const FolderCardInner = function FolderCardInner({ folder, itemCount, onOpen, is
           borderColor: isOver && isDragging ? undefined : "var(--border-color)",
         }}
       >
-        {/* Full-bleed image (both fill modes) */}
-        {folder.custom_image_path && (
+        {/* ── MODE: grid fill — image covers entire card ── */}
+        {useCoverFill && folder.custom_image_path && (
+          <>
+            <img
+              src={imageUrl || undefined}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 w-full h-full object-cover z-0"
+              style={{ borderRadius: "var(--radius-card)" }}
+            />
+            {/* Dark gradient at bottom for name readability */}
+            <div
+              className="absolute inset-0 z-10 pointer-events-none"
+              style={{
+                borderRadius: "var(--radius-card)",
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.78) 100%)",
+              }}
+            />
+          </>
+        )}
+
+        {/* ── MODE: icon — large centered image, card bg visible ── */}
+        {!useCoverFill && folder.custom_image_path && (
           <img
             src={imageUrl || undefined}
             alt=""
             loading="lazy"
             decoding="async"
-            className="absolute inset-0 w-full h-full object-cover z-0"
-            style={{ borderRadius: "var(--radius-card)" }}
+            className="w-[72%] aspect-square object-cover z-10 shadow-lg"
+            style={{ borderRadius: "calc(var(--radius-card) * 0.6)" }}
           />
         )}
 
-        {/* Overlay: dark scrim for readability */}
-        {folder.custom_image_path ? (
-          /* Gradient from transparent at top to solid at bottom for name legibility */
-          <div
-            className="absolute inset-0 z-10"
-            style={{
-              borderRadius: "var(--radius-card)",
-              background: useGridFill
-                ? "rgba(0,0,0,0.38)"
-                : "linear-gradient(to bottom, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72) 100%)",
-            }}
-          />
-        ) : (
-          /* No image – show folder icon */
+        {/* ── No image — folder icon ── */}
+        {!folder.custom_image_path && (
           isOver && isDragging
             ? <FolderOpen className="h-10 w-10 z-10" style={{ color: folderColor }} />
             : <Folder className="h-10 w-10 z-10" style={{ color: folderColor }} />
         )}
 
-        {/* Folder name – pinned to bottom when image present, centered otherwise */}
+        {/* Folder name */}
         <span
           className={`text-[11px] font-medium truncate max-w-[90%] text-center px-1 z-20 ${
-            folder.custom_image_path
+            useCoverFill && folder.custom_image_path
               ? "absolute bottom-2 left-0 right-0 text-white drop-shadow-sm"
               : "text-zinc-300"
           }`}
