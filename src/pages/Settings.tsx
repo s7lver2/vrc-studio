@@ -1029,6 +1029,24 @@ function DebugSection() {
             </div>
           </CardRow>
 
+          {/* Restart app */}
+          <CardRow>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">Restart app</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Close and relaunch VRC Studio immediately.
+                </p>
+              </div>
+              <button
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-xs text-white font-medium transition-colors shrink-0 border border-zinc-600"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Reload UI
+              </button>
+            </div>
+          </CardRow>
+
           {/* Ping */}
           <CardRow>
             <div className="flex items-center justify-between gap-4">

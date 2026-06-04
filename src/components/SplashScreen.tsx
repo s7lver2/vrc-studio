@@ -1,55 +1,49 @@
-/**
- * SplashScreen — Rediseño coherente con la estética de VRC Studio.
- * Logo con cuadrado rojo + texto escalonado + barra de progreso.
- * Sin partículas de colores. Sin formas aleatorias.
- */
-
 import { useEffect, useState, useRef } from "react";
 
 interface Props {
   onDone: () => void;
+  /** 0–100: loading progress driven by page preloads in App.tsx */
+  progress: number;
 }
 
-export function SplashScreen({ onDone }: Props) {
+export function SplashScreen({ onDone, progress }: Props) {
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
-  const [barWidth, setBarWidth] = useState(0);
-  const barRafRef = useRef<number>(0);
-  const barStartRef = useRef<number>(0);
-  const BAR_DURATION = 1800; // ms para llenar la barra
+  const canExitRef = useRef(false);
+  const exitStartedRef = useRef(false);
 
-  // Fases
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase("show"), 80);
-    const t2 = setTimeout(() => setPhase("exit"), 2300);
-    const t3 = setTimeout(onDone, 2800);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [onDone]);
+    const t = setTimeout(() => {
+      setPhase("show");
+      // Allow exit only after the enter animation has settled (500ms)
+      setTimeout(() => { canExitRef.current = true; }, 500);
+    }, 80);
+    // Hard fallback: never hang forever
+    const fallback = setTimeout(() => triggerExit(), 30_000);
+    return () => { clearTimeout(t); clearTimeout(fallback); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Barra de progreso animada con rAF (más suave que CSS transition)
+  const triggerExit = () => {
+    if (exitStartedRef.current) return;
+    exitStartedRef.current = true;
+    setPhase("exit");
+    setTimeout(onDone, 500);
+  };
+
+  // Exit once progress reaches 100 and the min animation time has passed
   useEffect(() => {
-    if (phase !== "show") return;
-    barStartRef.current = performance.now();
-
-    const tick = (now: number) => {
-      const elapsed = now - barStartRef.current;
-      // Ease-out cubic: rápida al inicio, desacelera al final
-      const t = Math.min(elapsed / BAR_DURATION, 1);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setBarWidth(eased * 100);
-      if (t < 1) {
-        barRafRef.current = requestAnimationFrame(tick);
-      }
-    };
-    barRafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(barRafRef.current);
-  }, [phase]);
+    if (progress >= 100 && canExitRef.current) {
+      triggerExit();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
 
   const visible = phase !== "enter";
   const exiting = phase === "exit";
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden select-none"
+      className="fixed inset-0 z-[9999] overflow-hidden select-none"
       style={{
         background: "hsl(222 14% 8%)",
         opacity: exiting ? 0 : 1,
@@ -60,7 +54,7 @@ export function SplashScreen({ onDone }: Props) {
       {/* Dot grid background */}
       <svg
         className="absolute inset-0 w-full h-full"
-        style={{ opacity: 0.25 }}
+        style={{ opacity: 0.18 }}
         aria-hidden="true"
       >
         <defs>
@@ -71,130 +65,58 @@ export function SplashScreen({ onDone }: Props) {
         <rect width="100%" height="100%" fill="url(#splashDots)" />
       </svg>
 
-      {/* Glow radial detrás del logo */}
+      {/* Bottom-center content */}
       <div
-        className="absolute pointer-events-none"
-        style={{
-          width: 400,
-          height: 400,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(220,38,38,0.12) 0%, transparent 70%)",
-          transform: `scale(${visible ? 1 : 0.4})`,
-          transition: "transform 0.9s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      />
-
-      {/* Contenedor principal */}
-      <div
-        className="relative flex flex-col items-center gap-8"
+        className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-5"
         style={{
           opacity: visible ? 1 : 0,
-          transform: visible ? "translateY(0)" : "translateY(20px)",
+          transform: visible ? "translateY(0)" : "translateY(16px)",
           transition: "opacity 0.45s ease-out, transform 0.55s cubic-bezier(0.34,1.56,0.64,1)",
         }}
       >
-        {/* Logo: mark sin texto + wordmark manual */}
-        <div className="flex items-center gap-4">
+        {/* Logo + wordmark */}
+        <div className="flex items-center gap-3">
           <img
             src="/logo-mark-256.png"
             alt="VRC Studio"
             style={{
-              width: 76,
-              height: 76,
+              width: 44,
+              height: 44,
               objectFit: "contain",
-              filter: "drop-shadow(0 0 18px rgba(220,38,38,0.75)) drop-shadow(0 0 5px rgba(220,38,38,0.5))",
+              filter: "brightness(0) invert(1)",
               transform: visible ? "scale(1) rotate(0deg)" : "scale(0.5) rotate(-12deg)",
               transition: "transform 0.6s cubic-bezier(0.34,1.56,0.64,1)",
               flexShrink: 0,
             }}
           />
-
-          {/* Texto del logo */}
-          <div className="flex flex-col gap-0.5" style={{ overflow: "hidden" }}>
-            {/* "VRC" */}
-            <div
-              style={{
-                transform: visible ? "translateX(0)" : "translateX(-24px)",
-                opacity: visible ? 1 : 0,
-                transition: "transform 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.05s, opacity 0.4s ease-out 0.05s",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 32,
-                  fontWeight: 800,
-                  letterSpacing: "-0.03em",
-                  lineHeight: 1,
-                  background: "linear-gradient(135deg, #f4f4f5 0%, #a1a1aa 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  fontFamily: "system-ui, -apple-system, sans-serif",
-                }}
-              >
-                VRC
-              </span>
-            </div>
-
-            {/* "Studio" */}
-            <div
-              style={{
-                transform: visible ? "translateX(0)" : "translateX(-24px)",
-                opacity: visible ? 1 : 0,
-                transition: "transform 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.13s, opacity 0.4s ease-out 0.13s",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 32,
-                  fontWeight: 800,
-                  letterSpacing: "-0.03em",
-                  lineHeight: 1,
-                  background: "linear-gradient(135deg, #ef4444 0%, #f87171 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  fontFamily: "system-ui, -apple-system, sans-serif",
-                }}
-              >
-                Studio
-              </span>
-            </div>
+          <div className="flex flex-col gap-0" style={{ overflow: "hidden" }}>
+            <span style={{
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: "-0.03em",
+              lineHeight: 1.1,
+              color: "#ffffff",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+            }}>VRC</span>
+            <span style={{
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: "-0.03em",
+              lineHeight: 1.1,
+              color: "rgba(255,255,255,0.7)",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+            }}>Studio</span>
           </div>
         </div>
 
-        {/* Subtítulo */}
-        <div
-          style={{
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(6px)",
-            transition: "opacity 0.5s ease-out 0.22s, transform 0.5s ease-out 0.22s",
-          }}
-        >
-          <p
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.3em",
-              textTransform: "uppercase",
-              color: "#52525b",
-              fontFamily: "system-ui, -apple-system, sans-serif",
-            }}
-          >
-            Avatar Asset Manager
-          </p>
-        </div>
-
-        {/* Barra de progreso */}
-        <div
-          style={{
-            opacity: visible ? 1 : 0,
-            transition: "opacity 0.4s ease-out 0.3s",
-          }}
-        >
+        {/* Progress bar */}
+        <div style={{ width: 180, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           <div
             style={{
-              width: 200,
+              width: "100%",
               height: 2,
               borderRadius: 99,
-              background: "#27272a",
+              background: "rgba(255,255,255,0.15)",
               overflow: "hidden",
               position: "relative",
             }}
@@ -203,14 +125,23 @@ export function SplashScreen({ onDone }: Props) {
               style={{
                 position: "absolute",
                 inset: 0,
-                width: `${barWidth}%`,
+                width: `${progress}%`,
                 borderRadius: 99,
-                background: "linear-gradient(90deg, #dc2626, #ef4444)",
-                boxShadow: "0 0 8px rgba(220,38,38,0.6)",
-                transition: "none", // rAF lo maneja, no CSS
+                background: "#ffffff",
+                boxShadow: "0 0 8px rgba(255,255,255,0.5)",
+                transition: "width 0.35s ease-out",
               }}
             />
           </div>
+          <p style={{
+            fontSize: 9,
+            letterSpacing: "0.25em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.35)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+          }}>
+            Loading…
+          </p>
         </div>
       </div>
     </div>

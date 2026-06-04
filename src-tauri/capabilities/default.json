@@ -19,6 +19,7 @@
     "fs:allow-read-dir",
     "fs:allow-stat",
     "fs:scope-applocaldata-recursive",
-    "fs:scope-home-recursive"
+    "fs:scope-home-recursive",
+    "process:allow-restart"
   ]
 }

@@ -13,8 +13,8 @@ use uuid::Uuid;
 // ── Constants ────────────────────────────────────────────────────────────────
 /// Discord Application ID — registered once in the Discord Developer Portal.
 /// All users of VRC Studio share this single app identity.
-pub const CLIENT_ID: &str = "YOUR_APP_ID_HERE";
-const CLIENT_SECRET: &str = "YOUR_CLIENT_SECRET_HERE";
+pub const CLIENT_ID: &str = "1510381566503813280";
+const CLIENT_SECRET: &str = "RWX2Hjf2nE4l3yc35inl6KWZNG-Y6d49";
 /// Must match one of the Redirect URIs registered in the portal.
 const REDIRECT_URI: &str = "http://127.0.0.1";
 
@@ -70,7 +70,7 @@ fn read_bytes_exact(pipe: &mut File, buf: &mut [u8]) -> Result<(), String> {
     while pos < buf.len() {
         let n = pipe.read(&mut buf[pos..]).map_err(|e| e.to_string())?;
         if n == 0 {
-            return Err("Conexión IPC de Discord cerrada inesperadamente.".to_string());
+            return Err("Discord closed the IPC connection (invalid client_id, or Discord restarted).".to_string());
         }
         pos += n;
     }
@@ -108,14 +108,23 @@ fn ipc_authenticate_with_token(pipe: &mut File, access_token: &str) -> Result<Di
     })
     .to_string();
     write_frame(pipe, 1, &payload)?;
-    let response = read_frame(pipe)?;
-    if response["evt"].as_str() == Some("ERROR") {
-        return Err(format!(
-            "Token de Discord inválido o expirado: {}",
-            response["data"]["message"].as_str().unwrap_or("error desconocido")
-        ));
-    }
-    let user = &response["data"]["user"];
+    // Loop until we get the AUTHENTICATE response (skip intermediate DISPATCH frames)
+    let user_data = loop {
+        let response = read_frame(pipe)?;
+        match response["cmd"].as_str() {
+            Some("AUTHENTICATE") => {
+                if response["evt"].as_str() == Some("ERROR") {
+                    return Err(format!(
+                        "Invalid or expired Discord token: {}",
+                        response["data"]["message"].as_str().unwrap_or("unknown error")
+                    ));
+                }
+                break response;
+            }
+            _ => continue,
+        }
+    };
+    let user = &user_data["data"]["user"];
     let avatar_url = match (user["id"].as_str(), user["avatar"].as_str()) {
         (Some(uid), Some(hash)) => Some(format!(
             "https://cdn.discordapp.com/avatars/{uid}/{hash}.png?size=128"
@@ -169,6 +178,13 @@ async fn exchange_token(auth_code: &str) -> Result<String, String> {
 pub async fn discord_authorize(
     state: tauri::State<'_, DiscordAuthState>,
 ) -> Result<DiscordAuthResult, String> {
+    // Guard: reject immediately if the app hasn't been configured yet
+    if CLIENT_ID == "YOUR_APP_ID_HERE" || CLIENT_ID.is_empty() {
+        return Err(
+            "Discord app not configured. Set CLIENT_ID in discord_auth.rs before using this feature.".to_string()
+        );
+    }
+
     // Phase 1 — AUTHORIZE (blocking IPC, runs in thread pool, 120 s timeout)
     let auth_code = tokio::time::timeout(
         Duration::from_secs(120),
@@ -182,6 +198,7 @@ pub async fn discord_authorize(
                 "args": {
                     "client_id": CLIENT_ID,
                     "scopes": ["rpc", "identify"],
+                    "redirect_uri": REDIRECT_URI,
                     "rpc_token": null
                 },
                 "nonce": nonce
@@ -189,16 +206,27 @@ pub async fn discord_authorize(
             .to_string();
             write_frame(&mut pipe, 1, &payload)?;
 
-            // Blocks until the user clicks Authorize (or Deny) in Discord
-            let response = read_frame(&mut pipe)?;
-
-            if response["evt"].as_str() == Some("ERROR") {
-                return Err("Autorización denegada por el usuario.".to_string());
+            // Discord may send intermediate DISPATCH frames before the AUTHORIZE response.
+            // Loop until we receive the frame whose cmd is "AUTHORIZE".
+            loop {
+                let response = read_frame(&mut pipe)?;
+                match response["cmd"].as_str() {
+                    Some("AUTHORIZE") => {
+                        if response["evt"].as_str() == Some("ERROR") {
+                            let msg = response["data"]["message"]
+                                .as_str()
+                                .unwrap_or("denied");
+                            return Err(format!("Discord authorization denied: {msg}"));
+                        }
+                        return response["data"]["code"]
+                            .as_str()
+                            .map(|s| s.to_string())
+                            .ok_or_else(|| format!("Unexpected Discord response: {response}"));
+                    }
+                    // Any other cmd (e.g. DISPATCH events) → ignore and keep reading
+                    _ => continue,
+                }
             }
-            response["data"]["code"]
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| format!("Respuesta inesperada de Discord: {response}"))
         }),
     )
     .await

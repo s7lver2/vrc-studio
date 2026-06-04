@@ -289,10 +289,9 @@ const InventoryItemCardInner = function InventoryItemCard({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: transition ?? "transform 180ms cubic-bezier(0.25, 1, 0.5, 1)",
-    opacity: isSortableDragging || isDragging ? 0.35 : 1,
+    opacity: isSortableDragging || isDragging ? 0 : 1,
     willChange: transform ? "transform" : undefined,
     zIndex: isSortableDragging ? 1 : undefined,
-    contain: "layout",
   };
 
   function TypeBadge({ behavior }: { behavior: ItemBehavior }) {
@@ -385,14 +384,18 @@ const InventoryItemCardInner = function InventoryItemCard({
       selectItem(item);
     };
 
+    // When dragging this item, make it fully invisible — the DragOverlay is the
+    // visual stand-in. isSortableDragging = this item is the active drag source.
+    const listItemOpacity = isSortableDragging || isDragging ? 0 : 1;
+
     return (
       <>
         <div
           ref={setNodeRef} {...attributes} {...listeners}
-          className={`flex items-center gap-3 px-3 py-2 rounded transition-colors cursor-grab active:cursor-grabbing select-none
+          className={`flex items-center gap-3 px-3 py-2 rounded cursor-grab active:cursor-grabbing select-none
             ${isSelected ? "bg-zinc-800/70 border border-zinc-600/60" : "border border-transparent hover:bg-zinc-800/50"}
-            ${isDragging ? "opacity-40" : ""}
           `}
+          style={{ opacity: listItemOpacity, transition: "opacity 120ms ease" }}
           onClick={handleListClick}
           onContextMenu={handleContextMenu}
         >

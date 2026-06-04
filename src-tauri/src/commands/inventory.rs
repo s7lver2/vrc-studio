@@ -457,11 +457,108 @@ fn build_file_tree(path: &Path, depth: u32) -> FileNode {
     }
 }
 
+/// Builds a virtual FileNode tree from the contents of a .zip file.
+/// Shows all entries inside the zip as children (flat list of top-level + nested).
+fn build_zip_tree(zip_path: &Path) -> FileNode {
+    use zip::ZipArchive;
+
+    let name = zip_path
+        .file_name()
+        .unwrap_or(zip_path.as_os_str())
+        .to_string_lossy()
+        .to_string();
+    let full_path = zip_path.to_string_lossy().to_string();
+
+    let file = match std::fs::File::open(zip_path) {
+        Ok(f) => f,
+        Err(_) => {
+            return FileNode {
+                name,
+                path: full_path,
+                is_dir: true,
+                size: None,
+                extension: None,
+                children: Some(vec![]),
+            }
+        }
+    };
+    let mut archive = match ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(_) => {
+            return FileNode {
+                name,
+                path: full_path,
+                is_dir: true,
+                size: None,
+                extension: None,
+                children: Some(vec![]),
+            }
+        }
+    };
+
+    // Collect all entries, building a virtual directory tree
+    let mut children: Vec<FileNode> = Vec::new();
+    for i in 0..archive.len() {
+        let entry = match archive.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let entry_name = entry.name().to_string();
+        // Skip directory entries (end with '/') and root-folder entries we don't care about
+        let basename = entry_name
+            .trim_end_matches('/')
+            .split('/')
+            .last()
+            .unwrap_or(&entry_name);
+        if basename.is_empty() {
+            continue;
+        }
+        let is_dir = entry.is_dir();
+        let size = if is_dir { None } else { Some(entry.size()) };
+        let ext = Path::new(basename)
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase());
+
+        // Skip Unity noise
+        if should_skip(basename, is_dir, ext.as_deref()) {
+            continue;
+        }
+
+        children.push(FileNode {
+            name: basename.to_string(),
+            path: format!("{}/{}", full_path, entry_name),
+            is_dir,
+            size,
+            extension: ext,
+            children: if is_dir { Some(vec![]) } else { None },
+        });
+    }
+    children.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+
+    FileNode {
+        name,
+        path: full_path,
+        is_dir: true,
+        size: None,
+        extension: None,
+        children: Some(children),
+    }
+}
+
 #[tauri::command]
 pub async fn get_file_tree(path: String) -> Result<FileNode, String> {
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err(format!("Path not found: {}", path));
+    }
+    // Special case: .zip files — list their contents as virtual FileNodes
+    if p.extension()
+        .map(|e| e.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false)
+    {
+        return tokio::task::spawn_blocking(move || build_zip_tree(&p))
+            .await
+            .map_err(|e| format!("Tree build task failed: {e}"));
     }
     tokio::task::spawn_blocking(move || build_file_tree(&p, 0))
         .await

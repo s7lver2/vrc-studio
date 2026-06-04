@@ -1,0 +1,1 @@
+ALTER TABLE inventory_item_variants ADD COLUMN custom_image_path TEXT;

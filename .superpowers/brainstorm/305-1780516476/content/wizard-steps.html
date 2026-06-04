@@ -1,0 +1,91 @@
+<h2>¿Cómo organizamos los pasos del wizard?</h2>
+<p class="subtitle">El diálogo actual tiene todo en un scroll interminable. Aquí hay 3 formas de dividirlo.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#18181b;border-radius:8px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0">1</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#e4e4e7">📁 Archivo + Modo (Single / Multi)</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">2</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">🏪 Booth (opcional) → auto-rellena lo demás</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">3</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">✏️ Metadata (nombre, autor, thumbnail)</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">4</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">🏷️ Tags + Avatares</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">5</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">✅ Resumen + Importar</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — 5 pasos lineales</h3>
+      <p>Flujo completo paso a paso. El paso 2 (Booth) rellena automáticamente el 3 y 4. Para Multi Avatar, el paso 2 incluye el mapeo de variantes.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#18181b;border-radius:8px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0">1</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#e4e4e7">📁 Archivo — arrastra o selecciona</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">2</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">🔍 Tipo detectado + Booth (todo junto)</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">3</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">🖼️ Info + Imagen (nombre, autor, thumbnail, tags)</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">4</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">✅ Confirmar e importar</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — 4 pasos, más compacto</h3>
+      <p>El paso 1 es solo "elige el archivo" — simple y claro. El paso 2 agrupa detección automática y Booth. El paso 3 agrupa todo lo de metadata + imagen.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#18181b;border-radius:8px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0">1</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#e4e4e7">📁 Archivo + modo (drop zone grande)</div>
+        </div>
+        <div style="margin-left:30px;display:flex;gap:6px">
+          <div style="flex:1;background:#1c1c1f;border:1px dashed #3f3f46;border-radius:6px;padding:5px 8px;font-size:10px;color:#71717a">Si Multi →<br/>variantes aquí</div>
+          <div style="flex:1;background:#1c1c1f;border:1px dashed #3f3f46;border-radius:6px;padding:5px 8px;font-size:10px;color:#71717a">Si Single →<br/>skip directo</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">2</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">🏪 Booth + nombre + autor</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:#3f3f46;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#71717a;flex-shrink:0">3</div>
+          <div style="flex:1;background:#27272a;border-radius:6px;padding:6px 10px;font-size:11px;color:#a1a1aa">✅ Confirmar e importar</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — 3 pasos (adaptativo)</h3>
+      <p>El paso 1 es adaptativo: si es Multi, aparece el mapeo de variantes ahí mismo. Booth rellena el paso 2 automáticamente. Mínimo 3 clics para importar.</p>
+    </div>
+  </div>
+
+</div>

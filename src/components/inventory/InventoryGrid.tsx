@@ -344,11 +344,12 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
               viewMode="list"
             />
           ))}
-          <SortableContext items={visibleItems.map((i) => i.id)} strategy={rectSortingStrategy}>
+          {/* List items: NOT inside SortableContext — virtualized lists can't reorder via DnD.
+              Items are still draggable (useSortable works without a SortableContext for drag).
+              Reordering is disabled in list mode to avoid visual glitches. */}
             <div
               ref={parentRef}
               className="overflow-y-auto flex-1"
-              style={{ contain: "strict" }}
             >
               <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}>
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -374,7 +375,6 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
                 })}
               </div>
             </div>
-          </SortableContext>
 
           {/* DragOverlay for list mode */}
           <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>

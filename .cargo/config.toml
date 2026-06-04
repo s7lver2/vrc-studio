@@ -1,2 +1,15 @@
 [env]
 GITHUB_OAUTH_CLIENT_ID = "Iv23liX9PFlukBhK1a1N"
+
+# MSVC toolchain — Build Tools installed in D:\CPPTOOLS
+VCINSTALLDIR    = "D:\\CPPTOOLS\\VC\\"
+VCToolsVersion  = "14.50.35717"
+LIB             = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\lib\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.26100.0\\um\\x64;C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.26100.0\\ucrt\\x64"
+INCLUDE         = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\include;C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\ucrt;C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\um;C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\shared"
+CXX             = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\cl.exe"
+CC              = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\cl.exe"
+AR              = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\lib.exe"
+AR_x86_64-pc-windows-msvc = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\lib.exe"
+
+[target.x86_64-pc-windows-msvc]
+linker = "D:\\CPPTOOLS\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\link.exe"

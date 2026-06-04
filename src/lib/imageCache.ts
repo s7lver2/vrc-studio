@@ -43,6 +43,9 @@ export function setImageCacheMaxCount(max: number): void {
  * Úsala en lugar de llamar convertFileSrc() directamente.
  */
 export function cachedConvertFileSrc(path: string): string {
+  // HTTP/HTTPS URLs must never go through Tauri's asset protocol
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+
   if (!_enabled) return convertFileSrc(path);
 
   const hit = assetUrlCache.get(path);

@@ -40,8 +40,36 @@ fn dirs_or_home() -> PathBuf {
     }
 }
 
-/// Scans a folder for VRChat photo files (.png) up to `max_count`.
-/// Returns absolute paths. Paths are sorted newest-first by filename
+fn collect_photos(dir: &PathBuf, entries: &mut Vec<(String, String)>, limit: usize, depth: u32) {
+    if depth > 3 {
+        return;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else { return };
+    for entry in read.filter_map(|e| e.ok()) {
+        if entries.len() >= limit * 4 {
+            break;
+        }
+        let p = entry.path();
+        if p.is_dir() {
+            collect_photos(&p, entries, limit, depth + 1);
+        } else if p.is_file() {
+            if let Some(ext) = p.extension() {
+                let ext = ext.to_ascii_lowercase();
+                if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                    if let (Some(name), full) = (
+                        p.file_name().map(|n| n.to_string_lossy().to_string()),
+                        p.to_string_lossy().to_string(),
+                    ) {
+                        entries.push((name, full));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Scans a folder recursively for VRChat photo files (.png/.jpg) up to `max_count`.
+/// Returns absolute paths sorted newest-first by filename
 /// (VRChat names files with a timestamp so lexicographic ≈ chronological).
 #[tauri::command]
 pub async fn scan_vrchat_photos(
@@ -59,23 +87,8 @@ pub async fn scan_vrchat_photos(
     }
 
     tokio::task::spawn_blocking(move || {
-        let mut entries: Vec<(String, String)> = std::fs::read_dir(&path)
-            .map_err(|e| format!("Cannot read directory: {e}"))?
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                let p = e.path();
-                if p.is_file() {
-                    let ext = p.extension()?.to_ascii_lowercase();
-                    // Accept PNG and JPG (some VRChat versions save JPG)
-                    if ext == "png" || ext == "jpg" || ext == "jpeg" {
-                        let name = p.file_name()?.to_string_lossy().to_string();
-                        let full = p.to_string_lossy().to_string();
-                        return Some((name, full));
-                    }
-                }
-                None
-            })
-            .collect();
+        let mut entries: Vec<(String, String)> = Vec::new();
+        collect_photos(&path, &mut entries, limit, 0);
 
         // Sort newest-first (filenames are timestamp-based)
         entries.sort_by(|a, b| b.0.cmp(&a.0));
