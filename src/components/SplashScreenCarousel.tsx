@@ -13,10 +13,10 @@ import { useEffect, useState, useRef } from "react";
 import { useAppearanceStore, CarouselImageEntry } from "@/store/appearanceStore";
 import { BUILT_IN_SPLASH_IMAGES, SplashImageMeta, getSplashImageById } from "@/lib/splashImages";
 import { toAssetUrl } from "@/lib/utils";
-import { tauriScanVRChatPhotos } from "@/lib/tauri";
-
 interface Props {
   onDone: () => void;
+  /** Pre-scanned VRChat photo paths from App.tsx — avoids scan timing race on first frame */
+  preloadedVrchatPhotos?: string[];
 }
 
 /** Resuelve la URL de una entrada de carrusel */
@@ -47,22 +47,14 @@ const DEFAULT_PALETTE: SplashImageMeta["palette"] = {
 
 const BAR_DURATION = 2000; // ms
 
-export function SplashScreenCarousel({ onDone }: Props) {
+export function SplashScreenCarousel({ onDone, preloadedVrchatPhotos = [] }: Props) {
   const { carouselImages, vrchatGallery } = useAppearanceStore();
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
   const [barProgress, setBarProgress] = useState(0);
   const barRafRef = useRef<number>(0);
   const barStartRef = useRef<number>(0);
-  const [vrchatPhotoPaths, setVRChatPhotoPaths] = useState<string[]>([]);
-
-  // Load VRChat photos on mount if gallery is enabled and consented
-  useEffect(() => {
-    if (vrchatGallery.consented && vrchatGallery.enabled && vrchatGallery.folderPath) {
-      tauriScanVRChatPhotos(vrchatGallery.folderPath, 100)
-        .then(setVRChatPhotoPaths)
-        .catch(() => setVRChatPhotoPaths([]));
-    }
-  }, [vrchatGallery.consented, vrchatGallery.enabled, vrchatGallery.folderPath]);
+  // Use pre-loaded photos (from App.tsx) so they're available on frame 1
+  const vrchatPhotoPaths = preloadedVrchatPhotos;
 
   // Build the pool of available images
   const imageList: CarouselImageEntry[] = (() => {

@@ -1,6 +1,6 @@
 // Eager: página inicial + componentes siempre presentes
 import Projects from "@/pages/Projects";
-import { useState, useCallback, lazy, Suspense, useEffect } from "react";
+import { useState, useCallback, lazy, Suspense, useEffect, useRef } from "react";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { SplashScreen } from "@/components/SplashScreen";
 import { GetStarted } from "@/components/GetStarted";
@@ -10,6 +10,7 @@ import { useBoothDebug } from "./hooks/useBoothDebug";
 import { useDiscordRpc } from "@/hooks/useDiscordRpc";
 import { useCollectionsStore } from "./store/collectionsStore";
 import { SplashScreenCarousel } from "@/components/SplashScreenCarousel";
+import { tauriScanVRChatPhotos } from "@/lib/tauri";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { UpdateDialog } from "@/components/updates/UpdateDialog";
 import { MigrationPopup } from "@/components/inventory/MigrationPopup";
@@ -78,6 +79,20 @@ export default function App() {
 
   const loadingScreen = useAppearanceStore((s) => s.loadingScreen);
   const betaFeaturesEnabled = useAppearanceStore((s) => s.betaFeaturesEnabled);
+  const vrchatGallery = useAppearanceStore((s) => s.vrchatGallery);
+
+  // Pre-scan VRChat photos before the carousel mounts so they're ready on frame 1
+  const [preloadedVrchatPhotos, setPreloadedVrchatPhotos] = useState<string[]>([]);
+  const didPreload = useRef(false);
+  useEffect(() => {
+    if (didPreload.current) return;
+    if (loadingScreen !== "carousel" || !betaFeaturesEnabled) return;
+    if (!vrchatGallery.consented || !vrchatGallery.enabled || !vrchatGallery.folderPath) return;
+    didPreload.current = true;
+    tauriScanVRChatPhotos(vrchatGallery.folderPath, 100)
+      .then(setPreloadedVrchatPhotos)
+      .catch(() => {});
+  }, [loadingScreen, betaFeaturesEnabled, vrchatGallery.consented, vrchatGallery.enabled, vrchatGallery.folderPath]);
 
   useEffect(() => {
     useCartStore.getState().load();
@@ -108,7 +123,7 @@ export default function App() {
       <WallpaperBackground />
       {!splashDone && (
         loadingScreen === "carousel" && betaFeaturesEnabled
-          ? <SplashScreenCarousel onDone={handleSplashDone} />
+          ? <SplashScreenCarousel onDone={handleSplashDone} preloadedVrchatPhotos={preloadedVrchatPhotos} />
           : <SplashScreen onDone={handleSplashDone} />
       )}
       <div
