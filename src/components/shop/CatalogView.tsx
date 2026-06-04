@@ -33,28 +33,30 @@ const CATALOG_CATEGORIES = [
     queries: ["VRChat オリジナルアバター", "VRChat アバター 完成品"],
   },
   {
-    id: "bases",
-    label: "Bases",
-    // Popular VRChat avatar bases by katakana name.
-    // Searching e.g. "ライム VRChat" returns the Lime base + all compatible items.
-    // Most popular bases as of 2025: Lime, Manuka, Kikyo, Anon, Chise, Clea, Shinra, Selene
-    queries: [
-      "ライム VRChat",    // Lime
-      "マヌカ VRChat",    // Manuka
-      "キキョウ VRChat",  // Kikyo
-      "アノン VRChat",    // Anon
-    ],
-  },
-  {
     id: "clothing",
     label: "Clothing",
-    queries: ["VRChat 衣装", "アバター用 衣装 VRChat"],
+    // Generic clothing tags + popular avatar base names combined with 衣装 (outfit).
+    // "ライム 衣装" returns all clothing made specifically for the Lime avatar, etc.
+    // This dramatically increases results since most clothing is tagged by target avatar.
+    queries: [
+      "VRChat 衣装",      // generic VRChat clothing
+      "ライム 衣装",       // Lime outfits
+      "マヌカ 衣装",       // Manuka outfits
+      "キキョウ 衣装",     // Kikyo outfits
+      "アノン 衣装",       // Anon outfits
+      "チセ 衣装",         // Chise outfits
+    ],
   },
   {
     id: "accessories",
     label: "Accessories",
-    // アクセサリ = accessory; 髪型 = hairstyle; 小道具 = props
-    queries: ["VRChat アクセサリ", "VRChat 髪型 小道具"],
+    // Generic accessory tags + popular bases (accessory makers tag by target avatar)
+    queries: [
+      "VRChat アクセサリ",  // generic accessories
+      "ライム アクセサリ",   // Lime accessories
+      "マヌカ アクセサリ",   // Manuka accessories
+      "VRChat 髪型",        // hairstyles
+    ],
   },
   {
     id: "shaders",
