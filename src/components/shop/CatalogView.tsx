@@ -11,44 +11,59 @@ import { useAppearanceStore } from "@/store/appearanceStore";
 //
 // Each category has a primary query (used for infinite scroll pages 3+) and
 // optional extra queries merged into the initial load (pages 1+2 of each).
-// Japanese terms are critical — Booth is a Japanese marketplace and most
-// VRChat sellers tag their items in Japanese.
+//
+// Japanese terms are critical — Booth is a Japanese marketplace.
+// Most VRChat sellers use:
+//   衣装 = clothing/outfit  アクセサリ = accessory  髪型 = hairstyle
+//   完成品 = finished product  オリジナルアバター = original avatar
+//
+// Avatar base names in katakana are especially powerful: searching "ライム VRChat"
+// returns both the Lime avatar base itself AND all clothing/accessories made for it.
 
 const CATALOG_CATEGORIES = [
   {
     id: "all",
     label: "All",
-    // Broad VRChat search — mix of Japanese & English
     queries: ["VRChat", "VRChat アバター 衣装"],
   },
   {
     id: "avatars",
     label: "Avatars",
-    // オリジナルアバター = "original avatar" — the standard term for VRChat avatar bodies
-    queries: ["VRChat オリジナルアバター", "VRChat avatar base 3D"],
+    // 完成品 = "finished product" — common tag for complete avatar packages
+    queries: ["VRChat オリジナルアバター", "VRChat アバター 完成品"],
+  },
+  {
+    id: "bases",
+    label: "Bases",
+    // Popular VRChat avatar bases by katakana name.
+    // Searching e.g. "ライム VRChat" returns the Lime base + all compatible items.
+    // Most popular bases as of 2025: Lime, Manuka, Kikyo, Anon, Chise, Clea, Shinra, Selene
+    queries: [
+      "ライム VRChat",    // Lime
+      "マヌカ VRChat",    // Manuka
+      "キキョウ VRChat",  // Kikyo
+      "アノン VRChat",    // Anon
+    ],
   },
   {
     id: "clothing",
     label: "Clothing",
-    // 衣装 = "costume / outfit" — THE standard Booth tag for VRChat clothing
-    queries: ["VRChat 衣装", "VRChat アバター 衣装 outfit"],
+    queries: ["VRChat 衣装", "アバター用 衣装 VRChat"],
   },
   {
     id: "accessories",
     label: "Accessories",
-    // アクセサリ = accessory; 髪 = hair; 装飾 = decoration
-    queries: ["VRChat アクセサリ", "VRChat 髪 装飾 小道具"],
+    // アクセサリ = accessory; 髪型 = hairstyle; 小道具 = props
+    queries: ["VRChat アクセサリ", "VRChat 髪型 小道具"],
   },
   {
     id: "shaders",
     label: "Shaders",
-    // liltoon is the most popular VRChat shader on Booth; poiyomi second
     queries: ["liltoon", "poiyomi shader VRChat"],
   },
   {
     id: "tools",
     label: "Tools",
-    // ツール = tool; VRCFury + Modular Avatar are the main community tools
     queries: ["VRChat unity ツール", "VRCFury modular avatar"],
   },
 ] as const;
