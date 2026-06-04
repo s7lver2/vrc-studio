@@ -11,6 +11,7 @@ import {
 import { detectAvatarVariants } from "./ImportLocalDialog";
 import { useInventoryStore } from "../../store/inventoryStore";
 import type { InventoryItem } from "../../lib/tauri";
+import { useT } from "@/i18n";
 
 type Step = "backup" | "select" | "configure" | "done";
 
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export function MigrationWizard({ onClose }: Props) {
+  const t = useT();
   const { items, fetchAll } = useInventoryStore();
   const [step, setStep] = useState<Step>("backup");
   const [backupPath, setBackupPath] = useState<string | null>(null);
@@ -112,11 +114,11 @@ export function MigrationWizard({ onClose }: Props) {
 
   const handleImport = async () => {
     if (!groupConfig.name.trim()) {
-      setConfigError("Package name is required.");
+      setConfigError(t("migration_wizard_pkg_name_required"));
       return;
     }
     if (groupConfig.variants.some((v) => !v.label.trim())) {
-      setConfigError("All variant labels are required.");
+      setConfigError(t("migration_wizard_labels_required"));
       return;
     }
     setConfigError(null);
@@ -175,9 +177,9 @@ export function MigrationWizard({ onClose }: Props) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
           <div className="flex items-center gap-2">
             <PackagePlus className="h-4 w-4 text-violet-400" />
-            <span className="text-sm font-semibold text-zinc-100">Migration Wizard</span>
+            <span className="text-sm font-semibold text-zinc-100">{t("migration_wizard_title")}</span>
             <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-900/60 text-violet-300 border border-violet-700/50 font-bold tracking-wide uppercase">
-              BETA
+              {t("migration_wizard_beta")}
             </span>
           </div>
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">
@@ -210,14 +212,14 @@ export function MigrationWizard({ onClose }: Props) {
               <div className="flex items-center gap-3">
                 <ShieldCheck className="h-8 w-8 text-violet-400 shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-zinc-100">Create a backup first</p>
+                  <p className="text-sm font-semibold text-zinc-100">{t("migration_wizard_backup_heading")}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Before any changes are made, a full backup of your inventory database will be saved.
+                    {t("migration_wizard_backup_desc")}
                   </p>
                 </div>
               </div>
               {backupPath && (
-                <p className="text-xs text-green-400 break-all">Backup saved: {backupPath}</p>
+                <p className="text-xs text-green-400 break-all">{t("migration_wizard_backup_saved")} {backupPath}</p>
               )}
               {backupError && (
                 <p className="text-xs text-red-400">{backupError}</p>
@@ -228,7 +230,7 @@ export function MigrationWizard({ onClose }: Props) {
                 className="mt-2 w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
               >
                 {backupLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                {backupLoading ? "Creating backup…" : "Create Backup & Continue"}
+                {backupLoading ? t("migration_wizard_backup_creating") : t("migration_wizard_backup_create")}
               </button>
             </>
           )}
@@ -237,11 +239,11 @@ export function MigrationWizard({ onClose }: Props) {
           {step === "select" && (
             <>
               <p className="text-xs text-zinc-400">
-                Select <span className="text-zinc-200 font-medium">2 or more</span> items to group into a single multi-avatar package.
+                {t("migration_wizard_select_hint")}
               </p>
               <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
                 {availableItems.length === 0 && (
-                  <p className="text-xs text-zinc-500 text-center py-6">No eligible items found.</p>
+                  <p className="text-xs text-zinc-500 text-center py-6">{t("migration_wizard_no_items")}</p>
                 )}
                 {availableItems.map((item) => {
                   const checked = selectedIds.has(item.id);
@@ -274,7 +276,7 @@ export function MigrationWizard({ onClose }: Props) {
                   disabled={selectedIds.size < 2}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
                 >
-                  Configure Group
+                  {t("migration_wizard_configure_group")}
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -284,33 +286,33 @@ export function MigrationWizard({ onClose }: Props) {
           {/* ── Configure ── */}
           {step === "configure" && (
             <>
-              <p className="text-xs text-zinc-400">Set the package name and label for each variant.</p>
+              <p className="text-xs text-zinc-400">{t("migration_wizard_configure_hint")}</p>
 
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium">Package Name *</label>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium">{t("migration_wizard_package_name_label")}</label>
                   <input
                     type="text"
                     value={groupConfig.name}
                     onChange={(e) => setGroupConfig((p) => ({ ...p, name: e.target.value }))}
                     className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 outline-none focus:border-violet-500"
-                    placeholder="e.g. Karin Avatar"
+                    placeholder={t("migration_wizard_package_name_placeholder")}
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium">Author</label>
+                  <label className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium">{t("migration_wizard_author_label")}</label>
                   <input
                     type="text"
                     value={groupConfig.author}
                     onChange={(e) => setGroupConfig((p) => ({ ...p, author: e.target.value }))}
                     className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-100 outline-none focus:border-violet-500"
-                    placeholder="Author name"
+                    placeholder={t("migration_wizard_author_placeholder")}
                   />
                 </div>
               </div>
 
               <div className="flex flex-col gap-2 mt-2">
-                <p className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium">Variants</p>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wide font-medium">{t("migration_wizard_variants_label")}</p>
                 {groupConfig.variants.map((v, idx) => (
                   <div key={v.item.id} className="flex items-center gap-2 bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2">
                     <div className="flex-1 min-w-0">
@@ -320,7 +322,7 @@ export function MigrationWizard({ onClose }: Props) {
                         value={v.label}
                         onChange={(e) => updateVariant(idx, { label: e.target.value })}
                         className="w-full px-2 py-1 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 outline-none focus:border-violet-500"
-                        placeholder="Variant label"
+                        placeholder={t("migration_wizard_variant_placeholder")}
                       />
                     </div>
                     <button
@@ -331,7 +333,7 @@ export function MigrationWizard({ onClose }: Props) {
                           : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300"
                       }`}
                     >
-                      Mat
+                      {t("migration_wizard_mat_button")}
                     </button>
                   </div>
                 ))}
@@ -348,7 +350,7 @@ export function MigrationWizard({ onClose }: Props) {
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-medium transition-colors"
                 >
                   {importing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {importing ? "Importing…" : "Create Package"}
+                  {importing ? t("migration_wizard_importing") : t("migration_wizard_create_package")}
                 </button>
               </div>
             </>
@@ -362,10 +364,12 @@ export function MigrationWizard({ onClose }: Props) {
                   <PackagePlus className="h-6 w-6 text-violet-400" />
                 </div>
                 <p className="text-sm font-semibold text-zinc-100">
-                  {groupCount} group{groupCount !== 1 ? "s" : ""} created
+                  {t("migration_wizard_done_groups")
+                    .replace("{count}", String(groupCount))
+                    .replace("{s}", groupCount !== 1 ? "s" : "")}
                 </p>
                 <p className="text-xs text-zinc-400">
-                  Your items have been merged into a multi-avatar package.
+                  {t("migration_wizard_done_desc")}
                 </p>
               </div>
               <div className="flex gap-2 justify-center">
@@ -373,13 +377,13 @@ export function MigrationWizard({ onClose }: Props) {
                   onClick={() => setStep("select")}
                   className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-xs font-medium transition-colors"
                 >
-                  Add Another Group
+                  {t("migration_wizard_add_another")}
                 </button>
                 <button
                   onClick={onClose}
                   className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium transition-colors"
                 >
-                  Finish
+                  {t("migration_wizard_finish")}
                 </button>
               </div>
             </>
