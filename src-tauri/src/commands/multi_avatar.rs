@@ -72,19 +72,46 @@ pub async fn list_zip_contents(zip_path: String) -> Result<Vec<String>, String> 
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
 
-        let mut names: Vec<String> = Vec::new();
-        for i in 0..archive.len() {
-            let entry = archive.by_index(i)
-                .map_err(|e| format!("Zip read error: {e}"))?;
-            let name = entry.name().to_string();
-            // Only top-level entries (no path separator) that are zip/unitypackage
-            if !name.contains('/') && !name.contains('\\') {
-                let lower = name.to_lowercase();
-                if lower.ends_with(".zip") || lower.ends_with(".unitypackage") {
-                    names.push(name);
+        fn is_asset(name: &str) -> bool {
+            let l = name.to_lowercase();
+            l.ends_with(".zip") || l.ends_with(".unitypackage")
+        }
+
+        // Collect all entry names first
+        let all_names: Vec<String> = (0..archive.len())
+            .filter_map(|i| archive.by_index(i).ok().map(|e| e.name().to_string()))
+            .collect();
+
+        // Pass 1: top-level entries only (no path separator)
+        let mut names: Vec<String> = all_names.iter()
+            .filter(|n| !n.contains('/') && !n.contains('\\') && is_asset(n))
+            .cloned()
+            .collect();
+
+        // Pass 2: if nothing found at top level, the zip likely has a single root
+        // folder (e.g. "pack/Komano.zip"). Detect that folder and collect entries
+        // exactly one level inside it.
+        if names.is_empty() {
+            // Find the common root prefix (first component of all entries)
+            let root_prefix = all_names.iter()
+                .filter_map(|n| n.split('/').next().filter(|s| !s.is_empty()))
+                .next()
+                .map(|s| format!("{}/", s));
+
+            if let Some(prefix) = root_prefix {
+                for n in &all_names {
+                    if let Some(rest) = n.strip_prefix(&prefix) {
+                        // Exactly one level deep: rest has no further '/'
+                        if !rest.is_empty() && !rest.contains('/') && is_asset(rest) {
+                            // Return just the filename (not the full path) so
+                            // sub_zip_name in the DB stays basename-only
+                            names.push(rest.to_string());
+                        }
+                    }
                 }
             }
         }
+
         Ok(names)
     })
     .await
@@ -143,8 +170,24 @@ pub async fn extract_sub_zip_to_temp(
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
 
+        // Try exact name first; if not found, search by basename across all entries
+        // (handles zips with a root folder like "pack/Komano.zip" where sub_zip_name="Komano.zip")
+        let entry_name_to_use = if archive.by_name(&sub_zip_name).is_ok() {
+            sub_zip_name.clone()
+        } else {
+            // Search for any entry whose basename matches sub_zip_name
+            let found = (0..archive.len()).find_map(|i| {
+                archive.by_index(i).ok().and_then(|e| {
+                    let n = e.name().to_string();
+                    let basename = n.rsplit('/').next().unwrap_or(&n);
+                    if basename == sub_zip_name { Some(n) } else { None }
+                })
+            });
+            found.ok_or_else(|| format!("Entry '{}' not found in zip", sub_zip_name))?
+        };
+
         let mut entry = archive
-            .by_name(&sub_zip_name)
+            .by_name(&entry_name_to_use)
             .map_err(|_| format!("Entry '{}' not found in zip", sub_zip_name))?;
 
         let temp_dir = std::env::temp_dir().join("vrc_studio_variants");
