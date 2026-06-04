@@ -7,13 +7,14 @@ import {
   X, ExternalLink, FolderOpen, GitBranch,
   Monitor, Layers, Cpu, HardDrive,
   Loader2, AlertTriangle, RefreshCw, Camera,
-  Info, FileSearch, Package,
+  Info, FileSearch, Package, Download, Search,
 } from "lucide-react";
 import {
   Project, FileNode,
   tauriGetFileTree, tauriOpenItemLocation,
   tauriListUnityInstallations,
   tauriOpenProjectInUnity,
+  tauriGetProjectEarlyImports, EarlyImportEntry,
 } from "@/lib/tauri";
 import { FileTreeViewer } from "@/components/inventory/FileTreeViewver";
 import { VcsPanel } from "@/components/vcs/VcsPanel";
@@ -114,7 +115,7 @@ function Badge({ label, value, icon: Icon, accent = false }: {
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "files" | "packages" | "git";
+type Tab = "overview" | "files" | "packages" | "git" | "imports";
 
 function TabBar({ active, onSelect, vcsEnabled }: {
   active: Tab;
@@ -126,6 +127,7 @@ function TabBar({ active, onSelect, vcsEnabled }: {
     { id: "overview",  label: t("project_detail_tab_overview"),  icon: Info },
     { id: "files",     label: t("project_detail_tab_files"),     icon: FileSearch },
     { id: "packages",  label: t("project_detail_tab_packages"),  icon: Package },
+    { id: "imports",   label: "Imports",                          icon: Download },
     ...(vcsEnabled ? [{ id: "git" as Tab, label: t("project_detail_tab_git"), icon: GitBranch }] : []),
   ];
 
@@ -321,6 +323,132 @@ function FilesTab({ project }: { project: Project }) {
   );
 }
 
+// ── Imports tab ───────────────────────────────────────────────────────────────
+
+function ImportsTab({ projectId }: { projectId: string }) {
+  const [entries, setEntries] = useState<EarlyImportEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("");
+  const [statusTab, setStatusTab] = useState<"all" | "done" | "pending">("all");
+
+  useEffect(() => {
+    setLoading(true);
+    tauriGetProjectEarlyImports(projectId)
+      .then(setEntries)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{ project_id: string; status: string }>("early_import_progress", (ev) => {
+      if (ev.payload.project_id === projectId && ev.payload.status === "complete") {
+        tauriGetProjectEarlyImports(projectId).then(setEntries).catch(() => {});
+      }
+    }).then((fn) => { unlisten = fn; });
+    return () => unlisten?.();
+  }, [projectId]);
+
+  const statusFiltered = entries.filter((e) => {
+    if (statusTab === "done") return e.status === "done";
+    if (statusTab === "pending") return e.status === "pending" || e.status === "error";
+    return true;
+  });
+
+  const textFiltered = statusFiltered.filter((e) =>
+    e.item_name.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  const doneCount    = entries.filter((e) => e.status === "done").length;
+  const pendingCount = entries.filter((e) => e.status !== "done").length;
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="h-5 w-5 text-zinc-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 text-zinc-600 py-10">
+        <Package className="h-8 w-8" />
+        <p className="text-sm">No hay Early Imports para este proyecto</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 p-4 overflow-y-auto">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800">
+          <Search className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+          <input
+            className="flex-1 bg-transparent text-xs text-zinc-300 placeholder:text-zinc-600 outline-none"
+            placeholder="Filtrar…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex gap-1.5">
+        {([
+          { id: "all",     label: `Todos (${entries.length})` },
+          { id: "done",    label: `✓ Importados (${doneCount})` },
+          { id: "pending", label: `⏳ Pendientes (${pendingCount})` },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setStatusTab(tab.id)}
+            className="text-[10px] px-2.5 py-1 rounded-md transition-colors"
+            style={statusTab === tab.id
+              ? { background: "rgba(220,38,38,.1)", color: "#f87171", border: "1px solid rgba(220,38,38,.2)" }
+              : { background: "#18181b", color: "#52525b", border: "1px solid #27272a" }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-2.5">
+        {textFiltered.map((entry) => {
+          const cover = entry.thumbnail_url
+            ? (entry.thumbnail_url.startsWith("http") ? entry.thumbnail_url : toAssetUrl(entry.thumbnail_url))
+            : null;
+          const statusColor = entry.status === "done" ? "#16a34a" : entry.status === "error" ? "#dc2626" : "#f59e0b";
+          const statusIcon  = entry.status === "done" ? "✓" : entry.status === "error" ? "✕" : "⏳";
+          return (
+            <div key={entry.id} className="flex flex-col items-center gap-1.5">
+              <div
+                className="relative w-full aspect-square rounded-xl overflow-hidden border-2"
+                style={{ borderColor: entry.status === "done" ? "#16a34a40" : "#27272a" }}
+                title={entry.error_msg ?? undefined}
+              >
+                {cover ? (
+                  <img src={cover} alt={entry.item_name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                    <Package className="h-5 w-5 text-zinc-700" />
+                  </div>
+                )}
+                <div
+                  className="absolute bottom-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[8px] text-white font-bold"
+                  style={{ background: statusColor }}
+                >
+                  {statusIcon}
+                </div>
+              </div>
+              <p className="text-[9px] text-zinc-500 text-center leading-tight line-clamp-2 w-full px-0.5">
+                {entry.item_name}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main modal ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -464,6 +592,9 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
           </div>
           <div className={tab === "packages" ? "flex-1 flex flex-col overflow-hidden" : "hidden"}>
             <PackagesTab project={project} />
+          </div>
+          <div className={tab === "imports" ? "flex-1 flex flex-col overflow-hidden min-h-0" : "hidden"}>
+            <ImportsTab projectId={project.id} />
           </div>
           {project.vcs_enabled && (
             <div className={tab === "git" ? "flex-1 overflow-hidden" : "hidden"}>
