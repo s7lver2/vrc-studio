@@ -726,6 +726,7 @@ export const tauriUpdateFolder = (folder_id: string, opts: { name?: string; colo
     color: opts.color ?? null,
     imageSourcePath: opts.image_source_path ?? null,
     clearImage: opts.clear_image ?? false,
+    imageFill: opts.image_fill ?? null,
   });
 
 export async function tauriDeleteInventoryFolder(folderId: string) {

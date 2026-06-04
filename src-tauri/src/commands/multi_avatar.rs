@@ -103,15 +103,37 @@ pub async fn extract_sub_zip_to_temp(
 
         // ── Extracted (directory) mode ──────────────────────────────────────
         // When the inventory item was decompressed with decompress_item, local_path
-        // becomes a directory containing the individual sub-zips directly on disk.
-        // No container zip to open — just return the direct file path.
+        // becomes a directory. The sub-zips may be at the top level or inside a
+        // single nested subdirectory (common when the container zip had a root folder).
+        // Search recursively by filename (basename only, ignore path prefix).
         if zip_path_p.is_dir() {
-            let direct = zip_path_p.join(&sub_zip_name);
-            if direct.is_file() {
-                return Ok(direct.to_string_lossy().to_string());
+            // The sub_zip_name may contain path separators from the DB entry — use
+            // only the filename part for matching.
+            let target_basename = std::path::Path::new(&sub_zip_name)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| sub_zip_name.clone());
+
+            fn find_in_dir(dir: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
+                let Ok(entries) = std::fs::read_dir(dir) else { return None; };
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if let Some(found) = find_in_dir(&path, target) {
+                            return Some(found);
+                        }
+                    } else if path.file_name().map(|n| n == target).unwrap_or(false) {
+                        return Some(path);
+                    }
+                }
+                None
+            }
+
+            if let Some(found) = find_in_dir(zip_path_p, &target_basename) {
+                return Ok(found.to_string_lossy().to_string());
             }
             return Err(format!(
-                "Sub-zip '{}' not found in extracted directory '{}'",
+                "Sub-zip '{}' not found in directory '{}'",
                 sub_zip_name, zip_path
             ));
         }
