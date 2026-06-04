@@ -351,9 +351,8 @@ export function FolderCustomizeModal({ folder, onClose }: Props) {
         // Image tab
         if (imagePath) opts.image_source_path = imagePath;
         if (imageCleared) opts.clear_image = true;
-        const newFill = imageFill;
-        const oldFill = folder.custom_image_fill ?? "icon";
-        if (newFill !== oldFill) opts.image_fill = newFill;
+        // Always send image_fill — avoids losing the value when prop drift occurs
+        opts.image_fill = imageFill;
       }
 
       await updateFolder(folder.id, opts);
