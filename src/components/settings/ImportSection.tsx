@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { ExternalLink, Loader2, Layers, Timer, X, Download, CheckCircle2 } from "lucide-react";
 import { tauriGetAppSettings, tauriSetAppSettings, tauriReadVccRepos } from "@/lib/tauri";
 import type { AppSettings } from "@/lib/tauri";
+import { useT } from "@/i18n";
 
 function cn(...c: (string | boolean | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -34,6 +35,7 @@ function ImportVccButton({
   existing: string[];
   onImport: (newUrls: string[]) => void;
 }) {
+  const t = useT();
   const [state, setState] = useState<"idle" | "loading" | "done" | "none">("idle");
 
   const handleImport = async () => {
@@ -69,15 +71,16 @@ function ImportVccButton({
         <Download className="h-3 w-3" />
       )}
       {state === "done"
-        ? "¡Importado!"
+        ? t("import_sect_import_done")
         : state === "none"
-        ? "Sin fuentes nuevas"
-        : "Importar de alcom / VCC"}
+        ? t("import_sect_import_none")
+        : t("import_sect_import_alcom")}
     </button>
   );
 }
 
 function VpmSourceInput({ onAdd }: { onAdd: (url: string) => void }) {
+  const t = useT();
   const [value, setValue] = useState("");
   const trimmed = value.trim();
   const isValid = trimmed.startsWith("http://") || trimmed.startsWith("https://");
@@ -95,7 +98,7 @@ function VpmSourceInput({ onAdd }: { onAdd: (url: string) => void }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && submit()}
-        placeholder="https://ejemplo.com/repo/index.json"
+        placeholder={t("import_sect_url_placeholder")}
         className="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none font-mono"
       />
       <button
@@ -103,13 +106,14 @@ function VpmSourceInput({ onAdd }: { onAdd: (url: string) => void }) {
         disabled={!isValid}
         className="rounded-md bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Añadir
+        {t("import_sect_add_url")}
       </button>
     </div>
   );
 }
 
 export function ImportSection() {
+  const t = useT();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -151,8 +155,8 @@ export function ImportSection() {
           <ExternalLink className="h-5 w-5 text-violet-400" />
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-zinc-100">Importación en Unity</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">Configura cómo se importan los assets en Unity</p>
+          <h2 className="text-sm font-semibold text-zinc-100">{t("import_sect_header_title")}</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">{t("import_sect_header_desc")}</p>
         </div>
         {saving && <Loader2 className="h-3.5 w-3.5 text-zinc-600 animate-spin ml-auto" />}
       </div>
@@ -163,11 +167,9 @@ export function ImportSection() {
         {/* Row 1: skip dialog */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-zinc-800/80">
           <div className="flex-1 pr-4">
-            <p className="text-sm font-medium text-zinc-200">Importar sin confirmación</p>
+            <p className="text-sm font-medium text-zinc-200">{t("import_sect_skip_dialog_label")}</p>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Usa la flag <code className="bg-zinc-800 px-1 py-0.5 rounded text-[10px] font-mono text-zinc-400">-importPackage</code> de
-              Unity para importar directamente sin mostrar el diálogo de selección.
-              Desactívalo para que Unity muestre su diálogo de importación habitual.
+              {t("import_sect_skip_dialog_desc")}
             </p>
           </div>
           <Toggle
@@ -180,12 +182,11 @@ export function ImportSection() {
         <div className="flex items-start justify-between px-5 py-4 border-b border-zinc-800/80">
           <div className="flex-1 pr-4">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-zinc-200">Importar uno a uno</p>
+              <p className="text-sm font-medium text-zinc-200">{t("import_sect_sequential_label")}</p>
               <Layers className="h-3.5 w-3.5 text-zinc-600" />
             </div>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Cuando hay varios assets seleccionados, los importa secuencialmente con animación de progreso.
-              Desactívalo para lanzar todos a la vez.
+              {t("import_sect_sequential_desc")}
             </p>
           </div>
           <Toggle
@@ -198,12 +199,11 @@ export function ImportSection() {
         <div className="flex items-start justify-between px-5 py-4 border-b border-zinc-800/80">
           <div className="flex-1 pr-4">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-zinc-200">Tiempo de espera al abrir Unity</p>
+              <p className="text-sm font-medium text-zinc-200">{t("import_sect_boot_wait_label")}</p>
               <Timer className="h-3.5 w-3.5 text-zinc-600" />
             </div>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Segundos que VRC Studio espera a que Unity arranque antes de comenzar la importación.
-              Puedes iniciar manualmente desde el modal si Unity ya está listo (mín. 30 s, máx. 600 s).
+              {t("import_sect_boot_wait_desc")}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -219,7 +219,7 @@ export function ImportSection() {
               }}
               className="w-20 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm font-mono text-center px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-600 focus:border-violet-600 transition-colors"
             />
-            <span className="text-xs text-zinc-500 whitespace-nowrap">seg</span>
+            <span className="text-xs text-zinc-500 whitespace-nowrap">{t("import_sect_boot_wait_unit")}</span>
           </div>
         </div>
 
@@ -227,9 +227,9 @@ export function ImportSection() {
         <div className="border-t border-zinc-800/80">
           <div className="px-5 py-4 flex flex-col gap-3">
             <div>
-              <p className="text-sm font-medium text-zinc-200">Fuentes VPM adicionales</p>
+              <p className="text-sm font-medium text-zinc-200">{t("import_sect_vpm_sources_label")}</p>
               <p className="text-xs text-zinc-500 mt-0.5">
-                URLs extra de repositorios VPM que se incluirán al buscar paquetes.
+                {t("import_sect_vpm_sources_desc")}
               </p>
             </div>
 
@@ -247,7 +247,7 @@ export function ImportSection() {
                       update({ extra_vpm_sources: next });
                     }}
                     className="text-zinc-600 hover:text-red-400 transition-colors p-1"
-                    title="Eliminar"
+                    title={t("import_sect_remove_source")}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -266,8 +266,7 @@ export function ImportSection() {
                 }
               />
               <p className="text-[10px] text-zinc-600 leading-relaxed">
-                Lee las fuentes de alcom / VCC automáticamente.<br />
-                El picker ya las usa aunque no las importes.
+                {t("import_sect_alcom_hint")}
               </p>
             </div>
 

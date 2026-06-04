@@ -14,6 +14,7 @@ import {
 import { BUILT_IN_SPLASH_IMAGES } from "@/lib/splashImages";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { toAssetUrl } from "@/lib/utils";
+import { useT } from "@/i18n";
 
 // ─── Componentes auxiliares ─────────────────────────────────────────
 
@@ -643,6 +644,7 @@ function CarouselImageManager() {
 // ─── Componente principal AppearanceSection ─────────────────────────
 
 export function AppearanceSection() {
+    const t = useT();
     const store = useAppearanceStore();
     const {
         betaFeaturesEnabled, setBetaFeaturesEnabled,
@@ -683,11 +685,11 @@ export function AppearanceSection() {
                     </div>
                     <div className="flex-1">
                         <p className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                            Beta Features
+                            {t("appearance_beta_label")}
                             <BetaTag />
                         </p>
                         <p className="text-[10px] text-zinc-500 mt-0.5">
-                            Activar o desactivar todas las funciones experimentales de la app de una vez.
+                            {t("appearance_beta_desc")}
                         </p>
                     </div>
                     <Toggle value={betaFeaturesEnabled} onChange={setBetaFeaturesEnabled} />
@@ -698,7 +700,7 @@ export function AppearanceSection() {
                         style={{ borderColor: "rgba(251,191,36,0.15)", background: "rgba(251,191,36,0.04)" }}
                     >
                         <p className="text-[10px]" style={{ color: "#d97706" }}>
-                            ⚠ Las features BETA están desactivadas. Los temas visuales, wallpaper personalizado y el nuevo loading screen no están disponibles.
+                            {t("appearance_beta_warning")}
                         </p>
                     </div>
                 )}
@@ -708,7 +710,7 @@ export function AppearanceSection() {
             <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                     <Palette className="h-4 w-4" style={{ color: "var(--accent-color)" }} />
-                    <p className="text-sm font-bold text-zinc-100">Presets</p>
+                    <p className="text-sm font-bold text-zinc-100">{t("appearance_presets_label")}</p>
                     <BetaTag />
                     <span className="ml-auto text-[10px] text-zinc-600">
                         {THEMES[themeId].name} — {THEMES[themeId].description}
@@ -730,7 +732,7 @@ export function AppearanceSection() {
             {betaFeaturesEnabled && (
                 <div className="flex flex-col gap-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
-                        <ImageIcon className="h-3.5 w-3.5" /> Background
+                        <ImageIcon className="h-3.5 w-3.5" /> {t("appearance_wallpaper_label")}
                         <BetaTag />
                     </p>
                     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
@@ -742,14 +744,14 @@ export function AppearanceSection() {
             {/* LAYOUT & TEXT */}
             <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-                    <Monitor className="h-3.5 w-3.5" /> Layout & Text
+                    <Monitor className="h-3.5 w-3.5" /> {t("appearance_layout_text_label")}
                 </p>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
                     {/* UI Scale */}
                     <div className="px-5 py-4 flex items-center gap-4">
                         <div className="flex-1">
-                            <p className="text-sm font-medium text-zinc-200">UI Scale</p>
-                            <p className="text-[10px] text-zinc-600 mt-0.5">Overall interface zoom</p>
+                            <p className="text-sm font-medium text-zinc-200">{t("appearance_ui_scale_label")}</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{t("appearance_ui_scale_zoom")}</p>
                         </div>
                         <div className="flex gap-1">
                             {([80, 90, 100, 110, 120] as const).map((pct) => (
@@ -769,8 +771,8 @@ export function AppearanceSection() {
                     {/* Font Size */}
                     <div className="px-5 py-4 flex items-center gap-4">
                         <div className="flex-1">
-                            <p className="text-sm font-medium text-zinc-200">Font Size</p>
-                            <p className="text-[10px] text-zinc-600 mt-0.5">Base text size</p>
+                            <p className="text-sm font-medium text-zinc-200">{t("appearance_font_size_label")}</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{t("appearance_font_base")}</p>
                         </div>
                         <div className="flex gap-1">
                             {([
@@ -797,7 +799,7 @@ export function AppearanceSection() {
             {/* CARD SIZES */}
             <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-                    <LayoutGrid className="h-3.5 w-3.5" /> Card Sizes
+                    <LayoutGrid className="h-3.5 w-3.5" /> {t("appearance_card_sizes_label")}
                 </p>
                 <div className="flex gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4">
                     {([
@@ -828,7 +830,7 @@ export function AppearanceSection() {
             {/* ANIMATION SPEED */}
             <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5" /> Animation Speed
+                    <Zap className="h-3.5 w-3.5" /> {t("appearance_anim_speed_label")}
                 </p>
                 <div className="flex gap-2">
                     {(["off", "slow", "normal", "fast"] as const).map((opt) => {
@@ -857,7 +859,7 @@ export function AppearanceSection() {
             {betaFeaturesEnabled && (
                 <div className="flex flex-col gap-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
-                        <MonitorIcon className="h-3.5 w-3.5" /> Loading Screen
+                        <MonitorIcon className="h-3.5 w-3.5" /> {t("appearance_loading_screen_label")}
                     </p>
                     <div className="flex gap-3">
                         {/* Classic */}
@@ -879,8 +881,8 @@ export function AppearanceSection() {
                                 </div>
                             </div>
                             <div>
-                                <p className="text-xs font-semibold text-zinc-200">Classic</p>
-                                <p className="text-[10px] text-zinc-500 mt-0.5">Logo + progress bar</p>
+                                <p className="text-xs font-semibold text-zinc-200">{t("appearance_loading_classic")}</p>
+                                <p className="text-[10px] text-zinc-500 mt-0.5">{t("appearance_loading_classic_desc")}</p>
                             </div>
                         </button>
 
@@ -911,9 +913,9 @@ export function AppearanceSection() {
                             </div>
                             <div className="flex flex-col gap-0.5">
                                 <p className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                                    Carousel <BetaTag />
+                                    {t("appearance_loading_carousel")} <BetaTag />
                                 </p>
-                                <p className="text-[10px] text-zinc-500">Artwork + vertical bar</p>
+                                <p className="text-[10px] text-zinc-500">{t("appearance_loading_carousel_desc")}</p>
                             </div>
                         </button>
                     </div>
@@ -925,13 +927,13 @@ export function AppearanceSection() {
             {/* GRID & LAYOUT */}
             <div className="flex flex-col gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-                    <Grid3X3 className="h-3.5 w-3.5" /> Grid and Layout
+                    <Grid3X3 className="h-3.5 w-3.5" /> {t("appearance_grid_layout_label")}
                 </p>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden divide-y divide-zinc-800">
                     <div className="flex items-center gap-4 px-5 py-4">
                         <div className="flex-1">
-                            <p className="text-sm font-medium text-zinc-200">Default View Mode</p>
-                            <p className="text-[10px] text-zinc-600 mt-0.5">Grid or list</p>
+                            <p className="text-sm font-medium text-zinc-200">{t("appearance_default_view")}</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{t("appearance_default_view_desc")}</p>
                         </div>
                         <div className="flex gap-1.5">
                             {(["grid", "list"] as const).map((v) => (
@@ -953,15 +955,15 @@ export function AppearanceSection() {
                     </div>
                     <div className="flex items-center gap-4 px-5 py-4">
                         <div className="flex-1">
-                            <p className="text-sm font-medium text-zinc-200">Show tags on grid</p>
-                            <p className="text-[10px] text-zinc-600 mt-0.5">Show the tag badges on the grid</p>
+                            <p className="text-sm font-medium text-zinc-200">{t("appearance_show_tags")}</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{t("appearance_show_tags_desc")}</p>
                         </div>
                         <Toggle value={showTagsInGrid} onChange={setShowTagsInGrid} />
                     </div>
                     <div className="flex items-center gap-4 px-5 py-4">
                         <div className="flex-1">
-                            <p className="text-sm font-medium text-zinc-200">Show type mockup icons</p>
-                            <p className="text-[10px] text-zinc-600 mt-0.5">Avatar/outfit/accessories on cards in case the images don't load</p>
+                            <p className="text-sm font-medium text-zinc-200">{t("appearance_show_type_icons")}</p>
+                            <p className="text-[10px] text-zinc-600 mt-0.5">{t("appearance_show_type_icons_desc")}</p>
                         </div>
                         <Toggle value={showTypeIcons} onChange={setShowTypeIcons} />
                     </div>

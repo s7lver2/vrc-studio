@@ -10,6 +10,7 @@ import {
 } from "@/lib/tauri";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useAppStore } from "@/store/app";
+import { useT } from "@/i18n";
 
 function cn(...c: (string | boolean | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -40,6 +41,7 @@ function DeviceFlowPanel({
   verificationUri: string;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copyCode = () => {
     navigator.clipboard.writeText(userCode).catch(() => {});
@@ -50,7 +52,7 @@ function DeviceFlowPanel({
     <div className="border-t border-zinc-800 px-5 py-4 flex flex-col gap-3">
       <div className="flex items-center gap-2 text-xs text-zinc-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-500 shrink-0" />
-        <span>Waiting for GitHub authorization…</span>
+        <span>{t("conn_github_waiting")}</span>
       </div>
       <div className="flex flex-col gap-2">
         <p className="text-[11px] text-zinc-500">
@@ -59,7 +61,7 @@ function DeviceFlowPanel({
             className="underline hover:text-zinc-300 transition-colors"
             style={{ color: "var(--accent-color)" }}>
             {verificationUri}
-          </a>{" "}and enter this code:
+          </a>{" "}{t("conn_github_enter_code")}
         </p>
         <div className="flex items-center gap-2">
           <div className="font-mono text-xl font-bold tracking-[0.3em] text-zinc-100 px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-900 flex-1 text-center">
@@ -70,7 +72,7 @@ function DeviceFlowPanel({
             {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
           </button>
         </div>
-        <button onClick={onCancel} className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors">Cancel</button>
+        <button onClick={onCancel} className="self-start text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors">{t("conn_github_cancel")}</button>
       </div>
     </div>
   );
@@ -91,6 +93,7 @@ interface CardConfig {
 }
 
 function ConnectionCard({ card }: { card: CardConfig }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const { animSpeed } = useAppearanceStore();
 
@@ -148,28 +151,28 @@ function ConnectionCard({ card }: { card: CardConfig }) {
               {card.expandedContent && (
                 <button onClick={() => setExpanded(e => !e)}
                   className="px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all">
-                  {expanded ? "Less" : "Details"}
+                  {expanded ? t("conn_discord_less") : t("conn_discord_details")}
                 </button>
               )}
               <button onClick={card.onDisconnect}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-red-400 hover:border-red-900 transition-all">
-                <LogOut className="h-3.5 w-3.5" /> Disconnect
+                <LogOut className="h-3.5 w-3.5" /> {t("conn_btn_disconnect")}
               </button>
             </>
           ) : isExpired ? (
             <button onClick={card.onConnect}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-amber-300 border border-amber-900/60 bg-amber-950/30 hover:bg-amber-950/50 transition-all">
-              <AlertTriangle className="h-3.5 w-3.5" /> Reconnect
+              <AlertTriangle className="h-3.5 w-3.5" /> {t("conn_status_reconnect")}
             </button>
           ) : isUnknown && !isWaiting ? (
             <Loader2 className="h-4 w-4 animate-spin text-zinc-600" />
           ) : isWaiting ? (
-            <span className="text-[10px] text-zinc-600 italic">Waiting…</span>
+            <span className="text-[10px] text-zinc-600 italic">{t("conn_status_waiting")}</span>
           ) : (
             <button onClick={card.onConnect}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-zinc-100 transition-all"
               style={{ background: "var(--accent-color)", boxShadow: "0 0 14px hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.3)" }}>
-              Connect
+              {t("conn_btn_connect")}
             </button>
           )}
         </div>
@@ -204,6 +207,7 @@ function DiscordConnectionCard() {
   const setDiscordRpcEnabled = useAppStore((s) => s.setDiscordRpcEnabled);
   const { animSpeed } = useAppearanceStore();
 
+  const t = useT();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -285,13 +289,13 @@ function DiscordConnectionCard() {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <p className="text-sm font-semibold text-zinc-100">Discord</p>
+            <p className="text-sm font-semibold text-zinc-100">{t("conn_discord_title")}</p>
             <span className="text-[10px] font-medium" style={{ color: statusColor }}>
-              {isConnected ? "Connected" : connecting ? "Connecting…" : "Disconnected"}
+              {isConnected ? t("conn_discord_status_connected") : connecting ? t("conn_discord_status_connecting") : t("conn_discord_status_disconnected")}
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 leading-relaxed">
-            Muestra tu proyecto actual y tiempo de sesión en tu perfil de Discord.
+            {t("conn_discord_desc")}
           </p>
           {accountLine && (
             <p className="text-[11px] mt-1 font-mono" style={{ color: "#5865F2" }}>{accountLine}</p>
@@ -305,13 +309,13 @@ function DiscordConnectionCard() {
                 onClick={() => setExpanded(e => !e)}
                 className="px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-all"
               >
-                {expanded ? "Less" : "Details"}
+                {expanded ? t("conn_discord_less") : t("conn_discord_details")}
               </button>
               <button
                 onClick={handleDisconnect}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-400 hover:text-red-400 hover:border-red-900 transition-all"
               >
-                <LogOut className="h-3.5 w-3.5" /> Disconnect
+                <LogOut className="h-3.5 w-3.5" /> {t("conn_discord_disconnect")}
               </button>
             </>
           ) : connecting ? (
@@ -322,7 +326,7 @@ function DiscordConnectionCard() {
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-white transition-all"
               style={{ background: "#5865F2", boxShadow: "0 0 14px rgba(88,101,242,0.3)" }}
             >
-              Connect
+              {t("conn_discord_connect")}
             </button>
           )}
         </div>
@@ -333,7 +337,7 @@ function DiscordConnectionCard() {
         <div className="border-t border-zinc-800 px-5 py-4 flex items-center gap-3">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400 shrink-0" />
           <p className="text-[11px] text-zinc-400">
-            Discord está mostrando un popup de autorización. Acepta la solicitud en el cliente de Discord.
+            {t("conn_discord_popup_hint")}
           </p>
         </div>
       )}
@@ -373,8 +377,8 @@ function DiscordConnectionCard() {
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-zinc-300">Rich Presence</p>
-              <p className="text-[11px] text-zinc-500">Muestra tu actividad en VRC Studio en Discord</p>
+              <p className="text-xs font-medium text-zinc-300">{t("conn_discord_rpc_label")}</p>
+              <p className="text-[11px] text-zinc-500">{t("conn_discord_rpc_desc")}</p>
             </div>
             <button
               onClick={() => handleToggleRpc(!discordRpcEnabled)}
@@ -398,6 +402,7 @@ function DiscordConnectionCard() {
 }
 
 export function ConnectionHub() {
+  const t = useT();
   const showAdultContent = useAppStore((s) => s.showAdultContent);
   const setShowAdultContent = useAppStore((s) => s.setShowAdultContent);
   const [githubUser, setGithubUser] = useState<GithubUserInfo | null>(null);
@@ -439,8 +444,8 @@ export function ConnectionHub() {
   const cards: CardConfig[] = [
     {
       id: "github",
-      name: "GitHub",
-      description: "Link your GitHub account to unlock repository integrations and private package sources.",
+      name: t("conn_github_title"),
+      description: t("conn_github_desc"),
       logo: githubLogo,
       status: githubUser ? "connected" : githubStep === "waiting" ? "unknown" : "disconnected",
       accountLine: githubUser ? `@${githubUser.login}` : undefined,
@@ -462,15 +467,15 @@ export function ConnectionHub() {
           <a href={`https://github.com/${githubUser.login}`} target="_blank" rel="noreferrer"
             className="flex items-center gap-1.5 text-xs hover:opacity-80 transition-opacity"
             style={{ color: "var(--accent-color)" }}>
-            <ExternalLink className="h-3 w-3" /> Profile
+            <ExternalLink className="h-3 w-3" /> {t("conn_github_profile")}
           </a>
         </div>
       ) : undefined,
     },
     {
       id: "booth",
-      name: "Booth.pm",
-      description: "Browse and import your Booth.pm purchases directly into your asset library.",
+      name: t("conn_booth_title"),
+      description: t("conn_booth_desc"),
       logo: <span className="text-2xl leading-none">🛒</span>,
       status: boothStatus === "connected" ? "connected" : boothStatus === "unknown" ? "unknown" : "disconnected",
       accountLine: boothStatus === "connected" && purchaseCount != null
@@ -481,8 +486,8 @@ export function ConnectionHub() {
       expandedContent: boothStatus === "connected" ? (
         <div className="flex items-center justify-between py-2">
           <div>
-            <p className="text-xs font-medium text-zinc-300">Adult content</p>
-            <p className="text-xs text-zinc-500">Show R18 items in search results (requires age verification on your Booth account)</p>
+            <p className="text-xs font-medium text-zinc-300">{t("conn_booth_adult_label")}</p>
+            <p className="text-xs text-zinc-500">{t("conn_booth_adult_desc")}</p>
           </div>
           <button
             onClick={() => setShowAdultContent(!showAdultContent)}
@@ -499,7 +504,7 @@ export function ConnectionHub() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <Wifi className="h-3.5 w-3.5 text-zinc-500" />
-        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Integrations</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t("conn_integrations_title")}</p>
       </div>
       <div className="flex flex-col gap-3">
         {cards.map((card) => (
