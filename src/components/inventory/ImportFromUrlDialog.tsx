@@ -3,6 +3,7 @@ import {
   X, Link, Download, Loader2, CheckCircle, AlertTriangle,
   FolderOpen, User, Package,
 } from "lucide-react";
+import { useT } from "@/i18n";
 import { tauriDownloadToTemp } from "../../lib/tauri";
 import { useInventoryStore } from "../../store/inventoryStore";
 import { listen } from "@tauri-apps/api/event";
@@ -25,6 +26,7 @@ function labelFromUrl(url: string): string {
 }
 
 export function ImportFromUrlDialog({ onClose, onImported }: Props) {
+  const t = useT();
   const { importLocalPackage } = useInventoryStore();
 
   const [url, setUrl] = useState("");
@@ -103,7 +105,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
         <div className="flex items-center justify-between p-5 border-b border-zinc-800">
           <div className="flex items-center gap-2.5">
             <Link className="h-5 w-5 text-red-400" />
-            <h2 className="text-base font-semibold text-zinc-100">Import from URL</h2>
+            <h2 className="text-base font-semibold text-zinc-100">{t("import_url_title")}</h2>
           </div>
           <button
             onClick={onClose}
@@ -120,14 +122,14 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
             <>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                  Download URL
+                  {t("import_url_label")}
                 </label>
                 <input
                   type="text"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleDownload()}
-                  placeholder="https://pixeldrain.com/l/xxxxx  or  direct .zip link"
+                  placeholder={t("import_url_placeholder")}
                   className="px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 focus:border-zinc-500
                              text-xs text-zinc-200 placeholder-zinc-600 outline-none transition-colors"
                   autoFocus
@@ -152,7 +154,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
                              disabled:opacity-50 text-white text-sm font-medium transition-colors"
                 >
                   <Download className="h-4 w-4" />
-                  Download
+                  {t("import_url_start")}
                 </button>
               </div>
             </>
@@ -187,7 +189,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
 
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                  Name *
+                  {t("import_url_name_label")} *
                 </label>
                 <input
                   type="text"
@@ -201,8 +203,8 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
 
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
-                  <User className="h-3 w-3" /> Author
-                  <span className="text-[10px] text-zinc-600 font-normal normal-case tracking-normal ml-1">(optional)</span>
+                  <User className="h-3 w-3" /> {t("import_url_author_label")}
+                  <span className="text-[10px] text-zinc-600 font-normal normal-case tracking-normal ml-1">{t("import_url_author_optional")}</span>
                 </label>
                 <input
                   type="text"
@@ -215,7 +217,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
 
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                  Thumbnail URL
+                  {t("import_url_thumbnail_label")}
                 </label>
                 <input
                   type="text"
@@ -240,7 +242,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
                   className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700
                              text-zinc-300 text-sm transition-colors"
                 >
-                  Cancel
+                  {t("import_url_cancel")}
                 </button>
                 <button
                   onClick={handleImport}
@@ -249,7 +251,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
                              disabled:opacity-50 text-white text-sm font-medium transition-colors"
                 >
                   <Package className="h-4 w-4" />
-                  Import
+                  {t("import_url_import_btn")}
                 </button>
               </div>
             </>
@@ -259,7 +261,7 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
           {phase === "importing" && (
             <div className="flex flex-col items-center gap-3 py-6">
               <Loader2 className="h-8 w-8 text-red-400 animate-spin" />
-              <p className="text-sm text-zinc-400">Importing into inventory…</p>
+              <p className="text-sm text-zinc-400">{t("import_url_importing")}</p>
             </div>
           )}
 
@@ -268,14 +270,14 @@ export function ImportFromUrlDialog({ onClose, onImported }: Props) {
             <div className="flex flex-col items-center gap-4 py-6 text-center">
               <CheckCircle className="h-12 w-12 text-green-400" />
               <div>
-                <h3 className="text-base font-semibold text-zinc-100">Import complete!</h3>
+                <h3 className="text-base font-semibold text-zinc-100">{t("import_url_done_title")}</h3>
                 <p className="text-sm text-zinc-400 mt-1">{name}</p>
               </div>
               <button
                 onClick={onClose}
                 className="px-6 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors"
               >
-                Close
+                {t("import_url_close")}
               </button>
             </div>
           )}

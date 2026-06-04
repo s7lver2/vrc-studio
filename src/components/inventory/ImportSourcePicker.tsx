@@ -1,5 +1,6 @@
 // src/components/inventory/ImportSourcePicker.tsx
 import { HardDrive, Upload, Link, X } from "lucide-react";
+import { useT } from "@/i18n";
 
 export type ImportSource = "scan" | "local" | "url";
 
@@ -8,34 +9,36 @@ interface Props {
   onClose: () => void;
 }
 
-const OPTIONS: { id: ImportSource; icon: React.ReactNode; label: string; sub: string }[] = [
-  {
-    id: "scan",
-    icon: <HardDrive className="h-8 w-8 text-zinc-300" />,
-    label: "Scan Hard Drive",
-    sub: "Auto-detect assets",
-  },
-  {
-    id: "local",
-    icon: <Upload className="h-8 w-8 text-zinc-300" />,
-    label: "Manual Import",
-    sub: "Pick a .zip / .unitypackage",
-  },
-  {
-    id: "url",
-    icon: <Link className="h-8 w-8 text-zinc-300" />,
-    label: "Import from URL",
-    sub: "Pixeldrain, direct links…",
-  },
-];
-
 export function ImportSourcePicker({ onSelect, onClose }: Props) {
+  const t = useT();
+
+  const OPTIONS: { id: ImportSource; icon: React.ReactNode; label: string; sub: string }[] = [
+    {
+      id: "scan",
+      icon: <HardDrive className="h-8 w-8 text-zinc-300" />,
+      label: t("import_source_scan_title"),
+      sub: t("import_source_scan_desc"),
+    },
+    {
+      id: "local",
+      icon: <Upload className="h-8 w-8 text-zinc-300" />,
+      label: t("import_source_local_title"),
+      sub: t("import_source_local_desc"),
+    },
+    {
+      id: "url",
+      icon: <Link className="h-8 w-8 text-zinc-300" />,
+      label: t("import_source_url_title"),
+      sub: t("import_source_url_desc"),
+    },
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-6 flex flex-col gap-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-zinc-100">Import Asset</h2>
+          <h2 className="text-base font-semibold text-zinc-100">{t("import_source_title")}</h2>
           <button
             onClick={onClose}
             className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
@@ -43,7 +46,6 @@ export function ImportSourcePicker({ onSelect, onClose }: Props) {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-zinc-500 -mt-2">Select where to find the file</p>
         <div className="grid grid-cols-3 gap-3">
           {OPTIONS.map((opt) => (
             <button

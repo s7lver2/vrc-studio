@@ -11,6 +11,7 @@ import {
   Box, ArrowRight, X
 } from "lucide-react";
 import { useAppStore, Section } from "@/store/app";
+import { useT } from "@/i18n";
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
@@ -209,6 +210,7 @@ function cn(...c: (string | boolean | undefined)[]) {
 }
 
 export function GetStarted({ onClose }: GetStartedProps) {
+  const t = useT();
   const [stepIndex, setStepIndex] = useState(0);
   const [visitedSections, setVisitedSections] = useState<Set<string>>(new Set(["welcome"]));
   const [exiting, setExiting] = useState(false);
@@ -280,7 +282,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
           </div>
           <div>
             <p className="text-xs font-semibold text-zinc-200 leading-none">VRC Studio</p>
-            <p className="text-[10px] text-zinc-600 mt-0.5">Get Started</p>
+            <p className="text-[10px] text-zinc-600 mt-0.5">{t("getstarted_get_started")}</p>
           </div>
         </div>
 
@@ -315,7 +317,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
                 }
               </div>
               <span className={cn("font-medium truncate", active && "text-zinc-100")}>
-                {s.id === "welcome" ? "Welcome" : s.id === "done" ? "Done" : s.title}
+                {s.id === "welcome" ? "Welcome" : s.id === "done" ? t("getstarted_done") : s.title}
               </span>
             </button>
           );
@@ -327,7 +329,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
             onClick={handleSkip}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors border border-zinc-800 hover:border-zinc-700"
           >
-            <X className="h-3 w-3" /> Skip tutorial
+            <X className="h-3 w-3" /> {t("getstarted_skip")}
           </button>
         </div>
       </aside>
@@ -416,7 +418,7 @@ export function GetStarted({ onClose }: GetStartedProps) {
                 disabled={isFirst}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-0 disabled:pointer-events-none"
               >
-                ← Back
+                ← {t("getstarted_back")}
               </button>
 
               <button
@@ -432,9 +434,9 @@ export function GetStarted({ onClose }: GetStartedProps) {
                 )}
               >
                 {isLast ? (
-                  <><Check className="h-4 w-4" /> Finish</>
+                  <><Check className="h-4 w-4" /> {t("getstarted_done")}</>
                 ) : (
-                  <>Next <ChevronRight className="h-4 w-4" /></>
+                  <>{t("getstarted_next")} <ChevronRight className="h-4 w-4" /></>
                 )}
               </button>
             </div>
