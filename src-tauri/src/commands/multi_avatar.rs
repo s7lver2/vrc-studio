@@ -230,8 +230,11 @@ pub async fn get_item_variants(
 
 /// Imports a container zip as a multi-avatar item.
 /// Creates inventory_item with is_multi_avatar=1 and all variant rows atomically.
+/// The source zip is ALWAYS copied into VRCStudio's managed storage so that
+/// local_path never points to an external user directory.
 #[tauri::command]
 pub async fn import_multi_avatar_package(
+    app: tauri::AppHandle,
     pool: State<'_, DbPool>,
     args: ImportMultiAvatarArgs,
 ) -> Result<String, AppError> {
@@ -239,8 +242,21 @@ pub async fn import_multi_avatar_package(
     let item_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Compute file size
-    let size_bytes: Option<i64> = std::fs::metadata(&args.zip_path)
+    // ── Copy zip into VRCStudio's managed storage ─────────────────────────────
+    // This mirrors import_local_package so that local_path is always internal.
+    let src = std::path::Path::new(&args.zip_path);
+    let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("zip");
+    let storage_dir = crate::commands::app_settings::get_assets_root(&app)
+        .join("multi_avatar")
+        .join(&item_id);
+    std::fs::create_dir_all(&storage_dir)?;
+    let dest = storage_dir.join(format!("{}.{}", &item_id[..8], ext));
+    std::fs::copy(src, &dest)
+        .map_err(|e| AppError::External(format!("Copy failed: {e}")))?;
+    let local_path = dest.to_string_lossy().to_string();
+
+    // Compute file size from the internal copy
+    let size_bytes: Option<i64> = std::fs::metadata(&dest)
         .ok()
         .map(|m| m.len() as i64);
 
@@ -254,7 +270,7 @@ pub async fn import_multi_avatar_package(
             args.name,
             args.author,
             args.booth_id,
-            args.zip_path,
+            local_path,
             args.thumbnail_url,
             now,
             size_bytes,
