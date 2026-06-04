@@ -1,8 +1,9 @@
-import { Boxes, Package, ShoppingBag, Archive, Bell, Settings, User, GitBranch } from "lucide-react";
+import { Boxes, Package, ShoppingBag, Archive, Bell, Settings, User, GitBranch, ScrollText } from "lucide-react";
 import { useAppStore, Section } from "@/store/app";
 import { useState, useEffect } from 'react';
 import { useTrackerStore } from "@/store/trackerStore";
 import { useAppearanceStore } from "@/store/appearanceStore";
+import { useLogsStore } from "@/store/logsStore";
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from "@/i18n";
 import { NavItem } from "./NavItem";
@@ -11,6 +12,7 @@ export function Sidebar() {
   const t = useT();
   const { activeSection, setActiveSection } = useAppStore();
   const trackerUnread = useTrackerStore((s) => s.unreadCount);
+  const logsErrorCount = useLogsStore((s) => s.errorCount);
   const sidebarWidth = useAppearanceStore((s) => s.sidebarWidth);
   const isNarrow = sidebarWidth === "narrow";
   const [appVersion, setAppVersion] = useState('v0.0.0');
@@ -27,7 +29,7 @@ export function Sidebar() {
     { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag, tourId: "nav-shop",      wip: true },
     { section: "inventory", label: t("nav_inventory"), icon: Archive,     tourId: "nav-inventory" },
     { section: "tracker",   label: t("nav_tracker"),   icon: Bell,        tourId: "nav-tracker",   wip: true },
-    { section: "git",       label: "Git",              icon: GitBranch },
+    { section: "git",       label: "Git",              icon: GitBranch,   wip: true },
   ];
 
   useEffect(() => {
@@ -95,6 +97,22 @@ export function Sidebar() {
           title={t("nav_settings")}
         >
           <Settings className="h-5 w-5" />
+        </button>
+        {/* Logs button with error badge */}
+        <button
+          onClick={() => setActiveSection("logs")}
+          className={`relative p-2 rounded-lg transition-all ${
+            activeSection === "logs"
+              ? "bg-zinc-800"
+              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+          }`}
+          style={activeSection === "logs" ? { color: "var(--accent-color)" } : {}}
+          title="Logs"
+        >
+          <ScrollText className="h-5 w-5" />
+          {logsErrorCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-1 ring-zinc-900" />
+          )}
         </button>
         <button
           onClick={() => setActiveSection("creators")}

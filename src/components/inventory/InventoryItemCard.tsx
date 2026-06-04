@@ -377,17 +377,41 @@ const InventoryItemCardInner = function InventoryItemCard({
 
   // List mode render
   if (viewMode === "list") {
+    const handleListClick = (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      if (e.shiftKey && onShiftClick) { onShiftClick(item.id); return; }
+      if (isMultiSelectActive) { onCheckboxToggle(); return; }
+      selectItem(item);
+    };
+
     return (
       <>
         <div
           ref={setNodeRef} {...attributes} {...listeners}
-          className={`flex items-center gap-3 px-3 py-2 rounded hover:bg-zinc-800 transition-colors cursor-grab active:cursor-grabbing select-none ${isDragging ? "opacity-40" : ""}`}
-          onClick={handleClick}
+          className={`flex items-center gap-3 px-3 py-2 rounded transition-colors cursor-grab active:cursor-grabbing select-none
+            ${isSelected ? "bg-zinc-800/70 border border-zinc-600/60" : "border border-transparent hover:bg-zinc-800/50"}
+            ${isDragging ? "opacity-40" : ""}
+          `}
+          onClick={handleListClick}
           onContextMenu={handleContextMenu}
         >
-          <div className="shrink-0 text-zinc-600 hover:text-zinc-400 pointer-events-none">
-            <GripVertical className="h-4 w-4" />
+          {/* Checkbox / grip area */}
+          <div className="shrink-0 w-5 flex items-center justify-center">
+            {isMultiSelectActive || isSelected ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onCheckboxToggle(); }}
+                className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0
+                  ${isSelected ? "bg-red-600 border-red-500" : "border-zinc-600 hover:border-zinc-400 bg-zinc-900"}`}
+              >
+                {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+              </button>
+            ) : (
+              <GripVertical className="h-4 w-4 text-zinc-700 hover:text-zinc-500" />
+            )}
           </div>
+
           <div className="relative w-9 h-9 rounded bg-zinc-800 shrink-0 overflow-hidden">
             {coverSrc ? (
               <img
@@ -407,7 +431,7 @@ const InventoryItemCardInner = function InventoryItemCard({
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-zinc-200 truncate">{item.display_name ?? item.name}</p>
+            <p className={`text-sm truncate ${isSelected ? "text-zinc-100" : "text-zinc-200"}`}>{item.display_name ?? item.name}</p>
             <p className="text-xs text-zinc-500 truncate flex items-center gap-1.5">
               {item.author ?? "Unknown"}{sizeMb ? ` · ${sizeMb}` : ""}
               {item.is_compressed && <span className="text-[9px] text-amber-400/70 uppercase">{t("card_zip")}</span>}

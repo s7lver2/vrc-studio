@@ -9,12 +9,45 @@ use tauri::{Manager, State};
 use uuid::Uuid;
 use zip::ZipArchive;
 
+/// Opens a file for reading in shared mode so other processes can also read it.
+/// On Windows this avoids "Access Denied" (os error 5) when the file is already
+/// open (e.g., by Explorer, antivirus, or another app instance).
+fn open_file_shared(path: &str) -> Result<std::fs::File, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE = 0x7
+        // Maximum sharing — allows reading even when Explorer/AV has the file open.
+        // Also retries 3× (120 ms apart) to survive transient AV scans.
+        let mut last_err = String::new();
+        for attempt in 0..3u32 {
+            match std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0x00000007)
+                .open(path)
+            {
+                Ok(f) => return Ok(f),
+                Err(e) => {
+                    last_err = format!("Cannot open zip: {e}");
+                    if attempt < 2 {
+                        std::thread::sleep(std::time::Duration::from_millis(120));
+                    }
+                }
+            }
+        }
+        Err(last_err)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::fs::File::open(path).map_err(|e| format!("Cannot open zip: {e}"))
+    }
+}
+
 /// Lists top-level .zip / .unitypackage entries inside a container zip.
 #[tauri::command]
 pub async fn list_zip_contents(zip_path: String) -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(move || {
-        let file = std::fs::File::open(&zip_path)
-            .map_err(|e| format!("Cannot open zip: {e}"))?;
+        let file = open_file_shared(&zip_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
 
@@ -45,8 +78,7 @@ pub async fn extract_sub_zip_to_temp(
     sub_zip_name: String,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
-        let file = std::fs::File::open(&zip_path)
-            .map_err(|e| format!("Cannot open zip: {e}"))?;
+        let file = open_file_shared(&zip_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
 
@@ -78,7 +110,7 @@ pub async fn get_item_variants(
 ) -> Result<Vec<ItemVariant>, AppError> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
-        "SELECT id, item_id, label, is_materials, sub_zip_name, sort_order
+        "SELECT id, item_id, label, is_materials, sub_zip_name, sort_order, custom_image_path
          FROM inventory_item_variants
          WHERE item_id = ?1
          ORDER BY sort_order ASC, label ASC",
@@ -102,15 +134,16 @@ pub async fn get_item_variants(
                 row.get::<_, i64>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, i64>(5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         })?
         .filter_map(|r| r.ok())
-        .map(|(id, item_id, label, is_materials_int, sub_zip_name, sort_order)| {
+        .map(|(id, item_id, label, is_materials_int, sub_zip_name, sort_order, custom_image_path)| {
             let is_materials = is_materials_int != 0;
             // Derive size from zip entry
             let (size_bytes, is_compressed) =
                 zip_path.as_deref().and_then(|zp| {
-                    let f = std::fs::File::open(zp).ok()?;
+                    let f = open_file_shared(zp).ok()?;
                     let mut arch = ZipArchive::new(f).ok()?;
                     let entry = arch.by_name(&sub_zip_name).ok()?;
                     Some((Some(entry.size()), entry.compression() != zip::CompressionMethod::Stored))
@@ -126,6 +159,7 @@ pub async fn get_item_variants(
                 sort_order,
                 size_bytes,
                 is_compressed,
+                custom_image_path,
             }
         })
         .collect();
@@ -152,8 +186,8 @@ pub async fn import_multi_avatar_package(
     conn.execute(
         "INSERT INTO inventory_items
          (id, name, author, source, source_id, local_path, thumbnail_url, download_date,
-          size_bytes, is_compressed, display_name, folder_id, is_multi_avatar)
-         VALUES (?1,?2,?3,'local',?4,?5,?6,?7,?8,0,?2,?9,1)",
+          size_bytes, is_compressed, display_name, is_multi_avatar)
+         VALUES (?1,?2,?3,'local',?4,?5,?6,?7,?8,0,?2,1)",
         params![
             item_id,
             args.name,
@@ -163,9 +197,16 @@ pub async fn import_multi_avatar_package(
             args.thumbnail_url,
             now,
             size_bytes,
-            args.folder_id,
         ],
     )?;
+
+    // Assign to folder if provided (stored in junction table, not inventory_items)
+    if let Some(ref fid) = args.folder_id {
+        conn.execute(
+            "INSERT OR IGNORE INTO inventory_folder_items (folder_id, item_id) VALUES (?1, ?2)",
+            params![fid, item_id],
+        ).ok();
+    }
 
     for (i, variant) in args.variants.iter().enumerate() {
         let vid = Uuid::new_v4().to_string();
@@ -184,15 +225,14 @@ pub async fn import_multi_avatar_package(
         )?;
     }
 
-    // Store product images if any
+    // Store product images as JSON in the inventory_items column (same as set_item_product_images)
     if !args.product_images.is_empty() {
-        for (i, url) in args.product_images.iter().enumerate() {
-            conn.execute(
-                "INSERT OR IGNORE INTO item_product_images (item_id, url, sort_order)
-                 VALUES (?1, ?2, ?3)",
-                params![item_id, url, i as i64],
-            ).ok(); // ignore if table doesn't exist or has different schema
-        }
+        let json = serde_json::to_string(&args.product_images)
+            .unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "UPDATE inventory_items SET product_images = ?1 WHERE id = ?2",
+            params![json, item_id],
+        ).ok();
     }
 
     Ok(item_id)
@@ -314,8 +354,7 @@ pub async fn compress_variant(
     )?;
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let file = std::fs::File::open(&zip_path)
-            .map_err(|e| format!("Cannot open zip: {e}"))?;
+        let file = open_file_shared(&zip_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
         let mut entry = archive
@@ -355,8 +394,7 @@ pub async fn decompress_variant(
     )?;
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let file = std::fs::File::open(&zip_path)
-            .map_err(|e| format!("Cannot open zip: {e}"))?;
+        let file = open_file_shared(&zip_path)?;
         let mut archive = ZipArchive::new(file)
             .map_err(|e| format!("Invalid zip: {e}"))?;
         let mut entry = archive
@@ -459,4 +497,19 @@ pub async fn create_container_zip(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Sets a custom image path for a specific variant.
+#[tauri::command]
+pub async fn set_variant_custom_image(
+    pool: State<'_, DbPool>,
+    variant_id: String,
+    image_path: Option<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE inventory_item_variants SET custom_image_path = ?1 WHERE id = ?2",
+        params![image_path, variant_id],
+    )?;
+    Ok(())
 }
