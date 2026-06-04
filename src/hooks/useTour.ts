@@ -1,50 +1,28 @@
 // src/hooks/useTour.ts
 import { useState, useCallback } from "react";
+import { useT } from "@/i18n";
 
 const TOUR_DONE_KEY = "onboarding_tour_done";
 
 export interface TourStep {
-  targetId: string;   // matches data-tour-id attribute in the DOM
+  targetId: string;
   title: string;
   description: string;
 }
 
-const STEPS: TourStep[] = [
-  {
-    targetId: "nav-projects",
-    title: "Proyectos",
-    description: "Aquí gestionas tus proyectos de Unity. Haz clic para continuar.",
-  },
-  {
-    targetId: "nav-packages",
-    title: "Paquetes VPM",
-    description: "Instala y gestiona paquetes VPM para tus proyectos.",
-  },
-  {
-    targetId: "nav-inventory",
-    title: "Inventario",
-    description: "Guarda y organiza tus avatares, assets y paquetes descargados.",
-  },
-  {
-    targetId: "nav-shop",
-    title: "Shop",
-    description: "Descarga paquetes directamente desde la tienda integrada.",
-  },
-  {
-    targetId: "nav-tracker",
-    title: "Tracker",
-    description: "Sigue las actualizaciones de tus assets de Booth automáticamente.",
-  },
-  {
-    targetId: "nav-settings",
-    title: "Ajustes",
-    description: "Personaliza el tema, idioma, y conecta Discord y otras integraciones. ¡Listo!",
-  },
-];
-
 export function useTour() {
+  const t = useT();
   const [tourVisible, setTourVisible] = useState(false);
   const [step, setStep] = useState(0);
+
+  const STEPS: TourStep[] = [
+    { targetId: "nav-projects",  title: t("tour_step_projects_title"),  description: t("tour_step_projects_desc")  },
+    { targetId: "nav-packages",  title: t("tour_step_packages_title"),  description: t("tour_step_packages_desc")  },
+    { targetId: "nav-inventory", title: t("tour_step_inventory_title"), description: t("tour_step_inventory_desc") },
+    { targetId: "nav-shop",      title: t("tour_step_shop_title"),      description: t("tour_step_shop_desc")      },
+    { targetId: "nav-tracker",   title: t("tour_step_tracker_title"),   description: t("tour_step_tracker_desc")   },
+    { targetId: "nav-settings",  title: t("tour_step_settings_title"),  description: t("tour_step_settings_desc")  },
+  ];
 
   const startTour = useCallback(() => {
     if (localStorage.getItem(TOUR_DONE_KEY) === "true") return;
@@ -58,10 +36,7 @@ export function useTour() {
   }, []);
 
   const advance = useCallback(() => {
-    setStep((prev) => {
-      const next = prev + 1;
-      return next;
-    });
+    setStep((prev) => prev + 1);
   }, []);
 
   const skip = useCallback(() => {

@@ -1,4 +1,5 @@
 // src/components/onboarding/TourTooltip.tsx
+import { useT } from "@/i18n";
 
 interface Rect {
   left: number;
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function TourTooltip({ step, totalSteps, title, description, rect, onSkip }: Props) {
+  const t = useT();
   const TOOLTIP_WIDTH = 220;
   const TOOLTIP_GAP   = 16;
 
@@ -59,7 +61,7 @@ export function TourTooltip({ step, totalSteps, title, description, rect, onSkip
       <p className="text-xs text-zinc-400 leading-relaxed">{description}</p>
 
       {/* Click hint */}
-      <p className="text-[10px] text-zinc-600 italic">Haz clic para continuar →</p>
+      <p className="text-[10px] text-zinc-600 italic">{t("tour_click_hint")}</p>
 
       {/* Skip — only on first step */}
       {step === 0 && (
@@ -67,7 +69,7 @@ export function TourTooltip({ step, totalSteps, title, description, rect, onSkip
           onClick={(e) => { e.stopPropagation(); onSkip(); }}
           className="mt-1 text-[10px] text-zinc-600 hover:text-zinc-400 text-left transition-colors"
         >
-          Saltar tour
+          {t("tour_skip")}
         </button>
       )}
     </div>

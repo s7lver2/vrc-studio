@@ -1060,6 +1060,22 @@ const translations = {
     versions_tree_error: "Failed to read file tree.",
     versions_retry: "Retry",
     versions_no_files: "No files found.",
+
+    // ── Onboarding tour ────────────────────────────────────────────────────
+    tour_skip: "Skip tour",
+    tour_click_hint: "Click to continue →",
+    tour_step_projects_title: "Projects",
+    tour_step_projects_desc: "Manage your Unity projects here. Click to explore.",
+    tour_step_packages_title: "VPM Packages",
+    tour_step_packages_desc: "Install and manage VPM packages for your projects.",
+    tour_step_inventory_title: "Inventory",
+    tour_step_inventory_desc: "Save and organise your avatars, assets and downloaded packages.",
+    tour_step_shop_title: "Shop",
+    tour_step_shop_desc: "Download packages directly from the integrated store.",
+    tour_step_tracker_title: "Tracker",
+    tour_step_tracker_desc: "Automatically track updates to your Booth assets.",
+    tour_step_settings_title: "Settings",
+    tour_step_settings_desc: "Customise the theme, language, and connect Discord and other integrations. All done!",
   },
 
   es: {
@@ -2081,6 +2097,21 @@ const translations = {
     versions_tree_error: "No se pudo leer el árbol de archivos.",
     versions_retry: "Reintentar",
     versions_no_files: "No se encontraron archivos.",
+
+    tour_skip: "Saltar tour",
+    tour_click_hint: "Haz clic para continuar →",
+    tour_step_projects_title: "Proyectos",
+    tour_step_projects_desc: "Aquí gestionas tus proyectos de Unity. Haz clic para explorar.",
+    tour_step_packages_title: "Paquetes VPM",
+    tour_step_packages_desc: "Instala y gestiona paquetes VPM para tus proyectos.",
+    tour_step_inventory_title: "Inventario",
+    tour_step_inventory_desc: "Guarda y organiza tus avatares, assets y paquetes descargados.",
+    tour_step_shop_title: "Shop",
+    tour_step_shop_desc: "Descarga paquetes directamente desde la tienda integrada.",
+    tour_step_tracker_title: "Tracker",
+    tour_step_tracker_desc: "Sigue las actualizaciones de tus assets de Booth automáticamente.",
+    tour_step_settings_title: "Ajustes",
+    tour_step_settings_desc: "Personaliza el tema, idioma, y conecta Discord y otras integraciones. ¡Listo!",
   },
 
   de: {
@@ -3101,6 +3132,21 @@ const translations = {
     versions_tree_error: "Dateibaum konnte nicht gelesen werden.",
     versions_retry: "Wiederholen",
     versions_no_files: "Keine Dateien gefunden.",
+
+    tour_skip: "Tour überspringen",
+    tour_click_hint: "Zum Fortfahren klicken →",
+    tour_step_projects_title: "Projekte",
+    tour_step_projects_desc: "Hier verwaltest du deine Unity-Projekte. Klicke zum Erkunden.",
+    tour_step_packages_title: "VPM-Pakete",
+    tour_step_packages_desc: "VPM-Pakete für deine Projekte installieren und verwalten.",
+    tour_step_inventory_title: "Inventar",
+    tour_step_inventory_desc: "Speichere und organisiere deine Avatare, Assets und heruntergeladenen Pakete.",
+    tour_step_shop_title: "Shop",
+    tour_step_shop_desc: "Pakete direkt aus dem integrierten Shop herunterladen.",
+    tour_step_tracker_title: "Tracker",
+    tour_step_tracker_desc: "Updates deiner Booth-Assets automatisch verfolgen.",
+    tour_step_settings_title: "Einstellungen",
+    tour_step_settings_desc: "Theme, Sprache anpassen und Discord sowie andere Integrationen verbinden. Fertig!",
   },
 } as const;
 
