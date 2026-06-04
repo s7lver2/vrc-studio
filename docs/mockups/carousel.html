@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carousel Mockups</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; color: #fff; font-family: system-ui, -apple-system, sans-serif; padding: 24px; }
+  h1 { color: #a1a1aa; font-size: 13px; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 24px; }
+  h2 { color: #71717a; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .row { display: flex; gap: 24px; margin-bottom: 40px; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 440px; max-width: 560px; }
+  .screen {
+    width: 100%; aspect-ratio: 16/9;
+    border-radius: 10px; overflow: hidden; position: relative;
+    border: 1px solid #27272a;
+  }
+  /* Shared: background + gradient */
+  .bg { position: absolute; inset: 0; background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%); }
+  .bg-img { position: absolute; inset: 0; background: url('https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&q=70') center/cover; }
+  .overlay { position: absolute; inset: 0; }
+
+  /* ── Option A: current baseline ─────────────────────── */
+  .a .overlay { background: linear-gradient(to bottom, rgba(0,0,0,.08) 0%, rgba(0,0,0,.18) 50%, rgba(0,0,0,.72) 80%, rgba(0,0,0,.9) 100%); }
+  .a .bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 14px; padding: 14px 20px;
+  }
+  .a .logo-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .a .logo-mark { width: 26px; height: 26px; background: #fff; border-radius: 4px; opacity:.9; }
+  .a .logo-text { display: flex; flex-direction: column; line-height: 1.1; }
+  .a .logo-text span:first-child { font-size: 10px; font-weight: 800; color: #fff; }
+  .a .logo-text span:last-child  { font-size: 10px; font-weight: 800; color: rgba(255,255,255,.55); }
+  .a .bar-wrap { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .a .bar-track { height: 2px; background: rgba(255,255,255,.15); border-radius: 99px; overflow: hidden; }
+  .a .bar-fill  { height: 100%; width: 62%; background: #fff; border-radius: 99px; }
+  .a .bar-label { font-size: 7px; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.3); }
+  .a .meta { position: absolute; left: 20px; bottom: 58px; }
+  .a .meta-title { font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.6); }
+  .a .meta-artist { font-size: 8px; color: rgba(255,255,255,.35); margin-top: 2px; }
+
+  /* ── Option B: glassmorphism pill ──────────────────── */
+  .b .overlay { background: linear-gradient(to bottom, rgba(0,0,0,.05) 0%, rgba(0,0,0,.12) 55%, rgba(0,0,0,.65) 85%, rgba(0,0,0,.88) 100%); }
+  .b .bottom-bar {
+    position: absolute; bottom: 16px; left: 16px; right: 16px;
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(255,255,255,.08);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 14px;
+    padding: 12px 18px;
+  }
+  .b .logo-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .b .logo-mark { width: 28px; height: 28px; background: #fff; border-radius: 6px; opacity: .95; }
+  .b .logo-text { display: flex; flex-direction: column; line-height: 1.1; }
+  .b .logo-text span:first-child { font-size: 10px; font-weight: 800; color: #fff; }
+  .b .logo-text span:last-child  { font-size: 10px; font-weight: 800; color: rgba(255,255,255,.5); }
+  .b .bar-wrap { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .b .bar-track { height: 2px; background: rgba(255,255,255,.18); border-radius: 99px; overflow: hidden; }
+  .b .bar-fill  { height: 100%; width: 62%; background: #fff; box-shadow: 0 0 8px rgba(255,255,255,.5); border-radius: 99px; }
+  .b .bar-label { font-size: 7px; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.35); }
+  /* metadata chip — top right */
+  .b .meta-chip {
+    position: absolute; top: 14px; right: 14px;
+    background: rgba(0,0,0,.45); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 10px; padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 3px; align-items: flex-end;
+  }
+  .b .meta-chip .date { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+  .b .meta-chip .time { font-size: 9px; color: rgba(255,255,255,.5); }
+  .b .meta-chip .title { font-size: 8px; color: rgba(255,255,255,.4); letter-spacing: .05em; text-transform: uppercase; margin-top: 2px; }
+
+  /* ── Option C: minimal, info bottom-left ────────────── */
+  .c .overlay {
+    background: linear-gradient(to right, rgba(0,0,0,.7) 0%, rgba(0,0,0,.15) 55%, rgba(0,0,0,.05) 100%),
+                linear-gradient(to bottom, transparent 40%, rgba(0,0,0,.88) 100%);
+  }
+  .c .bottom-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; padding: 14px 22px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .c .left { display: flex; flex-direction: column; gap: 6px; }
+  .c .meta-block { display: flex; flex-direction: column; gap: 1px; }
+  .c .meta-date { font-size: 20px; font-weight: 800; color: #fff; letter-spacing: -.03em; line-height: 1; }
+  .c .meta-time { font-size: 9px; color: rgba(255,255,255,.5); margin-top: 1px; }
+  .c .meta-artist { font-size: 8px; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .1em; margin-top: 4px; }
+  .c .bar-row { display: flex; align-items: center; gap: 8px; }
+  .c .bar-track { width: 90px; height: 2px; background: rgba(255,255,255,.18); border-radius: 99px; overflow: hidden; }
+  .c .bar-fill  { height: 100%; width: 62%; background: #fff; border-radius: 99px; }
+  .c .bar-label { font-size: 7px; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.3); }
+  .c .right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .c .logo-mark { width: 28px; height: 28px; background: #fff; border-radius: 6px; opacity: .9; }
+  .c .logo-text { display: flex; flex-direction: column; line-height: 1.1; }
+  .c .logo-text span:first-child { font-size: 10px; font-weight: 800; color: #fff; }
+  .c .logo-text span:last-child  { font-size: 10px; font-weight: 800; color: rgba(255,255,255,.5); }
+  /* slideshow dots */
+  .c .dots { display: flex; gap: 4px; margin-top: 2px; }
+  .c .dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.3); }
+  .c .dot.active { background: #fff; width: 12px; border-radius: 99px; }
+</style>
+</head>
+<body>
+<h1>SplashScreenCarousel — opciones de diseño</h1>
+
+<div class="row">
+  <!-- A: baseline actual -->
+  <div class="card">
+    <h2>A — Actual (baseline)</h2>
+    <div class="screen a">
+      <div class="bg-img"></div>
+      <div class="overlay"></div>
+      <div class="meta">
+        <div class="meta-title">Aurora Borealis</div>
+        <div class="meta-artist">Photo by Stein Egil Liland</div>
+      </div>
+      <div class="bottom-bar">
+        <div class="logo-wrap">
+          <div class="logo-mark"></div>
+          <div class="logo-text"><span>VRC</span><span>Studio</span></div>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-track"><div class="bar-fill"></div></div>
+          <div class="bar-label">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: glass pill + metadata chip top-right -->
+  <div class="card">
+    <h2>B — Glass pill + metadata chip (esquina superior derecha)</h2>
+    <div class="screen b">
+      <div class="bg-img"></div>
+      <div class="overlay"></div>
+      <div class="meta-chip">
+        <div class="date">Jan 15, 2024</div>
+        <div class="time">22:47</div>
+        <div class="title">Aurora Borealis</div>
+      </div>
+      <div class="bottom-bar">
+        <div class="logo-wrap">
+          <div class="logo-mark"></div>
+          <div class="logo-text"><span>VRC</span><span>Studio</span></div>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar-track"><div class="bar-fill"></div></div>
+          <div class="bar-label">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <!-- C: minimal, fecha grande bottom-left, logo bottom-right -->
+  <div class="card">
+    <h2>C — Minimal: fecha grande izquierda, logo derecha + dots de slideshow</h2>
+    <div class="screen c">
+      <div class="bg-img"></div>
+      <div class="overlay"></div>
+      <div class="bottom-bar">
+        <div class="left">
+          <div class="meta-block">
+            <div class="meta-date">Jan 15, 2024</div>
+            <div class="meta-time">22:47:03</div>
+            <div class="meta-artist">Aurora Borealis · Stein Egil Liland</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill"></div></div>
+            <div class="bar-label">Loading…</div>
+          </div>
+          <div class="dots">
+            <div class="dot active"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="logo-text" style="text-align:right"><span>VRC</span><span>Studio</span></div>
+          <div class="logo-mark"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Nota sobre metadatos VRChat</h2>
+    <div style="padding: 16px; background: #18181b; border-radius: 10px; border: 1px solid #27272a; font-size: 12px; color: #a1a1aa; line-height: 1.6;">
+      <p style="color:#e4e4e7; font-weight: 600; margin-bottom: 8px;">Extracción de fecha de fotos VRChat</p>
+      <p>Las fotos VRChat se nombran así:</p>
+      <code style="display: block; margin: 8px 0; padding: 8px; background:#09090b; border-radius: 6px; color: #60a5fa; font-size: 11px;">VRChat_2024-01-15_22-47-03.000_1920x1080.png</code>
+      <p>→ Se puede extraer fecha + hora del nombre del archivo sin EXIF.</p>
+      <p style="margin-top: 8px;">Para fotos built-in (Unsplash), el artista y título ya están en la metadata del código.</p>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

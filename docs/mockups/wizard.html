@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wizard Mockups</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #09090b; color: #fff; font-family: system-ui, -apple-system, sans-serif; padding: 28px; }
+  h1 { color: #71717a; font-size: 11px; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 24px; }
+  h2 { color: #52525b; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .row { display: flex; gap: 24px; margin-bottom: 40px; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 340px; max-width: 420px; }
+
+  /* Modal shell */
+  .modal {
+    background: #0f0f11;
+    border: 1px solid #27272a;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid #1c1c1e;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-size: 14px; font-weight: 700; color: #f4f4f5; }
+  .modal-sub   { font-size: 11px; color: #52525b; margin-top: 1px; }
+  .modal-body  { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid #1c1c1e;
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+
+  /* Steps */
+  .steps { display: flex; align-items: center; gap: 0; padding: 0 20px 14px; }
+  .step-item { display: flex; align-items: center; gap: 6px; }
+  .step-num {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+  }
+  .step-num.active  { background: #dc2626; color: #fff; }
+  .step-num.done    { background: #16a34a; color: #fff; }
+  .step-num.pending { background: #27272a; color: #52525b; }
+  .step-label { font-size: 10px; }
+  .step-label.active  { color: #f4f4f5; font-weight: 600; }
+  .step-label.pending { color: #52525b; }
+  .step-sep { flex: 1; height: 1px; background: #27272a; margin: 0 8px; min-width: 20px; }
+
+  /* Form elements */
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .label { font-size: 11px; font-weight: 500; color: #a1a1aa; }
+  .input {
+    height: 34px; background: #18181b; border: 1px solid #27272a;
+    border-radius: 8px; padding: 0 10px;
+    font-size: 12px; color: #e4e4e7;
+    display: flex; align-items: center;
+  }
+  .input.placeholder { color: #52525b; }
+  .input-row { display: flex; gap: 8px; }
+  .input-row .input { flex: 1; }
+  .btn-icon {
+    width: 34px; height: 34px; background: #27272a; border-radius: 8px;
+    border: 1px solid #3f3f46; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: #a1a1aa; flex-shrink: 0;
+  }
+
+  /* Unity version pills */
+  .version-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+  .version-pill {
+    padding: 5px 10px; border-radius: 8px; font-size: 11px;
+    border: 1px solid #27272a; cursor: pointer; font-family: monospace;
+  }
+  .version-pill.selected { border-color: #dc2626; background: rgba(220,38,38,0.08); color: #f87171; }
+  .version-pill.normal   { color: #71717a; }
+
+  /* Toggles */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; background: #18181b; border-radius: 10px;
+    border: 1px solid #27272a;
+  }
+  .toggle-info { display: flex; flex-direction: column; gap: 1px; }
+  .toggle-name { font-size: 12px; font-weight: 500; color: #e4e4e7; }
+  .toggle-desc { font-size: 10px; color: #52525b; }
+  .toggle {
+    width: 32px; height: 18px; border-radius: 99px;
+    position: relative; flex-shrink: 0;
+  }
+  .toggle.on  { background: #dc2626; }
+  .toggle.off { background: #27272a; }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px;
+    width: 14px; height: 14px; border-radius: 50%; background: #fff;
+    transition: left .15s;
+  }
+  .toggle.on::after  { left: 16px; }
+  .toggle.off::after { left: 2px; }
+
+  /* Package list */
+  .pkg-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 10px;
+    background: #18181b; border: 1px solid #27272a;
+  }
+  .pkg-item.selected { border-color: #dc262660; background: rgba(220,38,38,0.05); }
+  .pkg-check {
+    width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0;
+    border: 1.5px solid #3f3f46; background: transparent;
+  }
+  .pkg-check.on { background: #dc2626; border-color: #dc2626; }
+  .pkg-info { flex: 1; }
+  .pkg-name { font-size: 12px; font-weight: 600; color: #e4e4e7; }
+  .pkg-id   { font-size: 10px; color: #52525b; font-family: monospace; }
+  .pkg-badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; background: #27272a; color: #a1a1aa; }
+  .pkg-badge.rec { background: rgba(220,38,38,0.12); color: #f87171; }
+
+  /* Early import */
+  .inventory-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .inv-item {
+    width: 72px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    cursor: pointer; position: relative;
+  }
+  .inv-thumb {
+    width: 72px; height: 72px; border-radius: 10px;
+    background: #1c1c1e; border: 2px solid #27272a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; overflow: hidden;
+  }
+  .inv-thumb.selected { border-color: #dc2626; }
+  .inv-check {
+    position: absolute; top: 4px; right: 4px;
+    width: 16px; height: 16px; background: #dc2626; border-radius: 50%;
+    font-size: 9px; display: flex; align-items: center; justify-content: center; color: #fff;
+  }
+  .inv-name { font-size: 9px; color: #a1a1aa; text-align: center; line-height: 1.2; max-width: 72px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .search-bar {
+    height: 32px; background: #18181b; border: 1px solid #27272a; border-radius: 8px;
+    padding: 0 10px; font-size: 12px; color: #71717a;
+    display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
+  }
+  .count-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 8px; background: rgba(220,38,38,0.1);
+    border: 1px solid rgba(220,38,38,0.2); font-size: 11px; color: #f87171;
+    margin-top: 4px;
+  }
+
+  /* Buttons */
+  .btn { height: 32px; border-radius: 8px; padding: 0 14px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; border: none; }
+  .btn-primary { background: #dc2626; color: #fff; }
+  .btn-ghost   { background: #27272a; color: #a1a1aa; border: 1px solid #3f3f46; }
+
+  /* Section divider */
+  .section-label { font-size: 10px; font-weight: 600; color: #52525b; letter-spacing: .1em; text-transform: uppercase; margin: 2px 0; }
+  .divider { height: 1px; background: #1c1c1e; }
+</style>
+</head>
+<body>
+<h1>Wizard de creación de proyecto — estructura propuesta</h1>
+
+<div class="row">
+  <!-- Step 1: Setup -->
+  <div class="card">
+    <h2>Step 1 — Setup del proyecto</h2>
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Nuevo proyecto</div>
+          <div class="modal-sub">Configura los ajustes básicos</div>
+        </div>
+      </div>
+      <!-- Steps indicator -->
+      <div class="steps" style="padding: 12px 20px 0;">
+        <div class="step-item">
+          <div class="step-num active">1</div>
+          <span class="step-label active">Setup</span>
+        </div>
+        <div class="step-sep"></div>
+        <div class="step-item">
+          <div class="step-num pending">2</div>
+          <span class="step-label pending">Paquetes</span>
+        </div>
+        <div class="step-sep"></div>
+        <div class="step-item">
+          <div class="step-num pending">3</div>
+          <span class="step-label pending">Early Import</span>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <div class="label">Nombre del proyecto</div>
+          <div class="input placeholder">Mi Avatar Project</div>
+        </div>
+        <div class="field">
+          <div class="label">Carpeta de destino</div>
+          <div class="input-row">
+            <div class="input" style="font-family:monospace; font-size:11px; color:#71717a;">C:\Users\...\Unity Projects\</div>
+            <div class="btn-icon">📁</div>
+          </div>
+        </div>
+        <div class="field">
+          <div class="label">Versión de Unity</div>
+          <div class="version-grid">
+            <div class="version-pill selected">2022.3.22f1</div>
+            <div class="version-pill normal">2022.3.6f1</div>
+            <div class="version-pill normal">2019.4.31f1</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Control de versiones (VCS)</div>
+            <div class="toggle-desc">Git + .gitignore automático</div>
+          </div>
+          <div class="toggle on"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn btn-ghost">Cancelar</div>
+        <div class="btn btn-primary">Siguiente →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Packages -->
+  <div class="card">
+    <h2>Step 2 — Paquetes VPM</h2>
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Nuevo proyecto</div>
+          <div class="modal-sub">Elige los paquetes a instalar</div>
+        </div>
+      </div>
+      <div class="steps" style="padding: 12px 20px 0;">
+        <div class="step-item">
+          <div class="step-num done">✓</div>
+          <span class="step-label pending">Setup</span>
+        </div>
+        <div class="step-sep"></div>
+        <div class="step-item">
+          <div class="step-num active">2</div>
+          <span class="step-label active">Paquetes</span>
+        </div>
+        <div class="step-sep"></div>
+        <div class="step-item">
+          <div class="step-num pending">3</div>
+          <span class="step-label pending">Early Import</span>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="search-bar">🔍 <span>Buscar paquetes…</span></div>
+        <div class="section-label">Recomendados</div>
+        <div class="pkg-item selected">
+          <div class="pkg-check on"></div>
+          <div class="pkg-info">
+            <div class="pkg-name">VRChat SDK — Avatars</div>
+            <div class="pkg-id">com.vrchat.avatars</div>
+          </div>
+          <div class="pkg-badge rec">recomendado</div>
+        </div>
+        <div class="pkg-item selected">
+          <div class="pkg-check on"></div>
+          <div class="pkg-info">
+            <div class="pkg-name">VRChat SDK — Base</div>
+            <div class="pkg-id">com.vrchat.base</div>
+          </div>
+          <div class="pkg-badge rec">recomendado</div>
+        </div>
+        <div class="section-label" style="margin-top:4px">Otros</div>
+        <div class="pkg-item">
+          <div class="pkg-check"></div>
+          <div class="pkg-info">
+            <div class="pkg-name">Gesture Manager</div>
+            <div class="pkg-id">blackstartx.gesture-manager</div>
+          </div>
+          <div class="pkg-badge">3.9.0</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn btn-ghost">← Atrás</div>
+        <div class="btn btn-primary">Siguiente →</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <!-- Step 3: Early Import -->
+  <div class="card" style="max-width: 460px;">
+    <h2>Step 3 — Early Import (nuevo)</h2>
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Nuevo proyecto</div>
+          <div class="modal-sub">Selecciona items para importar automáticamente</div>
+        </div>
+      </div>
+      <div class="steps" style="padding: 12px 20px 0;">
+        <div class="step-item">
+          <div class="step-num done">✓</div>
+          <span class="step-label pending">Setup</span>
+        </div>
+        <div class="step-sep"></div>
+        <div class="step-item">
+          <div class="step-num done">✓</div>
+          <span class="step-label pending">Paquetes</span>
+        </div>
+        <div class="step-sep"></div>
+        <div class="step-item">
+          <div class="step-num active">3</div>
+          <span class="step-label active">Early Import</span>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 11px; color: #71717a; line-height: 1.5; padding: 8px 10px; background: #18181b; border-radius: 8px; border: 1px solid #27272a;">
+          ⚡ Los items seleccionados se importarán automáticamente en Unity la primera vez que abras el proyecto, uno a uno, sin confirmación.
+        </div>
+        <div class="search-bar">🔍 <span>Buscar en inventario…</span></div>
+        <div class="inventory-grid">
+          <div class="inv-item">
+            <div class="inv-thumb selected">🧍 <div class="inv-check">✓</div></div>
+            <div class="inv-name">Komodo Avatar</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb selected">👗 <div class="inv-check">✓</div></div>
+            <div class="inv-name">Cute Dress</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb">⚔️</div>
+            <div class="inv-name">Sword Pack</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb">💄</div>
+            <div class="inv-name">Makeup Kit</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb selected">🎨 <div class="inv-check">✓</div></div>
+            <div class="inv-name">Shader Pack</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb">🏠</div>
+            <div class="inv-name">Room Props</div>
+          </div>
+        </div>
+        <div class="count-badge">⚡ 3 items seleccionados · se importarán al abrir Unity</div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn btn-ghost">← Atrás</div>
+        <div class="btn btn-ghost" style="color:#71717a">Omitir</div>
+        <div class="btn btn-primary">Crear proyecto</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Properties panel: Imported Items grid -->
+  <div class="card" style="max-width: 460px;">
+    <h2>Panel de propiedades — grid de items importados</h2>
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">Mi Avatar Project</div>
+          <div class="modal-sub">Propiedades del proyecto</div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <!-- Filter bar -->
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div class="search-bar" style="flex:1; margin:0;">🔍 <span>Filtrar items…</span></div>
+          <div style="font-size:10px; color:#52525b; padding: 0 8px; height:32px; display:flex; align-items:center; background:#18181b; border:1px solid #27272a; border-radius:8px;">Todos ▾</div>
+        </div>
+        <!-- Status tabs -->
+        <div style="display:flex; gap:4px;">
+          <div style="font-size:10px; padding: 4px 10px; border-radius:6px; background:rgba(220,38,38,0.1); color:#f87171; border:1px solid rgba(220,38,38,0.2);">✓ Importados (3)</div>
+          <div style="font-size:10px; padding: 4px 10px; border-radius:6px; background:#18181b; color:#71717a; border:1px solid #27272a;">⏳ Pendientes (0)</div>
+          <div style="font-size:10px; padding: 4px 10px; border-radius:6px; background:#18181b; color:#71717a; border:1px solid #27272a;">Todos (3)</div>
+        </div>
+        <!-- Grid -->
+        <div class="inventory-grid" style="gap:8px;">
+          <div class="inv-item">
+            <div class="inv-thumb" style="border-color:#16a34a; position:relative;">🧍
+              <div style="position:absolute;bottom:4px;right:4px;width:14px;height:14px;background:#16a34a;border-radius:50%;font-size:8px;display:flex;align-items:center;justify-content:center;">✓</div>
+            </div>
+            <div class="inv-name">Komodo Avatar</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb" style="border-color:#16a34a; position:relative;">👗
+              <div style="position:absolute;bottom:4px;right:4px;width:14px;height:14px;background:#16a34a;border-radius:50%;font-size:8px;display:flex;align-items:center;justify-content:center;">✓</div>
+            </div>
+            <div class="inv-name">Cute Dress</div>
+          </div>
+          <div class="inv-item">
+            <div class="inv-thumb" style="border-color:#16a34a; position:relative;">🎨
+              <div style="position:absolute;bottom:4px;right:4px;width:14px;height:14px;background:#16a34a;border-radius:50%;font-size:8px;display:flex;align-items:center;justify-content:center;">✓</div>
+            </div>
+            <div class="inv-name">Shader Pack</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

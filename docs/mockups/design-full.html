@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diseño Completo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #09090b; color: #fff; font-family: system-ui, -apple-system, sans-serif; padding: 28px; }
+  h1 { color: #71717a; font-size: 11px; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 6px; }
+  .section-title { font-size: 16px; font-weight: 700; color: #f4f4f5; margin: 28px 0 16px; padding-bottom: 10px; border-bottom: 1px solid #1c1c1e; }
+  h2 { color: #52525b; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 10px; }
+  .row { display: flex; gap: 20px; margin-bottom: 32px; flex-wrap: wrap; align-items: flex-start; }
+  .card { flex: 1; min-width: 300px; max-width: 480px; }
+
+  /* ── CAROUSEL ─────────────────────────────────────────────── */
+  .carousel-screen {
+    width: 100%; aspect-ratio: 16/9;
+    border-radius: 12px; overflow: hidden; position: relative;
+    border: 1px solid #27272a;
+  }
+  .bg-aurora { position: absolute; inset: 0; background: url('https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=800&q=70') center/cover; }
+  .bg-vrchat { position: absolute; inset: 0; background: linear-gradient(135deg,#1a0030 0%,#2d1b69 40%,#1a2a4a 100%); display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.07);font-size:48px; }
+  .carousel-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to right, rgba(0,0,0,.65) 0%, rgba(0,0,0,.1) 55%, rgba(0,0,0,.05) 100%),
+                linear-gradient(to bottom, transparent 35%, rgba(0,0,0,.92) 100%);
+  }
+  .carousel-bottom {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 14px 20px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px;
+  }
+  .c-left { display: flex; flex-direction: column; gap: 5px; }
+  .c-date { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -.03em; line-height: 1; }
+  .c-time { font-size: 9px; color: rgba(255,255,255,.5); font-variant-numeric: tabular-nums; }
+  .c-credit { font-size: 8px; color: rgba(255,255,255,.35); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+  .c-bar-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .c-bar-track { width: 80px; height: 2px; background: rgba(255,255,255,.18); border-radius: 99px; overflow: hidden; }
+  .c-bar-fill  { height: 100%; border-radius: 99px; background: #fff; }
+  .c-loading-lbl { font-size: 7px; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,255,255,.3); }
+  .c-dots { display: flex; gap: 4px; align-items: center; margin-top: 3px; }
+  .c-dot { height: 3px; border-radius: 99px; background: rgba(255,255,255,.3); }
+  .c-dot.active { width: 14px; background: rgba(255,255,255,.8); }
+  .c-dot.normal { width: 4px; }
+  .c-right { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+  .c-logo-text { display: flex; flex-direction: column; line-height: 1.1; text-align: right; }
+  .c-logo-text span:first-child { font-size: 10px; font-weight: 800; color: #fff; }
+  .c-logo-text span:last-child  { font-size: 10px; font-weight: 800; color: rgba(255,255,255,.5); }
+  .c-logo-mark { width: 26px; height: 26px; background: rgba(255,255,255,.9); border-radius: 5px; flex-shrink: 0; display:flex;align-items:center;justify-content:center;font-size:14px; }
+
+  /* ── WIZARD ───────────────────────────────────────────────── */
+  .modal { background: #0f0f11; border: 1px solid #27272a; border-radius: 14px; overflow: hidden; }
+  .modal-header { padding: 16px 20px 12px; border-bottom: 1px solid #1c1c1e; }
+  .modal-title { font-size: 14px; font-weight: 700; color: #f4f4f5; }
+  .modal-sub   { font-size: 11px; color: #52525b; margin-top: 2px; }
+  .modal-body  { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; }
+  .modal-footer{ padding: 12px 20px; border-top: 1px solid #1c1c1e; display: flex; justify-content: flex-end; gap: 8px; }
+
+  .steps { display: flex; align-items: center; padding: 10px 20px 0; }
+  .step-item { display: flex; align-items: center; gap: 5px; }
+  .snum { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; flex-shrink:0; }
+  .snum.active  { background: #dc2626; color: #fff; }
+  .snum.done    { background: #16a34a; color: #fff; }
+  .snum.pending { background: #27272a; color: #52525b; }
+  .slabel { font-size: 10px; }
+  .slabel.active  { color: #f4f4f5; font-weight: 600; }
+  .slabel.pending { color: #52525b; }
+  .ssep { flex: 1; height: 1px; background: #27272a; margin: 0 6px; min-width: 16px; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .flabel { font-size: 10px; font-weight: 500; color: #71717a; letter-spacing: .04em; }
+  .finput {
+    height: 32px; background: #18181b; border: 1px solid #27272a;
+    border-radius: 8px; padding: 0 10px; font-size: 12px; color: #71717a;
+    display: flex; align-items: center;
+  }
+  .finput.value { color: #e4e4e7; }
+  .frow { display: flex; gap: 6px; }
+  .frow .finput { flex: 1; }
+  .ficon { width: 32px; height: 32px; background: #27272a; border-radius: 8px; border: 1px solid #3f3f46; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink:0; }
+
+  .vpills { display: flex; gap: 5px; flex-wrap: wrap; }
+  .vpill { padding: 4px 9px; border-radius: 7px; font-size: 10px; font-family: monospace; border: 1px solid #27272a; cursor: pointer; }
+  .vpill.on  { border-color: #dc2626; background: rgba(220,38,38,.08); color: #f87171; }
+  .vpill.off { color: #71717a; }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: #18181b; border-radius: 9px; border: 1px solid #27272a; }
+  .toggle-info .tname { font-size: 12px; font-weight: 500; color: #e4e4e7; }
+  .toggle-info .tdesc { font-size: 10px; color: #52525b; }
+  .tog { width: 30px; height: 17px; border-radius: 99px; position: relative; flex-shrink:0; }
+  .tog.on { background: #dc2626; } .tog.off { background: #27272a; }
+  .tog::after { content: ''; position: absolute; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+  .tog.on::after { left: 15px; } .tog.off::after { left: 2px; }
+
+  .divider { height: 1px; background: #1c1c1e; margin: 2px 0; }
+  .section-lbl { font-size: 9px; font-weight: 700; color: #52525b; letter-spacing: .1em; text-transform: uppercase; }
+
+  .pkg { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 9px; background: #18181b; border: 1px solid #27272a; }
+  .pkg.on { border-color: #dc262650; background: rgba(220,38,38,.04); }
+  .pcheck { width: 15px; height: 15px; border-radius: 4px; flex-shrink:0; border: 1.5px solid #3f3f46; }
+  .pcheck.on { background: #dc2626; border-color: #dc2626; display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff; }
+  .pname { font-size: 11px; font-weight: 600; color: #e4e4e7; }
+  .pid   { font-size: 9px; color: #52525b; font-family: monospace; }
+  .pbadge { font-size: 8px; padding: 2px 5px; border-radius: 4px; }
+  .pbadge.rec { background: rgba(220,38,38,.12); color: #f87171; }
+  .pbadge.ver { background: #27272a; color: #71717a; }
+
+  .searchbar { height: 30px; background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #52525b; }
+
+  /* Early import grid */
+  .inv-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+  .inv-item { width: 66px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .inv-thumb { width: 66px; height: 66px; border-radius: 9px; background: #1c1c1e; border: 2px solid #27272a; display: flex; align-items: center; justify-content: center; font-size: 22px; position: relative; overflow:hidden; }
+  .inv-thumb.on { border-color: #dc2626; }
+  .inv-check { position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; background: #dc2626; border-radius: 50%; font-size: 8px; display: flex; align-items: center; justify-content: center; }
+  .inv-name { font-size: 8px; color: #71717a; text-align: center; line-height: 1.2; max-width: 66px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .info-box { padding: 9px 11px; background: #18181b; border-radius: 8px; border: 1px solid #27272a; font-size: 10px; color: #71717a; line-height: 1.5; display:flex;gap:7px; }
+  .count-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 7px; background: rgba(220,38,38,.1); border: 1px solid rgba(220,38,38,.2); font-size: 10px; color: #f87171; }
+
+  .btn { height: 30px; border-radius: 8px; padding: 0 12px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .btn.primary { background: #dc2626; color: #fff; }
+  .btn.ghost   { background: #27272a; color: #a1a1aa; border: 1px solid #3f3f46; }
+
+  /* ── PROJECT DETAIL MODAL ─────────────────────────────────── */
+  .detail-modal { background: #111113; border: 1px solid #27272a; border-radius: 16px; overflow: hidden; display: flex; }
+  .detail-left { width: 180px; flex-shrink: 0; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #1c1c1e; }
+  .detail-thumb { width: 100%; aspect-ratio: 1; border-radius: 10px; background: #1c1c1e; border: 1px solid #27272a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .detail-thumb-icon { font-size: 24px; color: #3f3f46; }
+  .detail-thumb-label { font-size: 9px; color: #52525b; text-align: center; }
+  .detail-name { font-size: 14px; font-weight: 700; color: #f4f4f5; }
+  .detail-ver  { font-size: 11px; color: #52525b; }
+  .btn-unity   { height: 34px; background: #dc2626; color: #fff; border-radius: 9px; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn-folder  { height: 30px; background: #18181b; color: #a1a1aa; border-radius: 9px; border: 1px solid #27272a; font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .detail-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tabs { display: flex; border-bottom: 1px solid #1c1c1e; padding: 0 16px; }
+  .tab { padding: 10px 12px; font-size: 11px; color: #52525b; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: #f4f4f5; border-bottom-color: #dc2626; font-weight: 600; }
+  .tab-body { padding: 14px 16px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+
+  /* Imports tab */
+  .filter-row { display: flex; gap: 6px; align-items: center; }
+  .filter-search { flex: 1; height: 28px; background: #18181b; border: 1px solid #27272a; border-radius: 7px; padding: 0 9px; display: flex; align-items: center; gap: 5px; font-size: 11px; color: #52525b; }
+  .filter-drop  { height: 28px; background: #18181b; border: 1px solid #27272a; border-radius: 7px; padding: 0 9px; font-size: 10px; color: #71717a; display: flex; align-items: center; gap: 4px; white-space:nowrap; }
+  .status-tabs { display: flex; gap: 4px; }
+  .stab { font-size: 10px; padding: 3px 9px; border-radius: 6px; cursor: pointer; }
+  .stab.active { background: rgba(220,38,38,.1); color: #f87171; border: 1px solid rgba(220,38,38,.2); }
+  .stab.normal { background: #18181b; color: #52525b; border: 1px solid #27272a; }
+  .import-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ig-item { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .ig-thumb { width: 64px; height: 64px; border-radius: 9px; background: #1c1c1e; border: 2px solid #27272a; display: flex; align-items: center; justify-content: center; font-size: 20px; position: relative; }
+  .ig-thumb.imported { border-color: #16a34a40; }
+  .ig-status { position: absolute; bottom: 3px; right: 3px; width: 13px; height: 13px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 7px; color: #fff; }
+  .ig-status.done { background: #16a34a; }
+  .ig-status.pending { background: #f59e0b; }
+  .ig-name { font-size: 8px; color: #71717a; text-align: center; max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Toast */
+  .toast { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #18181b; border: 1px solid #3f3f46; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.5); width: 280px; }
+  .toast-icon { width: 30px; height: 30px; border-radius: 8px; background: rgba(220,38,38,.15); border: 1px solid rgba(220,38,38,.25); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink:0; }
+  .toast-body .toast-title { font-size: 12px; font-weight: 600; color: #f4f4f5; }
+  .toast-body .toast-sub   { font-size: 10px; color: #71717a; margin-top: 2px; }
+  .toast-prog { height: 2px; background: rgba(255,255,255,.1); border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .toast-prog-fill { height: 100%; background: #dc2626; border-radius: 99px; }
+</style>
+</head>
+<body>
+<h1>VRC Studio — Diseño Completo</h1>
+
+<!-- ── SECTION 1: CAROUSEL ───────────────────────────────── -->
+<div class="section-title">1 · Carrusel de carga (dirección C)</div>
+<div class="row">
+  <div class="card" style="max-width: 520px;">
+    <h2>Foto built-in (artista + título disponibles)</h2>
+    <div class="carousel-screen">
+      <div class="bg-aurora"></div>
+      <div class="carousel-overlay"></div>
+      <div class="carousel-bottom">
+        <div class="c-left">
+          <div class="c-date">Aurora Borealis</div>
+          <div class="c-time">Photo by Stein Egil Liland</div>
+          <div class="c-bar-row">
+            <div class="c-bar-track"><div class="c-bar-fill" style="width:68%"></div></div>
+            <div class="c-loading-lbl">Loading…</div>
+          </div>
+          <div class="c-dots">
+            <div class="c-dot active"></div>
+            <div class="c-dot normal"></div>
+            <div class="c-dot normal"></div>
+            <div class="c-dot normal"></div>
+          </div>
+        </div>
+        <div class="c-right">
+          <div class="c-logo-text"><span>VRC</span><span>Studio</span></div>
+          <div class="c-logo-mark">🎭</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="max-width: 520px;">
+    <h2>Foto VRChat (fecha + hora extraídas del nombre del archivo)</h2>
+    <div class="carousel-screen">
+      <div class="bg-vrchat">🎮</div>
+      <div class="carousel-overlay"></div>
+      <div class="carousel-bottom">
+        <div class="c-left">
+          <div class="c-date">Jan 15, 2024</div>
+          <div class="c-time">22:47:03 · VRChat</div>
+          <div class="c-bar-row">
+            <div class="c-bar-track"><div class="c-bar-fill" style="width:40%"></div></div>
+            <div class="c-loading-lbl">Loading…</div>
+          </div>
+          <div class="c-dots">
+            <div class="c-dot normal"></div>
+            <div class="c-dot active"></div>
+            <div class="c-dot normal"></div>
+            <div class="c-dot normal"></div>
+            <div class="c-dot normal"></div>
+          </div>
+        </div>
+        <div class="c-right">
+          <div class="c-logo-text"><span>VRC</span><span>Studio</span></div>
+          <div class="c-logo-mark">🎭</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 2: WIZARD STEPS ──────────────────────────── -->
+<div class="section-title">2 · Wizard de creación (3 pasos)</div>
+<div class="row">
+  <!-- Step 1 -->
+  <div class="card">
+    <h2>Step 1 — Setup</h2>
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Nuevo proyecto</div><div class="modal-sub">Configura los ajustes básicos</div></div>
+      <div class="steps">
+        <div class="step-item"><div class="snum active">1</div><span class="slabel active">Setup</span></div>
+        <div class="ssep"></div>
+        <div class="step-item"><div class="snum pending">2</div><span class="slabel pending">Paquetes</span></div>
+        <div class="ssep"></div>
+        <div class="step-item"><div class="snum pending">3</div><span class="slabel pending">Early Import</span></div>
+      </div>
+      <div class="modal-body">
+        <div class="field"><div class="flabel">Nombre</div><div class="finput placeholder">Mi Avatar Project</div></div>
+        <div class="field"><div class="flabel">Carpeta de destino</div><div class="frow"><div class="finput" style="font-family:monospace;font-size:10px;color:#52525b;">C:\Users\NICKE\Unity Projects\</div><div class="ficon">📁</div></div></div>
+        <div class="field"><div class="flabel">Versión de Unity</div><div class="vpills"><div class="vpill on">2022.3.22f1</div><div class="vpill off">2022.3.6f1</div><div class="vpill off">2019.4.31f1</div></div></div>
+        <div class="divider"></div>
+        <div class="toggle-row"><div class="toggle-info"><div class="tname">Control de versiones</div><div class="tdesc">Git + .gitignore automático</div></div><div class="tog on"></div></div>
+      </div>
+      <div class="modal-footer"><div class="btn ghost">Cancelar</div><div class="btn primary">Siguiente →</div></div>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card">
+    <h2>Step 2 — Paquetes VPM</h2>
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Nuevo proyecto</div><div class="modal-sub">Elige los paquetes a instalar</div></div>
+      <div class="steps">
+        <div class="step-item"><div class="snum done">✓</div><span class="slabel pending">Setup</span></div>
+        <div class="ssep"></div>
+        <div class="step-item"><div class="snum active">2</div><span class="slabel active">Paquetes</span></div>
+        <div class="ssep"></div>
+        <div class="step-item"><div class="snum pending">3</div><span class="slabel pending">Early Import</span></div>
+      </div>
+      <div class="modal-body">
+        <div class="searchbar">🔍 Buscar paquetes…</div>
+        <div class="section-lbl">Recomendados</div>
+        <div class="pkg on"><div class="pcheck on">✓</div><div style="flex:1"><div class="pname">VRChat SDK — Avatars</div><div class="pid">com.vrchat.avatars</div></div><div class="pbadge rec">★ rec</div></div>
+        <div class="pkg on"><div class="pcheck on">✓</div><div style="flex:1"><div class="pname">VRChat SDK — Base</div><div class="pid">com.vrchat.base</div></div><div class="pbadge rec">★ rec</div></div>
+        <div class="section-lbl" style="margin-top:4px">Otros</div>
+        <div class="pkg"><div class="pcheck"></div><div style="flex:1"><div class="pname">Gesture Manager</div><div class="pid">blackstartx.gesture-manager</div></div><div class="pbadge ver">3.9.0</div></div>
+        <div class="pkg"><div class="pcheck"></div><div style="flex:1"><div class="pname">VRCFury</div><div class="pid">com.vrcfury.vrcfury</div></div><div class="pbadge ver">1.9.0</div></div>
+      </div>
+      <div class="modal-footer"><div class="btn ghost">← Atrás</div><div class="btn primary">Siguiente →</div></div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card">
+    <h2>Step 3 — Early Import</h2>
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Nuevo proyecto</div><div class="modal-sub">Items para importar automáticamente</div></div>
+      <div class="steps">
+        <div class="step-item"><div class="snum done">✓</div><span class="slabel pending">Setup</span></div>
+        <div class="ssep"></div>
+        <div class="step-item"><div class="snum done">✓</div><span class="slabel pending">Paquetes</span></div>
+        <div class="ssep"></div>
+        <div class="step-item"><div class="snum active">3</div><span class="slabel active">Early Import</span></div>
+      </div>
+      <div class="modal-body">
+        <div class="info-box">⚡ <span>Los items seleccionados se extraerán al abrir Unity por primera vez, uno a uno, sin confirmación.</span></div>
+        <div class="searchbar">🔍 Buscar en inventario…</div>
+        <div class="inv-grid">
+          <div class="inv-item"><div class="inv-thumb on">🧍<div class="inv-check">✓</div></div><div class="inv-name">Komodo</div></div>
+          <div class="inv-item"><div class="inv-thumb on">👗<div class="inv-check">✓</div></div><div class="inv-name">Cute Dress</div></div>
+          <div class="inv-item"><div class="inv-thumb">⚔️</div><div class="inv-name">Sword Pack</div></div>
+          <div class="inv-item"><div class="inv-thumb">💄</div><div class="inv-name">Makeup Kit</div></div>
+          <div class="inv-item"><div class="inv-thumb on">🎨<div class="inv-check">✓</div></div><div class="inv-name">Shader Pack</div></div>
+          <div class="inv-item"><div class="inv-thumb">🏠</div><div class="inv-name">Room Props</div></div>
+        </div>
+        <div class="count-pill">⚡ 3 items seleccionados</div>
+      </div>
+      <div class="modal-footer"><div class="btn ghost">← Atrás</div><div class="btn ghost" style="color:#52525b">Omitir</div><div class="btn primary">Crear proyecto</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION 3: PROJECT DETAIL — IMPORTS TAB ─────────── -->
+<div class="section-title">3 · Panel de propiedades — pestaña "Imports"</div>
+<div class="row">
+  <div class="card" style="max-width: 640px; min-width: 500px;">
+    <h2>Modal de propiedades con pestaña Imports activa</h2>
+    <div class="detail-modal">
+      <div class="detail-left">
+        <div class="detail-thumb">
+          <div class="detail-thumb-icon">🖥️</div>
+          <div class="detail-thumb-label">No screenshot yet<br>Opens when you open Unity</div>
+        </div>
+        <div class="detail-name">Mi Avatar Project</div>
+        <div class="detail-ver">2022.3.22f1</div>
+        <div class="btn-unity">▶ Open in Unity</div>
+        <div class="btn-folder">📁 Open Folder</div>
+      </div>
+      <div class="detail-right">
+        <div class="tabs">
+          <div class="tab">Overview</div>
+          <div class="tab">Files</div>
+          <div class="tab">Packages</div>
+          <div class="tab active">Imports</div>
+        </div>
+        <div class="tab-body">
+          <div class="filter-row">
+            <div class="filter-search">🔍 <span>Filtrar…</span></div>
+            <div class="filter-drop">Tipo ▾</div>
+          </div>
+          <div class="status-tabs">
+            <div class="stab active">✓ Importados (3)</div>
+            <div class="stab normal">⏳ Pendientes (0)</div>
+            <div class="stab normal">Todos (3)</div>
+          </div>
+          <div class="import-grid">
+            <div class="ig-item"><div class="ig-thumb imported">🧍<div class="ig-status done">✓</div></div><div class="ig-name">Komodo</div></div>
+            <div class="ig-item"><div class="ig-thumb imported">👗<div class="ig-status done">✓</div></div><div class="ig-name">Cute Dress</div></div>
+            <div class="ig-item"><div class="ig-thumb imported">🎨<div class="ig-status done">✓</div></div><div class="ig-name">Shader Pack</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div class="card" style="max-width: 340px;">
+    <h2>Toast de progreso durante Early Import</h2>
+    <div style="padding: 16px; background: #111; border-radius: 10px; border: 1px solid #1c1c1e; display:flex; flex-direction: column; gap: 10px;">
+      <div style="font-size:10px; color:#52525b; margin-bottom:2px;">Aparece en la esquina inferior derecha de la app</div>
+      <div class="toast">
+        <div class="toast-icon">⚡</div>
+        <div class="toast-body" style="flex:1">
+          <div class="toast-title">Early Import</div>
+          <div class="toast-sub">Extrayendo Komodo Avatar… (1 de 3)</div>
+          <div class="toast-prog"><div class="toast-prog-fill" style="width:33%"></div></div>
+        </div>
+      </div>
+      <div class="toast">
+        <div class="toast-icon" style="background:rgba(22,163,74,.12);border-color:rgba(22,163,74,.25);">✅</div>
+        <div class="toast-body" style="flex:1">
+          <div class="toast-title">Early Import completado</div>
+          <div class="toast-sub">3 items extraídos correctamente</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
