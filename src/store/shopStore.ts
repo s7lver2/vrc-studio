@@ -132,7 +132,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
   search: async () => {
     const { query, filters, boothOwnedIds } = get();
     if (!query.trim()) return;
-    set({ loading: true, error: null, page: 1 });
+    set({ loading: true, error: null, page: 2 });
     try {
       const showAdult = useAppStore.getState().showAdultContent;
       const boothId = extractBoothId(query);
@@ -144,7 +144,17 @@ export const useShopStore = create<ShopState>((set, get) => ({
           products = detail.name ? [detailToShopProduct(detail)] : [];
         } catch { products = []; }
       } else {
-        products = await tauriSearchShop(query, 1, showAdult);
+        // Fetch pages 1 and 2 simultaneously — doubles initial results at no extra latency cost
+        const [p1, p2] = await Promise.all([
+          tauriSearchShop(query, 1, showAdult),
+          tauriSearchShop(query, 2, showAdult),
+        ]);
+        const seen = new Set<string>();
+        products = [];
+        for (const p of [...p1, ...p2]) {
+          const key = `${p.source}:${p.source_id}`;
+          if (!seen.has(key)) { seen.add(key); products.push(p); }
+        }
       }
 
       const filtered = applyFilters(products, filters, boothOwnedIds);
@@ -156,7 +166,8 @@ export const useShopStore = create<ShopState>((set, get) => ({
         try { localStorage.setItem("shop:recentSearches", JSON.stringify(updated)); } catch {}
       }
       const authorResults = filters.searchMode === "authors" ? groupByAuthor(products) : [];
-      set({ results: filtered, loading: false, authorResults });
+      // page: 2 since we already fetched pages 1+2; loadNextPage will start at 3
+      set({ results: filtered, loading: false, page: 2, authorResults });
     } catch (e) {
       set({ error: String(e), loading: false });
     }

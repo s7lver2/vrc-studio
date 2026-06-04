@@ -188,15 +188,16 @@ pub async fn booth_capture_session_cookie(app: AppHandle) -> Result<bool, String
 
 /// Búsqueda en Booth.
 #[tauri::command]
-pub async fn search_shop(query: String, page: u32) -> Result<Vec<ShopProduct>, String> {
+pub async fn search_shop(query: String, page: u32, show_adult: Option<bool>) -> Result<Vec<ShopProduct>, String> {
     // Retrieve the Booth session cookie from the keyring (if any)
     let booth_token = crate::services::auth_store::get_token("booth").unwrap_or(None);
 
     // Build an HTTP client that includes the Booth session cookie
     let client = build_client(booth_token.clone()).map_err(|e| e)?;
 
-    let authenticated = booth_token.is_some();
-    let booth_results = booth::search(&client, &query, page, authenticated)
+    // Include adult content if authenticated OR if the frontend explicitly requested it
+    let include_adult = booth_token.is_some() || show_adult.unwrap_or(false);
+    let booth_results = booth::search(&client, &query, page, include_adult)
         .await
         .map_err(|e| e.to_string())?;
 

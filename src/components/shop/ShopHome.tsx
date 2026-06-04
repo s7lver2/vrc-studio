@@ -1,4 +1,4 @@
-import { Shuffle, ShoppingCart, Library, Folder, ArrowRight, Loader2, Search } from "lucide-react";
+import { Shuffle, ShoppingCart, Library, Folder, ArrowRight, Loader2, Search, LayoutGrid } from "lucide-react";
 import { useCartStore } from "../../store/cartStore";
 import { useCollectionsStore } from "../../store/collectionsStore";
 import { useEffect, useState } from "react";
@@ -38,6 +38,7 @@ interface ShopHomeProps {
   onSurpriseMe: () => void;
   surpriseLoading?: boolean;
   onOpenCollections: () => void;
+  onOpenCatalog: () => void;
   recentSearches: string[];
   onSearchSuggestion: (q: string) => void;
   searchQuery: string;
@@ -48,6 +49,7 @@ export function ShopHome({
   onSurpriseMe,
   surpriseLoading,
   onOpenCollections,
+  onOpenCatalog,
   recentSearches,
   onSearchSuggestion,
   searchQuery,
@@ -98,8 +100,8 @@ export function ShopHome({
         />
       </div>
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-3 gap-3 w-full">
+      {/* Quick actions — 2×2 grid */}
+      <div className="grid grid-cols-2 gap-3 w-full">
         {/* Surprise me */}
         <button
           onClick={onSurpriseMe}
@@ -112,6 +114,15 @@ export function ShopHome({
           <span className="text-xs font-medium text-zinc-300">
             {surpriseLoading ? "Finding…" : "Surprise me"}
           </span>
+        </button>
+
+        {/* Browse Catalog */}
+        <button
+          onClick={onOpenCatalog}
+          className="flex flex-col items-center gap-2 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group"
+        >
+          <LayoutGrid className="h-5 w-5 text-blue-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-medium text-zinc-300">Browse</span>
         </button>
 
         {/* Cart */}

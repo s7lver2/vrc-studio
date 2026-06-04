@@ -4,7 +4,7 @@ import { DownloadProgress } from "../components/shop/DownloadProgress";
 import { ProductGrid } from "../components/shop/ProductGrid";
 import { ProductModal } from "../components/shop/ProductModal";
 import { ShopFilters } from "../components/shop/ShopFilters";
-import { tauriGetBoothProductDetail } from "../lib/tauri";
+import { tauriSearchShop } from "../lib/tauri";
 import { useShopSearch } from "../hooks/useShopSearch";
 import { ShopHome } from "../components/shop/ShopHome";
 import { useInventoryStore } from "../store/inventoryStore";
@@ -16,6 +16,7 @@ import { AuthorModal } from "@/components/shop/AuthorModal";
 import { useShopStore } from "@/store/shopStore";
 import { CartDrawer } from "../components/shop/CartDrawer";
 import { useCartStore } from "../store/cartStore";
+import { CatalogView } from "../components/shop/CatalogView";
 
 // ── Shop Warning Dialog ───────────────────────────────────────────────────────
 
@@ -66,19 +67,27 @@ function ShopWarning({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
   );
 }
 
-// ── Shop page ─────────────────────────────────────────────────────────────────
+// ── VRChat-specific Surprise Me terms ─────────────────────────────────────────
+// These queries reliably return VRChat-related items on Booth.
 
-function detailToShopProduct(d: import("../lib/tauri").BoothProductDetail): import("../lib/tauri").ShopProduct {
-  return {
-    source_id: d.source_id,
-    name: d.name,
-    author: d.author,
-    thumbnail_url: d.images[0] || "",
-    price_display: d.price_display,
-    url: d.url,
-    source: "booth",
-  };
-}
+const VRCHAT_SURPRISE_TERMS = [
+  "vrchat avatar",
+  "vrc avatar base",
+  "vrchat outfit",
+  "vrchat clothing wearable",
+  "vrchat hair accessory",
+  "vrchat ears tail",
+  "vrchat wings",
+  "vrchat props",
+  "vrchat face accessory",
+  "vrchat eye texture",
+  "vrchat boots shoes",
+  "vrchat dress",
+  "vrchat jacket",
+  "vrchat shader liltoon",
+];
+
+// ── Shop page ─────────────────────────────────────────────────────────────────
 
 const SHOP_WARNING_KEY = "shop:warningAccepted";
 
@@ -88,39 +97,39 @@ export default function Shop() {
   const setActiveSection = useAppStore((s) => s.setActiveSection);
   const { items: inventoryItems, loadItems } = useInventoryStore();
   const { selectProduct } = useShopStore();
-  const { items: cartItems, open: cartOpen, setOpen: setCartOpen } = useCartStore();
+  const { items: cartItems, setOpen: setCartOpen } = useCartStore();
   const [collectionsOpen, setCollectionsOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const { recentSearches } = useShopStore();
-  const { search, setQuery: storeSetQuery } = useShopStore();
   const [surpriseLoading, setSurpriseLoading] = useState(false);
   const [warningAccepted, setWarningAccepted] = useState<boolean>(() => {
     try { return localStorage.getItem(SHOP_WARNING_KEY) === "true"; } catch { return false; }
   });
 
+  // Surprise Me: searches VRChat-specific terms, picks a random result — no more random IDs
   const handleSurpriseMe = async () => {
     if (surpriseLoading) return;
     setSurpriseLoading(true);
-    let attempts = 0;
-    while (attempts < 5) {
-      const randomId = Math.floor(Math.random() * 6_000_000) + 1_000_000;
-      try {
-        const detail = await tauriGetBoothProductDetail(String(randomId));
-        if (detail?.name) {
-          selectProduct(detailToShopProduct(detail));
-          break;
-        }
-      } catch {
-        // ID inválido, reintentar
+    try {
+      const term = VRCHAT_SURPRISE_TERMS[Math.floor(Math.random() * VRCHAT_SURPRISE_TERMS.length)];
+      const page = Math.floor(Math.random() * 4) + 1;
+      const results = await tauriSearchShop(term, page, false);
+      if (results.length > 0) {
+        const pick = results[Math.floor(Math.random() * results.length)];
+        selectProduct(pick);
       }
-      attempts++;
+    } catch {
+      // silent — user can retry
+    } finally {
+      setSurpriseLoading(false);
     }
-    setSurpriseLoading(false);
   };
 
   useEffect(() => {
     if (inventoryItems.length === 0) {
       loadItems();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!warningAccepted) {
@@ -135,21 +144,21 @@ export default function Shop() {
     );
   }
 
+  const isSearching = !!query.trim();
+
   return (
-    <div className="flex flex-col h-full gap-4 p-6 overflow-auto">
-      {/* Header con botón de carrito y Home */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* ── Fixed header ── */}
+      <div className="shrink-0 flex items-center justify-between px-6 pt-6 pb-4">
         <h1 className="text-xl font-semibold text-zinc-100">Shop</h1>
         <div className="flex items-center gap-2">
-          {/* Home button — placeholder (se implementará en Task 9) */}
           <button
-            onClick={() => { handleQueryChange(""); }}
+            onClick={() => handleQueryChange("")}
             className="p-2 rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
             title="Shop Home"
           >
             <Home className="h-4 w-4" />
           </button>
-          {/* Cart button */}
           <button
             onClick={() => setCartOpen(true)}
             className="relative p-2 rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
@@ -165,12 +174,13 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Search bar — solo visible cuando hay resultados activos */}
-      {query.trim() && (
-        <>
-          <div className="relative">
+      {/* ── Sticky search + filters bar (only in search mode) ── */}
+      {isSearching && (
+        <div className="shrink-0 sticky top-0 z-20 px-6 pb-3 bg-zinc-950/98 backdrop-blur-sm border-b border-zinc-800/60">
+          <div className="relative mb-2.5">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
             <input
+              autoFocus
               className="w-full pl-9 pr-4 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500 transition-colors"
               placeholder="Search assets, or paste a Booth URL / item ID…"
               value={query}
@@ -178,62 +188,63 @@ export default function Shop() {
             />
           </div>
           <ShopFilters />
-        </>
-      )}
-
-      {filters.searchMode === "authors" && authorResults.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 p-4">
-          {authorResults.map((a) => (
-            <button
-              key={a.name}
-              onClick={() => setSelectedAuthor(a)}
-              className="flex flex-col gap-2 p-3 rounded-xl bg-zinc-800/60 border border-zinc-700 hover:border-violet-500/50 text-left"
-            >
-              <div className="flex items-center gap-2">
-                <img
-                  src={a.sample_thumbnail}
-                  className="w-8 h-8 rounded-full object-cover bg-zinc-700"
-                />
-                <div>
-                  <p className="text-sm font-medium text-zinc-100">{a.name}</p>
-                  <p className="text-xs text-zinc-500">{a.product_count} items</p>
-                </div>
-              </div>
-            </button>
-          ))}
         </div>
       )}
 
+      {/* ── Scrollable content ── */}
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        {/* Author search results */}
+        {isSearching && filters.searchMode === "authors" && authorResults.length > 0 && (
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            {authorResults.map((a) => (
+              <button
+                key={a.name}
+                onClick={() => setSelectedAuthor(a)}
+                className="flex flex-col gap-2 p-3 rounded-xl bg-zinc-800/60 border border-zinc-700 hover:border-violet-500/50 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <img
+                    src={a.sample_thumbnail}
+                    className="w-8 h-8 rounded-full object-cover bg-zinc-700"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-zinc-100">{a.name}</p>
+                    <p className="text-xs text-zinc-500">{a.product_count} items</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Main content */}
+        {!isSearching ? (
+          <ShopHome
+            onSurpriseMe={handleSurpriseMe}
+            surpriseLoading={surpriseLoading}
+            onOpenCollections={() => setCollectionsOpen(true)}
+            onOpenCatalog={() => setCatalogOpen(true)}
+            recentSearches={recentSearches}
+            onSearchSuggestion={(q) => handleQueryChange(q)}
+            searchQuery={query}
+            onSearchChange={handleQueryChange}
+          />
+        ) : (
+          <ProductGrid />
+        )}
+      </div>
+
+      {/* ── Modals & overlays ── */}
       {selectedAuthor && (
         <AuthorModal author={selectedAuthor} onClose={() => setSelectedAuthor(null)} />
       )}
 
-      {/* Results */}
-      {/* Si no hay query, mostrar ShopHome */}
-      {!query.trim() ? (
-        <ShopHome
-          onSurpriseMe={handleSurpriseMe}
-          surpriseLoading={surpriseLoading}
-          onOpenCollections={() => setCollectionsOpen(true)}
-          recentSearches={recentSearches}
-          onSearchSuggestion={(q) => handleQueryChange(q)}
-          searchQuery={query}
-          onSearchChange={handleQueryChange}
-        />
-      ) : (
-        <ProductGrid />
-      )}
-
-      {/* Floating download toasts */}
       <DownloadProgress />
-
-      {/* Product detail modal */}
       <ProductModal />
-
-      {/* Shopping cart drawer */}
       <CartDrawer />
 
       {collectionsOpen && <CollectionsView onClose={() => setCollectionsOpen(false)} />}
+      {catalogOpen && <CatalogView onClose={() => setCatalogOpen(false)} />}
 
       <CollectionPickerModal />
     </div>

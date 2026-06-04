@@ -22,7 +22,7 @@ function ProductCardSkeleton() {
 
 export function ProductGrid() {
   const { results, loading, error, loadNextPage, page } = useShopStore();
-  const hasMore = page < 3; // booth returns at most 3 pages typically
+  const hasMore = page < 8; // allow up to 8 pages (~192 results)
   const shopItemSize = useAppearanceStore((s) => s.shopItemSize);
 
   const cardSizes = {
