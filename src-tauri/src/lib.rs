@@ -38,6 +38,7 @@ fn read_file_as_string(path: String) -> Result<String, String> {
 
 pub fn app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -111,6 +112,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::projects::get_installed_vpm_packages,
             commands::projects::install_vpm_package_to_project,
             commands::projects::remove_vpm_package_from_project,
+            crate::commands::projects::get_project_early_imports,
             // ── Packages ──
             commands::packages::list_packages,
             commands::packages::create_package,

@@ -38,6 +38,33 @@ pub fn validate_project_name(name: &str) -> Result<(), AppError> {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+fn sanitize_dir_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '_' || c == '-' { c } else { '_' })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn extract_archive_for_early_import(archive: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
+    let ext = archive
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext == "zip" {
+        let file = std::fs::File::open(archive).map_err(|e| e.to_string())?;
+        let mut a = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+        a.extract(dest).map_err(|e| e.to_string())?;
+    } else if ext == "unitypackage" {
+        crate::services::downloader::extract_unitypackage_to_dir(archive, dest)
+            .map_err(|e| e.to_string())?;
+    } else {
+        return Err(format!("Unsupported archive format: {ext}"));
+    }
+    Ok(())
+}
+
 fn row_to_project(row: &rusqlite::Row<'_>) -> Result<Project, rusqlite::Error> {
     let id: String = row.get("id")?;
     let name: String = row.get("name")?;
@@ -317,6 +344,23 @@ pub async fn create_project(
         ],
     )?;
 
+    // Insert early import rows if any were selected
+    if !request.early_import_item_ids.is_empty() {
+        // Mark project as needing first-open import
+        conn.execute(
+            "UPDATE projects SET early_import_done = 0 WHERE id = ?1",
+            params![project_id],
+        )?;
+        for (idx, item_id) in request.early_import_item_ids.iter().enumerate() {
+            let entry_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO project_early_imports (id, project_id, item_id, status, sort_order)
+                 VALUES (?1, ?2, ?3, 'pending', ?4)",
+                params![entry_id, project_id, item_id, idx as i64],
+            )?;
+        }
+    }
+
     emit(1.0, "Project created!", true, None);
 
     fetch_project_by_id(&project_id, &pool).await
@@ -330,14 +374,150 @@ pub async fn open_project_in_unity(
     app: AppHandle,
     pool: State<'_, DbPool>,
 ) -> Result<(), AppError> {
+    // ── Early Import: run on first open ─────────────────────────────
+    let needs_import: bool = {
+        let conn = pool.get()?;
+        conn.query_row(
+            "SELECT early_import_done FROM projects WHERE id = ?1",
+            params![project_id],
+            |row| row.get::<_, i64>(0),
+        ).unwrap_or(1) == 0
+    };
+
+    if needs_import {
+        // Load pending items
+        let items: Vec<(String, String, String, String, i64)> = {
+            let conn = pool.get()?;
+            let mut stmt = conn.prepare(
+                "SELECT pei.id, pei.item_id, COALESCE(ii.display_name, ii.name), ii.local_path, pei.sort_order
+                 FROM project_early_imports pei
+                 JOIN inventory_items ii ON ii.id = pei.item_id
+                 WHERE pei.project_id = ?1 AND pei.status = 'pending'
+                 ORDER BY pei.sort_order ASC",
+            )?;
+            let rows = stmt.query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,  // entry id
+                    row.get::<_, String>(1)?,  // item_id
+                    row.get::<_, String>(2)?,  // item_name
+                    row.get::<_, String>(3)?,  // local_path
+                    row.get::<_, i64>(4)?,     // sort_order
+                ))
+            })?;
+            let mut v = Vec::new();
+            for r in rows { v.push(r?); }
+            v
+        };
+
+        let total = items.len();
+        let project_dir = std::path::PathBuf::from(&project_path);
+
+        for (idx, (entry_id, item_id, item_name, local_path, _)) in items.iter().enumerate() {
+            let current = idx + 1;
+            // Emit extracting event
+            let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                project_id: project_id.clone(),
+                item_id: item_id.clone(),
+                item_name: item_name.clone(),
+                current,
+                total,
+                status: "extracting".to_string(),
+                error: None,
+            });
+
+            let archive = std::path::Path::new(local_path);
+            let safe_name = sanitize_dir_name(item_name);
+            let dest = project_dir.join("Assets").join("EarlyImports").join(&safe_name);
+
+            // Security check: dest must be inside the project
+            if !dest.starts_with(&project_dir) {
+                let err = "Security: destination outside project directory".to_string();
+                let conn = pool.get()?;
+                conn.execute(
+                    "UPDATE project_early_imports SET status='error', error_msg=?1, imported_at=datetime('now') WHERE id=?2",
+                    params![err, entry_id],
+                )?;
+                let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                    project_id: project_id.clone(),
+                    item_id: item_id.clone(),
+                    item_name: item_name.clone(),
+                    current, total,
+                    status: "error".to_string(),
+                    error: Some(err),
+                });
+                continue;
+            }
+
+            if let Err(e) = std::fs::create_dir_all(&dest) {
+                let err = format!("Cannot create directory: {e}");
+                let conn = pool.get()?;
+                conn.execute(
+                    "UPDATE project_early_imports SET status='error', error_msg=?1, imported_at=datetime('now') WHERE id=?2",
+                    params![err, entry_id],
+                )?;
+                let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                    project_id: project_id.clone(), item_id: item_id.clone(),
+                    item_name: item_name.clone(), current, total,
+                    status: "error".to_string(), error: Some(err),
+                });
+                continue;
+            }
+
+            match extract_archive_for_early_import(archive, &dest) {
+                Ok(_) => {
+                    let conn = pool.get()?;
+                    conn.execute(
+                        "UPDATE project_early_imports SET status='done', imported_at=datetime('now') WHERE id=?1",
+                        params![entry_id],
+                    )?;
+                    let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                        project_id: project_id.clone(), item_id: item_id.clone(),
+                        item_name: item_name.clone(), current, total,
+                        status: "done".to_string(), error: None,
+                    });
+                }
+                Err(e) => {
+                    let conn = pool.get()?;
+                    conn.execute(
+                        "UPDATE project_early_imports SET status='error', error_msg=?1, imported_at=datetime('now') WHERE id=?2",
+                        params![e, entry_id],
+                    )?;
+                    let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                        project_id: project_id.clone(), item_id: item_id.clone(),
+                        item_name: item_name.clone(), current, total,
+                        status: "error".to_string(), error: Some(e),
+                    });
+                }
+            }
+        }
+
+        // Mark project as done regardless of individual item errors
+        let conn = pool.get()?;
+        conn.execute(
+            "UPDATE projects SET early_import_done = 1 WHERE id = ?1",
+            params![project_id],
+        )?;
+
+        // Emit completion event
+        let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+            project_id: project_id.clone(),
+            item_id: String::new(),
+            item_name: String::new(),
+            current: total,
+            total,
+            status: "complete".to_string(),
+            error: None,
+        });
+    }
+
+    // ── Launch Unity ─────────────────────────────────────────────────
     tokio::process::Command::new(&unity_path)
         .arg("-projectPath")
         .arg(&project_path)
         .spawn()
         .map_err(|e| AppError::Io(format!("Failed to launch Unity: {e}")))?;
 
-    // Schedule an automatic screenshot ~30 seconds after launch so the user
-    // gets a preview of how their project looked the last time they opened it.
+    // Schedule screenshot 30s after launch
     let data_dir = app
         .path()
         .app_data_dir()
@@ -345,16 +525,12 @@ pub async fn open_project_in_unity(
     let pool_clone = pool.inner().clone();
     let app_clone = app.clone();
     let pid = project_id.clone();
-
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         if let Ok(png_path) = capture_screen_to_file(&data_dir, &pid) {
             let conn = match pool_clone.get() {
                 Ok(c) => c,
-                Err(e) => {
-                    eprintln!("Failed to get DB connection for screenshot: {e}");
-                    return;
-                }
+                Err(e) => { eprintln!("Screenshot DB error: {e}"); return; }
             };
             let _ = conn.execute(
                 "UPDATE projects SET last_screenshot = ?1, updated_at = datetime('now') WHERE id = ?2",
@@ -1052,4 +1228,41 @@ pub async fn find_unity_for_version(version: String) -> Result<Option<String>, A
 #[tauri::command]
 pub async fn fetch_vpm_repo(url: String) -> Result<Vec<VpmPackage>, AppError> {
     vpm_client::fetch_vpm_repository(&url).await
+}
+
+#[tauri::command]
+pub async fn get_project_early_imports(
+    project_id: String,
+    pool: State<'_, DbPool>,
+) -> Result<Vec<crate::models::EarlyImportEntry>, AppError> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare(
+        "SELECT
+           pei.id, pei.project_id, pei.item_id,
+           COALESCE(ii.display_name, ii.name) AS item_name,
+           ii.thumbnail_url,
+           ii.local_path,
+           pei.status, pei.imported_at, pei.error_msg, pei.sort_order
+         FROM project_early_imports pei
+         JOIN inventory_items ii ON ii.id = pei.item_id
+         WHERE pei.project_id = ?1
+         ORDER BY pei.sort_order ASC",
+    )?;
+    let rows = stmt.query_map(params![project_id], |row| {
+        Ok(crate::models::EarlyImportEntry {
+            id:          row.get(0)?,
+            project_id:  row.get(1)?,
+            item_id:     row.get(2)?,
+            item_name:   row.get(3)?,
+            thumbnail_url: row.get(4)?,
+            local_path:  row.get(5)?,
+            status:      row.get(6)?,
+            imported_at: row.get(7)?,
+            error_msg:   row.get(8)?,
+            sort_order:  row.get(9)?,
+        })
+    })?;
+    let mut entries = Vec::new();
+    for row in rows { entries.push(row?); }
+    Ok(entries)
 }
