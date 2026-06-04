@@ -3,8 +3,7 @@
 import {
     Palette, ImageIcon, Monitor, Type, LayoutGrid,
     Zap, Grid3X3, Upload, Trash2, Plus, FlaskConical,
-    Monitor as MonitorIcon
-    
+    Monitor as MonitorIcon, Camera, X as XIcon
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
@@ -15,6 +14,7 @@ import { BUILT_IN_SPLASH_IMAGES } from "@/lib/splashImages";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { toAssetUrl } from "@/lib/utils";
 import { useT } from "@/i18n";
+import { VRChatGalleryConsentModal } from "./VRChatGalleryConsentModal";
 
 // ─── Componentes auxiliares ─────────────────────────────────────────
 
@@ -660,7 +660,9 @@ export function AppearanceSection() {
         showTagsInGrid, setShowTagsInGrid,
         showTypeIcons, setShowTypeIcons,
         themeId, setThemeId,
+        vrchatGallery, setVRChatGallery,
     } = store;
+    const [showVRChatConsent, setShowVRChatConsent] = useState(false);
 
 
     const accentBg = { borderColor: "var(--accent-color)", background: "hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.12)" } as React.CSSProperties;
@@ -920,8 +922,67 @@ export function AppearanceSection() {
                         </button>
                     </div>
 
-                    {loadingScreen === "carousel" && <CarouselImageManager />}
+                    {loadingScreen === "carousel" && (
+                        <>
+                            <CarouselImageManager />
+
+                            {/* VRChat Photos gallery toggle */}
+                            <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-800">
+                                <div className="flex items-center gap-3">
+                                    <Camera className="h-4 w-4 text-violet-400 shrink-0" />
+                                    <div>
+                                        <p className="text-sm font-medium text-zinc-200">VRChat Photos</p>
+                                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                                            {vrchatGallery.consented
+                                                ? vrchatGallery.folderPath || "Carpeta configurada"
+                                                : "Usa tus fotos de VRChat en el carrusel"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {vrchatGallery.consented && (
+                                        <>
+                                            {/* Toggle enable/disable */}
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={vrchatGallery.enabled}
+                                                onClick={() => setVRChatGallery({ enabled: !vrchatGallery.enabled })}
+                                                className={`relative w-8 h-4 rounded-full transition-colors ${vrchatGallery.enabled ? "bg-violet-600" : "bg-zinc-700"}`}
+                                            >
+                                                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${vrchatGallery.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                                            </button>
+                                            {/* Revoke */}
+                                            <button
+                                                onClick={() => setVRChatGallery({ consented: false, enabled: false, folderPath: "" })}
+                                                className="p-1 rounded hover:bg-zinc-800 text-zinc-600 hover:text-zinc-300 transition-colors"
+                                                title="Revocar acceso"
+                                            >
+                                                <XIcon className="h-3.5 w-3.5" />
+                                            </button>
+                                        </>
+                                    )}
+                                    {!vrchatGallery.consented && (
+                                        <button
+                                            onClick={() => setShowVRChatConsent(true)}
+                                            className="px-3 py-1.5 text-xs rounded-lg bg-violet-900/40 hover:bg-violet-900/60 border border-violet-700/50 text-violet-300 transition-colors"
+                                        >
+                                            Configurar
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
+            )}
+
+            {/* VRChat consent modal */}
+            {showVRChatConsent && (
+                <VRChatGalleryConsentModal
+                    onClose={() => setShowVRChatConsent(false)}
+                    onConsented={() => setShowVRChatConsent(false)}
+                />
             )}
 
             {/* GRID & LAYOUT */}

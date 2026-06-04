@@ -223,6 +223,12 @@ export interface AppearanceState {
   carouselImages: CarouselImageEntry[];
   customWallpaperPath: string | null;
   customWallpaperAccent: { h: string; s: string; l: string } | null;
+  /** VRChat gallery — consent + config */
+  vrchatGallery: {
+    consented: boolean;       // user gave explicit permission
+    enabled: boolean;         // currently active in carousel
+    folderPath: string;       // path to VRChat screenshots folder
+  };
 
   setShopItemSize: (size: ItemSize) => void;
   setInventoryItemSize: (size: ItemSize) => void;
@@ -244,6 +250,7 @@ export interface AppearanceState {
   removeCarouselImage: (id: string) => void;
   setCustomWallpaper: (path: string) => Promise<void>;
   clearCustomWallpaper: () => void;
+  setVRChatGallery: (cfg: Partial<AppearanceState["vrchatGallery"]>) => void;
 }
 
 const STORAGE_KEY = "app:appearance";
@@ -255,7 +262,8 @@ function load(): Omit<AppearanceState,
   "setFontSize" | "setAnimSpeed" | "setAccentColor" | "setBgStyle" |
   "setDefaultView" | "setThemeId" | "setWallpaper" |
   "setBetaFeaturesEnabled" | "setLoadingScreen" | "setCarouselImages" |
-  "addCarouselImage" | "removeCarouselImage" | "setCustomWallpaper" | "clearCustomWallpaper"
+  "addCarouselImage" | "removeCarouselImage" | "setCustomWallpaper" | "clearCustomWallpaper" |
+  "setVRChatGallery"
 > {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -286,7 +294,7 @@ function load(): Omit<AppearanceState,
         betaFeaturesEnabled: parsed.betaFeaturesEnabled ?? true,
         loadingScreen: (parsed.loadingScreen ?? "classic") as "classic" | "carousel",
         carouselImages: parsed.carouselImages ?? [],
-
+        vrchatGallery: parsed.vrchatGallery ?? { consented: false, enabled: false, folderPath: "" },
       };
     }
   } catch { }
@@ -310,6 +318,7 @@ function load(): Omit<AppearanceState,
     betaFeaturesEnabled: true,
     loadingScreen: "classic" as const,
     carouselImages: [],
+    vrchatGallery: { consented: false, enabled: false, folderPath: "" },
   };
 }
 
@@ -403,6 +412,12 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => ({
       root.style.setProperty("--accent-l", accent.l);
     }
     applyWallpaperCSS(wallpaper, THEMES["wallpaper"]);
+  },
+
+  setVRChatGallery: (cfg) => {
+    const vrchatGallery = { ...get().vrchatGallery, ...cfg };
+    set({ vrchatGallery });
+    save({ ...get(), vrchatGallery });
   },
 
   clearCustomWallpaper: () => {

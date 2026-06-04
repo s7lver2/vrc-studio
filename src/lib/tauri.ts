@@ -387,6 +387,7 @@ export interface ItemVariant {
   sort_order: number;
   size_bytes: number | null;
   is_compressed: boolean;
+  custom_image_path: string | null;
 }
 
 export interface VariantArg {
@@ -420,6 +421,9 @@ export const tauriImportMultiAvatarPackage = (args: ImportMultiAvatarArgs): Prom
 
 export const tauriDeleteVariant = (itemId: string, variantId: string): Promise<void> =>
   invoke("delete_variant", { itemId, variantId });
+
+export const tauriSetVariantCustomImage = (variantId: string, imagePath: string | null): Promise<void> =>
+  invoke("set_variant_custom_image", { variantId, imagePath });
 
 export const tauriCompressVariant = (itemId: string, variantId: string): Promise<void> =>
   invoke("compress_variant", { itemId, variantId });
@@ -1059,4 +1063,18 @@ export async function tauriDiscordReauthenticate(accessToken: string): Promise<D
 /** Clears the in-memory token on the backend side. */
 export async function tauriDiscordLogout(): Promise<void> {
   return invoke<void>("discord_logout");
+}
+// ── VRChat Photos ─────────────────────────────────────────────────────────────
+
+/** Returns the default VRChat screenshots folder path for this OS. */
+export async function tauriGetVRChatPhotosDefaultPath(): Promise<string> {
+  return invoke<string>("get_vrchat_photos_default_path");
+}
+
+/** Scans a folder for VRChat photo files. Returns absolute paths, newest-first. */
+export async function tauriScanVRChatPhotos(
+  folderPath: string,
+  maxCount?: number,
+): Promise<string[]> {
+  return invoke<string[]>("scan_vrchat_photos", { folderPath, maxCount });
 }

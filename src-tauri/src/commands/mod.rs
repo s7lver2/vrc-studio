@@ -14,6 +14,7 @@ pub mod cart;
 pub mod collections;
 pub mod booth_deps;
 pub mod multi_avatar;
+pub mod vrchat_photos;
 
 // TODO: pub mod vrchat_sdk; — vrchat_sdk_check_auth, vrchat_sdk_login,
 //   vrchat_sdk_validate, vrchat_sdk_upload. Mientras no existan, el

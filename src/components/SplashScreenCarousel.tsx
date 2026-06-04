@@ -13,6 +13,7 @@ import { useEffect, useState, useRef } from "react";
 import { useAppearanceStore, CarouselImageEntry } from "@/store/appearanceStore";
 import { BUILT_IN_SPLASH_IMAGES, SplashImageMeta, getSplashImageById } from "@/lib/splashImages";
 import { toAssetUrl } from "@/lib/utils";
+import { tauriScanVRChatPhotos } from "@/lib/tauri";
 
 interface Props {
   onDone: () => void;
@@ -47,16 +48,36 @@ const DEFAULT_PALETTE: SplashImageMeta["palette"] = {
 const BAR_DURATION = 2000; // ms
 
 export function SplashScreenCarousel({ onDone }: Props) {
-  const { carouselImages } = useAppearanceStore();
+  const { carouselImages, vrchatGallery } = useAppearanceStore();
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
   const [barProgress, setBarProgress] = useState(0);
   const barRafRef = useRef<number>(0);
   const barStartRef = useRef<number>(0);
+  const [vrchatPhotoPaths, setVRChatPhotoPaths] = useState<string[]>([]);
 
-  // Pool de imágenes disponibles
-  const imageList: CarouselImageEntry[] = carouselImages.length > 0
-    ? carouselImages
-    : BUILT_IN_SPLASH_IMAGES.map((img) => ({ id: img.id, path: null, builtInId: img.id }));
+  // Load VRChat photos on mount if gallery is enabled and consented
+  useEffect(() => {
+    if (vrchatGallery.consented && vrchatGallery.enabled && vrchatGallery.folderPath) {
+      tauriScanVRChatPhotos(vrchatGallery.folderPath, 100)
+        .then(setVRChatPhotoPaths)
+        .catch(() => setVRChatPhotoPaths([]));
+    }
+  }, [vrchatGallery.consented, vrchatGallery.enabled, vrchatGallery.folderPath]);
+
+  // Build the pool of available images
+  // Priority: user custom images → VRChat photos → built-in splash images
+  const imageList: CarouselImageEntry[] = (() => {
+    const custom = carouselImages;
+    const vrchat: CarouselImageEntry[] = vrchatPhotoPaths.map((p) => ({
+      id: `vrchat:${p}`,
+      path: p,
+      builtInId: null,
+    }));
+    const combined = [...custom, ...vrchat];
+    return combined.length > 0
+      ? combined
+      : BUILT_IN_SPLASH_IMAGES.map((img) => ({ id: img.id, path: null, builtInId: img.id }));
+  })();
 
   // Slideshow state
   const [activeIdx, setActiveIdx] = useState(() => Math.floor(Math.random() * imageList.length));
