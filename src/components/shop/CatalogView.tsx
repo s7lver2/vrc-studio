@@ -1,4 +1,5 @@
 // CatalogView — infinite-scroll catalog with category + price filters
+// Queries use both Japanese (Booth standard) and English terms for maximum coverage.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Loader2, LayoutGrid } from "lucide-react";
 import { tauriSearchShop, ShopProduct } from "../../lib/tauri";
@@ -7,14 +8,49 @@ import { useAppStore } from "../../store/app";
 import { useAppearanceStore } from "@/store/appearanceStore";
 
 // ── Categories ────────────────────────────────────────────────────────────────
+//
+// Each category has a primary query (used for infinite scroll pages 3+) and
+// optional extra queries merged into the initial load (pages 1+2 of each).
+// Japanese terms are critical — Booth is a Japanese marketplace and most
+// VRChat sellers tag their items in Japanese.
 
 const CATALOG_CATEGORIES = [
-  { id: "all",         label: "All",         query: "vrchat" },
-  { id: "avatars",     label: "Avatars",      query: "vrchat avatar 3d model" },
-  { id: "clothing",    label: "Clothing",     query: "vrchat clothing outfit wearable" },
-  { id: "accessories", label: "Accessories",  query: "vrchat accessory hair props" },
-  { id: "shaders",     label: "Shaders",      query: "vrchat shader liltoon poiyomi" },
-  { id: "tools",       label: "Tools",        query: "vrchat unity tools scripts" },
+  {
+    id: "all",
+    label: "All",
+    // Broad VRChat search — mix of Japanese & English
+    queries: ["VRChat", "VRChat アバター 衣装"],
+  },
+  {
+    id: "avatars",
+    label: "Avatars",
+    // オリジナルアバター = "original avatar" — the standard term for VRChat avatar bodies
+    queries: ["VRChat オリジナルアバター", "VRChat avatar base 3D"],
+  },
+  {
+    id: "clothing",
+    label: "Clothing",
+    // 衣装 = "costume / outfit" — THE standard Booth tag for VRChat clothing
+    queries: ["VRChat 衣装", "VRChat アバター 衣装 outfit"],
+  },
+  {
+    id: "accessories",
+    label: "Accessories",
+    // アクセサリ = accessory; 髪 = hair; 装飾 = decoration
+    queries: ["VRChat アクセサリ", "VRChat 髪 装飾 小道具"],
+  },
+  {
+    id: "shaders",
+    label: "Shaders",
+    // liltoon is the most popular VRChat shader on Booth; poiyomi second
+    queries: ["liltoon", "poiyomi shader VRChat"],
+  },
+  {
+    id: "tools",
+    label: "Tools",
+    // ツール = tool; VRCFury + Modular Avatar are the main community tools
+    queries: ["VRChat unity ツール", "VRCFury modular avatar"],
+  },
 ] as const;
 
 type CategoryId = (typeof CATALOG_CATEGORIES)[number]["id"];
@@ -29,6 +65,19 @@ function filterByPrice(items: ShopProduct[], price: PriceFilter): ShopProduct[] 
   if (price === "free") return items.filter(i => isFree(i.price_display));
   if (price === "paid") return items.filter(i => !isFree(i.price_display));
   return items;
+}
+
+/** Merge multiple result arrays, deduplicating by source+source_id. */
+function mergeDedup(batches: ShopProduct[][]): ShopProduct[] {
+  const seen = new Set<string>();
+  const out: ShopProduct[] = [];
+  for (const batch of batches) {
+    for (const item of batch) {
+      const key = `${item.source}:${item.source_id}`;
+      if (!seen.has(key)) { seen.add(key); out.push(item); }
+    }
+  }
+  return out;
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -55,7 +104,8 @@ export function CatalogView({ onClose }: CatalogViewProps) {
   const [category, setCategory] = useState<CategoryId>("all");
   const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
   const [results, setResults] = useState<ShopProduct[]>([]);
-  const [page, setPage] = useState(1);
+  // page tracks the NEXT page to fetch for the primary query (infinite scroll)
+  const [nextPage, setNextPage] = useState(3);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const loaderRef = useRef<HTMLDivElement>(null);
@@ -68,29 +118,54 @@ export function CatalogView({ onClose }: CatalogViewProps) {
     large:   { min: 210, max: 256 },
   }[shopItemSize ?? "normal"];
 
-  const currentQuery = CATALOG_CATEGORIES.find(c => c.id === category)?.query ?? "vrchat";
+  const currentCat = CATALOG_CATEGORIES.find(c => c.id === category)!;
 
-  // ── Fetch helper ────────────────────────────────────────────────────────────
+  // ── Initial load: fetch pages 1+2 of ALL queries in parallel ───────────────
 
-  const fetchPage = useCallback(async (
-    query: string,
-    pageNum: number,
+  const loadInitial = useCallback(async (
+    cat: typeof currentCat,
     price: PriceFilter,
-    reset: boolean,
+  ) => {
+    setLoading(true);
+    setResults([]);
+    setHasMore(true);
+    try {
+      // pages 1 AND 2 of every query in parallel → e.g. 4 requests for 2-query category
+      const promises = cat.queries.flatMap(q => [
+        tauriSearchShop(q, 1, showAdult),
+        tauriSearchShop(q, 2, showAdult),
+      ]);
+      const batches = await Promise.all(promises);
+      const merged = filterByPrice(mergeDedup(batches), price);
+      setResults(merged);
+      // Infinite scroll continues from page 3 of the primary query
+      setNextPage(3);
+      setHasMore(batches.some(b => b.length > 0));
+    } catch {
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  // showAdult is stable (app setting), safe to include
+  }, [showAdult]);
+
+  // ── Load more: paginate primary query ──────────────────────────────────────
+
+  const loadMore = useCallback(async (
+    primaryQuery: string,
+    page: number,
+    price: PriceFilter,
   ) => {
     setLoading(true);
     try {
-      const raw = await tauriSearchShop(query, pageNum, showAdult);
+      const raw = await tauriSearchShop(primaryQuery, page, showAdult);
       const filtered = filterByPrice(raw, price);
-      if (reset) {
-        setResults(filtered);
-      } else {
-        setResults(prev => {
-          const seen = new Set(prev.map(r => `${r.source}:${r.source_id}`));
-          return [...prev, ...filtered.filter(r => !seen.has(`${r.source}:${r.source_id}`))];
-        });
-      }
-      setHasMore(raw.length > 0 && pageNum < 10);
+      setResults(prev => {
+        const seen = new Set(prev.map(r => `${r.source}:${r.source_id}`));
+        return [...prev, ...filtered.filter(r => !seen.has(`${r.source}:${r.source_id}`))];
+      });
+      setNextPage(page + 1);
+      setHasMore(raw.length > 0 && page < 12);
     } catch {
       setHasMore(false);
     } finally {
@@ -98,26 +173,24 @@ export function CatalogView({ onClose }: CatalogViewProps) {
     }
   }, [showAdult]);
 
-  // ── Reset on category / price change ───────────────────────────────────────
+  // ── Reset on category / price filter change ────────────────────────────────
 
   useEffect(() => {
-    setResults([]);
-    setPage(1);
-    setHasMore(true);
-    fetchPage(currentQuery, 1, priceFilter, true);
+    const cat = CATALOG_CATEGORIES.find(c => c.id === category)!;
+    loadInitial(cat, priceFilter);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, priceFilter]);
 
-  // ── Infinite scroll via IntersectionObserver ───────────────────────────────
+  // ── Infinite scroll via IntersectionObserver (stable ref pattern) ──────────
 
   const loadingRef = useRef(loading);
   loadingRef.current = loading;
   const hasMoreRef = useRef(hasMore);
   hasMoreRef.current = hasMore;
-  const pageRef = useRef(page);
-  pageRef.current = page;
-  const queryRef = useRef(currentQuery);
-  queryRef.current = currentQuery;
+  const nextPageRef = useRef(nextPage);
+  nextPageRef.current = nextPage;
+  const catRef = useRef(currentCat);
+  catRef.current = currentCat;
   const priceRef = useRef(priceFilter);
   priceRef.current = priceFilter;
 
@@ -126,16 +199,14 @@ export function CatalogView({ onClose }: CatalogViewProps) {
     if (!el) return;
     const obs = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting && !loadingRef.current && hasMoreRef.current) {
-        const next = pageRef.current + 1;
-        setPage(next);
-        fetchPage(queryRef.current, next, priceRef.current, false);
+        loadMore(catRef.current.queries[0], nextPageRef.current, priceRef.current);
       }
     }, { threshold: 0.1 });
     obs.observe(el);
     return () => obs.disconnect();
-  // Only create observer once; refs keep values fresh without causing re-creation
+  // Stable: only recreate if loadMore changes (i.e. showAdult changes)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPage]);
+  }, [loadMore]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -177,8 +248,8 @@ export function CatalogView({ onClose }: CatalogViewProps) {
             </button>
           ))}
         </div>
-        {/* Price filter */}
-        <div className="flex gap-1.5">
+        {/* Price filter + result count */}
+        <div className="flex items-center gap-1.5">
           {(["all", "free", "paid"] as PriceFilter[]).map(p => (
             <button
               key={p}
@@ -193,8 +264,8 @@ export function CatalogView({ onClose }: CatalogViewProps) {
             </button>
           ))}
           {results.length > 0 && (
-            <span className="ml-auto text-xs text-zinc-600 self-center">
-              {results.length}+ results
+            <span className="ml-auto text-xs text-zinc-600">
+              {results.length}+ items
             </span>
           )}
         </div>
@@ -203,7 +274,6 @@ export function CatalogView({ onClose }: CatalogViewProps) {
       {/* ── Results ── */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {results.length === 0 && loading ? (
-          // Initial skeleton
           <div className="grid gap-3" style={gridStyle}>
             {Array.from({ length: 24 }).map((_, i) => <CardSkeleton key={i} />)}
           </div>
@@ -221,7 +291,7 @@ export function CatalogView({ onClose }: CatalogViewProps) {
             {/* Sentinel for IntersectionObserver */}
             <div ref={loaderRef} className="flex justify-center py-8">
               {loading && <Loader2 className="h-5 w-5 animate-spin text-zinc-600" />}
-              {!loading && !hasMore && (
+              {!loading && !hasMore && results.length > 0 && (
                 <p className="text-xs text-zinc-700">End of catalog</p>
               )}
             </div>
