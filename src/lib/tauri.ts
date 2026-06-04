@@ -81,12 +81,36 @@ export interface CreateProjectRequest {
   vcs_enabled: boolean;
   vpm_packages: string[];
   custom_package_ids: string[];
+  early_import_item_ids: string[];
 }
 
 export interface CreateProjectProgress {
   progress: number;
   message: string;
   done: boolean;
+  error: string | null;
+}
+
+export interface EarlyImportEntry {
+  id: string;
+  project_id: string;
+  item_id: string;
+  item_name: string;
+  thumbnail_url: string | null;
+  local_path: string;
+  status: "pending" | "done" | "error";
+  imported_at: string | null;
+  error_msg: string | null;
+  sort_order: number;
+}
+
+export interface EarlyImportProgressEvent {
+  project_id: string;
+  item_id: string;
+  item_name: string;
+  current: number;
+  total: number;
+  status: "extracting" | "done" | "error" | "complete";
   error: string | null;
 }
 
@@ -202,6 +226,9 @@ export const tauriFindUnityForVersion = (version: string): Promise<string | null
 
 export const tauriOpenProjectInUnity = (projectId: string, projectPath: string, unityPath: string): Promise<void> =>
   invoke("open_project_in_unity", { projectId, projectPath, unityPath });
+
+export const tauriGetProjectEarlyImports = (projectId: string): Promise<EarlyImportEntry[]> =>
+  invoke("get_project_early_imports", { projectId });
 
 export const tauriSaveProjectScreenshot = (id: string, screenshotPath: string): Promise<Project> =>
   invoke("save_project_screenshot", { id, screenshotPath });

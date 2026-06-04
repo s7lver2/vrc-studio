@@ -417,6 +417,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
         vcs_enabled: vcsEnabled,
         vpm_packages: Object.keys(selectedPkgs),
         custom_package_ids: [],
+        early_import_item_ids: [],
       });
       onCreated(project);
     } catch (err) {
