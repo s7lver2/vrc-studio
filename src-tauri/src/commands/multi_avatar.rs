@@ -253,10 +253,9 @@ fn rewrite_zip_entry(
     let mut old_archive = ZipArchive::new(std::io::Cursor::new(&original))
         .map_err(|e| format!("Invalid zip: {e}"))?;
 
-    let tmp_path = format!("{}.tmp", zip_path);
-    let out_file = std::fs::File::create(&tmp_path)
-        .map_err(|e| format!("Cannot create tmp file: {e}"))?;
-    let mut writer = zip::ZipWriter::new(out_file);
+    // Write new zip into a memory buffer (avoids temp-file + rename on Windows)
+    let out_cursor = std::io::Cursor::new(Vec::with_capacity(original.len()));
+    let mut writer = zip::ZipWriter::new(out_cursor);
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
@@ -293,11 +292,12 @@ fn rewrite_zip_entry(
         }
     }
 
-    writer
-        .finish()
+    // Finalize and get the buffer back
+    let out_cursor = writer.finish()
         .map_err(|e| format!("Zip finish error: {e}"))?;
 
-    std::fs::rename(&tmp_path, zip_path)
+    // Write result directly to the original path (no rename needed)
+    std::fs::write(zip_path, out_cursor.into_inner())
         .map_err(|e| format!("Cannot replace zip: {e}"))?;
 
     Ok(())

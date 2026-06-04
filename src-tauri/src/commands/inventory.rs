@@ -93,6 +93,7 @@ pub fn list_inventory_items_query(pool: &DbPool) -> Result<Vec<InventoryItem>, A
                 i.display_name, i.custom_cover_path, i.sort_order,
                 COALESCE(i.product_images, '[]') as product_images,
                 COALESCE(i.custom_images, '[]') as custom_images,
+                COALESCE(i.is_multi_avatar, 0) as is_multi_avatar,
                 fi.folder_id as folder_id
          FROM inventory_items i
          LEFT JOIN inventory_folder_items fi ON fi.item_id = i.id
@@ -207,7 +208,7 @@ pub fn list_folders_query(pool: &DbPool) -> Result<Vec<InventoryFolder>, AppErro
                     custom_image_path: row.get("custom_image_path").ok(),
                     sort_order: row.get("sort_order").ok(),
                     emoji: None,
-                    custom_image_fill: None,
+                    custom_image_fill: row.get("custom_image_fill").ok(),
                 })
             }
         })?
@@ -1322,6 +1323,7 @@ pub async fn update_folder(
     color: Option<String>,
     image_source_path: Option<String>,
     clear_image: Option<bool>,
+    image_fill: Option<String>,
 ) -> Result<InventoryFolder, AppError> {
     let data_dir = app_handle
         .path()
@@ -1369,6 +1371,12 @@ pub async fn update_folder(
             params![img, folder_id],
         )?;
     }
+    if let Some(fill) = image_fill {
+        conn.execute(
+            "UPDATE inventory_folders SET custom_image_fill = ?1 WHERE id = ?2",
+            params![fill, folder_id],
+        )?;
+    }
 
     // Check if the 'emoji' column exists
     let has_emoji: bool = conn
@@ -1381,13 +1389,13 @@ pub async fn update_folder(
 
     let folder = if has_emoji {
         conn.query_row(
-            "SELECT id, name, parent_id, color, custom_image_path, sort_order, emoji FROM inventory_folders WHERE id = ?1",
+            "SELECT id, name, parent_id, color, custom_image_path, sort_order, emoji, custom_image_fill FROM inventory_folders WHERE id = ?1",
             params![folder_id],
             |row| Ok(row_to_folder(row)),
         )?
     } else {
         conn.query_row(
-            "SELECT id, name, parent_id, color, custom_image_path, sort_order FROM inventory_folders WHERE id = ?1",
+            "SELECT id, name, parent_id, color, custom_image_path, sort_order, custom_image_fill FROM inventory_folders WHERE id = ?1",
             params![folder_id],
             |row| {
                 Ok(InventoryFolder {
@@ -1398,7 +1406,7 @@ pub async fn update_folder(
                     custom_image_path: row.get("custom_image_path").ok(),
                     sort_order: row.get("sort_order").ok(),
                     emoji: None,
-                    custom_image_fill: None,
+                    custom_image_fill: row.get("custom_image_fill").ok(),
                 })
             },
         )?
