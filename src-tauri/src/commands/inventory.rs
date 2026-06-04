@@ -856,9 +856,16 @@ pub async fn decompress_item(
         return Ok(());
     }
 
-    let original_path = zip_path.trim_end_matches(".vrczip").to_string();
+    // ── Always extract into VRCStudio's managed assets directory ─────────────
+    // This ensures files never end up next to the source zip (which may be
+    // external / in the user's Downloads or any other arbitrary folder).
+    let extract_dir = crate::commands::app_settings::get_assets_root(&app)
+        .join("multi_avatar")
+        .join(&item_id)
+        .join("extracted");
+
     let zip_path_clone = zip_path.clone();
-    let original_path_clone = original_path.clone();
+    let extract_dir_clone = extract_dir.clone();
     let item_id_clone = item_id.clone();
     let app_clone = app.clone();
 
@@ -866,10 +873,24 @@ pub async fn decompress_item(
         let file = std::fs::File::open(&zip_path_clone).map_err(|e| e.to_string())?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
         let total = archive.len().max(1);
-        std::fs::create_dir_all(&original_path_clone).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&extract_dir_clone).map_err(|e| e.to_string())?;
         for i in 0..archive.len() {
             let mut zip_file = archive.by_index(i).map_err(|e| e.to_string())?;
-            let out_path = Path::new(&original_path_clone).join(zip_file.mangled_name());
+            // Use enclosed_name() to sanitize path and strip any leading root component
+            let out_path = match zip_file.enclosed_name() {
+                Some(p) => {
+                    // If the zip has a single root folder, skip it so files land flat
+                    let components: Vec<_> = p.components().collect();
+                    if components.len() > 1 {
+                        // strip first component (root folder)
+                        let stripped: std::path::PathBuf = components[1..].iter().collect();
+                        extract_dir_clone.join(stripped)
+                    } else {
+                        extract_dir_clone.join(p)
+                    }
+                }
+                None => continue, // skip unsafe entries
+            };
             if zip_file.is_dir() {
                 std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
             } else {
@@ -889,13 +910,21 @@ pub async fn decompress_item(
                 }),
             );
         }
-        std::fs::remove_file(&zip_path_clone).map_err(|e| e.to_string())?;
+        // Delete the source zip only if it's inside VRCStudio's storage
+        // (don't touch files the user placed in external folders)
+        let assets_root = extract_dir_clone.parent().and_then(|p| p.parent()).and_then(|p| p.parent());
+        if let Some(root) = assets_root {
+            if zip_path_clone.starts_with(root.to_string_lossy().as_ref()) {
+                let _ = std::fs::remove_file(&zip_path_clone);
+            }
+        }
         Ok(())
     })
     .await
     .map_err(|e| AppError::External(e.to_string()))?
     .map_err(AppError::External)?;
 
+    let original_path = extract_dir.to_string_lossy().to_string();
     let conn = pool.get()?;
     conn.execute(
         "UPDATE inventory_items SET local_path = ?1, is_compressed = 0 WHERE id = ?2",
