@@ -166,9 +166,17 @@ pub struct CreateProjectRequest {
     /// IDs de paquetes custom a instalar (sus ZIPs se copian a Packages/)
     #[serde(default)]
     pub custom_package_ids: Vec<String>,
-    /// IDs of inventory items to auto-extract on first Unity open.
+    /// Items to auto-extract on first Unity open. Replaces early_import_item_ids.
     #[serde(default)]
-    pub early_import_item_ids: Vec<String>,
+    pub early_import_items: Vec<EarlyImportRef>,
+}
+
+/// Reference to an inventory item for early import, with optional variant selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarlyImportRef {
+    pub item_id: String,
+    /// If set, extract this specific sub-zip from the main archive instead of the whole archive.
+    pub sub_zip_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +200,7 @@ pub struct EarlyImportEntry {
     pub imported_at: Option<String>,
     pub error_msg: Option<String>,
     pub sort_order: i64,
+    pub sub_zip_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

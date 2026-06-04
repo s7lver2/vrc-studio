@@ -90,14 +90,24 @@ pub async fn scan_vrchat_photos(
         let mut entries: Vec<(String, String)> = Vec::new();
         collect_photos(&path, &mut entries, limit, 0);
 
-        // Sort newest-first (filenames are timestamp-based)
+        // Sort newest-first, then shuffle so the carousel shows varied photos.
         entries.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut pool: Vec<String> = entries.into_iter().take(limit).map(|(_, full)| full).collect();
 
-        let paths: Vec<String> = entries
-            .into_iter()
-            .take(limit)
-            .map(|(_, full)| full)
-            .collect();
+        // Fisher-Yates shuffle using a time-seeded LCG (no external crate needed).
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(42) as u64;
+        let mut rng = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let n = pool.len();
+        for i in (1..n).rev() {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let j = (rng >> 33) as usize % (i + 1);
+            pool.swap(i, j);
+        }
+
+        let paths = pool;
 
         Ok(paths)
     })

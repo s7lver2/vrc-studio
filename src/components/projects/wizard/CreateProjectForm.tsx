@@ -11,10 +11,13 @@ import {
   tauriCreateProject,
   tauriFetchVpmIndex,
   tauriListInventory,
+  tauriGetItemVariants,
   UnityInstallation,
   Project,
   VpmPackage,
   InventoryItem,
+  ItemVariant,
+  EarlyImportRef,
 } from "@/lib/tauri";
 import { toAssetUrl } from "@/lib/utils";
 import { CreationProgress } from "./CreationProgress";
@@ -97,17 +100,30 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
 // ── Early Import step ─────────────────────────────────────────────────────────
 
 interface EarlyImportStepProps {
-  selectedIds: string[];
-  onToggle: (id: string) => void;
+  selectedRefs: EarlyImportRef[];
+  onToggle: (itemId: string) => void;
+  onSetVariant: (itemId: string, subZipName: string | null) => void;
 }
 
-function EarlyImportStep({ selectedIds, onToggle }: EarlyImportStepProps) {
+function EarlyImportStep({ selectedRefs, onToggle, onSetVariant }: EarlyImportStepProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState("");
+  const [variantMap, setVariantMap] = useState<Record<string, ItemVariant[]>>({});
 
   useEffect(() => {
     tauriListInventory().then(setItems).catch(() => {});
   }, []);
+
+  // Load variants when an item gets selected
+  useEffect(() => {
+    for (const ref of selectedRefs) {
+      if (variantMap[ref.item_id] !== undefined) continue;
+      tauriGetItemVariants(ref.item_id)
+        .then((v) => setVariantMap((prev) => ({ ...prev, [ref.item_id]: v })))
+        .catch(() => setVariantMap((prev) => ({ ...prev, [ref.item_id]: [] })));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRefs]);
 
   const filtered = items.filter((item) => {
     const label = item.display_name ?? item.name;
@@ -124,6 +140,8 @@ function EarlyImportStep({ selectedIds, onToggle }: EarlyImportStepProps) {
     }
     return null;
   };
+
+  const getRef = (itemId: string) => selectedRefs.find((r) => r.item_id === itemId);
 
   return (
     <div className="flex flex-col gap-3">
@@ -148,43 +166,64 @@ function EarlyImportStep({ selectedIds, onToggle }: EarlyImportStepProps) {
         <div className="grid grid-cols-5 gap-2 max-h-52 overflow-y-auto pr-1">
           {filtered.map((item) => {
             const label = item.display_name ?? item.name;
-            const selected = selectedIds.includes(item.id);
+            const ref = getRef(item.id);
+            const selected = !!ref;
+            const variants = variantMap[item.id] ?? [];
             const cover = coverFor(item);
             return (
-              <button
-                key={item.id}
-                onClick={() => onToggle(item.id)}
-                className="flex flex-col items-center gap-1 group focus:outline-none"
-              >
-                <div
-                  className="relative w-full aspect-square rounded-xl overflow-hidden border-2 transition-all"
-                  style={{ borderColor: selected ? "#dc2626" : "#27272a" }}
+              <div key={item.id} className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onToggle(item.id)}
+                  className="w-full focus:outline-none"
                 >
-                  {cover ? (
-                    <img src={cover} alt={label} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                      <Package className="h-5 w-5 text-zinc-700" />
-                    </div>
-                  )}
-                  {selected && (
-                    <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
-                      <CheckCircle2 className="h-2.5 w-2.5 text-white" />
-                    </div>
-                  )}
-                </div>
+                  <div
+                    className="relative w-full aspect-square rounded-xl overflow-hidden border-2 transition-all"
+                    style={{ borderColor: selected ? "#dc2626" : "#27272a" }}
+                  >
+                    {cover ? (
+                      <img src={cover} alt={label} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                        <Package className="h-5 w-5 text-zinc-700" />
+                      </div>
+                    )}
+                    {selected && (
+                      <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+                        <CheckCircle2 className="h-2.5 w-2.5 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </button>
                 <p className="text-[9px] text-zinc-500 text-center leading-tight line-clamp-2 w-full px-0.5">
                   {label}
                 </p>
-              </button>
+                {/* Variant selector — visible when selected and item has variants */}
+                {selected && variants.length > 0 && (
+                  <div className="w-full relative">
+                    <select
+                      value={ref.sub_zip_name ?? ""}
+                      onChange={(e) => onSetVariant(item.id, e.target.value || null)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full text-[9px] bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-300 focus:outline-none focus:border-red-600 appearance-none pr-4"
+                    >
+                      <option value="">Todo el paquete</option>
+                      {variants.map((v) => (
+                        <option key={v.id} value={v.sub_zip_name}>{v.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-zinc-600" />
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
       )}
-      {selectedIds.length > 0 && (
+      {selectedRefs.length > 0 && (
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 w-fit text-xs font-medium text-red-400">
           <span>⚡</span>
-          <span>{selectedIds.length} item{selectedIds.length !== 1 ? "s" : ""} seleccionado{selectedIds.length !== 1 ? "s" : ""}</span>
+          <span>{selectedRefs.length} item{selectedRefs.length !== 1 ? "s" : ""} seleccionado{selectedRefs.length !== 1 ? "s" : ""}</span>
         </div>
       )}
     </div>
@@ -455,11 +494,19 @@ interface Props {
 export function CreateProjectForm({ onCreated, onClose }: Props) {
   const t = useT();
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [earlyImportIds, setEarlyImportIds] = useState<string[]>([]);
+  const [earlyImportRefs, setEarlyImportRefs] = useState<EarlyImportRef[]>([]);
 
-  const toggleEarlyImport = useCallback((id: string) => {
-    setEarlyImportIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+  const toggleEarlyImport = useCallback((itemId: string) => {
+    setEarlyImportRefs((prev) =>
+      prev.some((r) => r.item_id === itemId)
+        ? prev.filter((r) => r.item_id !== itemId)
+        : [...prev, { item_id: itemId, sub_zip_name: null }]
+    );
+  }, []);
+
+  const setEarlyImportVariant = useCallback((itemId: string, subZipName: string | null) => {
+    setEarlyImportRefs((prev) =>
+      prev.map((r) => r.item_id === itemId ? { ...r, sub_zip_name: subZipName } : r)
     );
   }, []);
 
@@ -510,8 +557,9 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
     });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (explicitRefs?: EarlyImportRef[]) => {
     if (!unity) return;
+    const itemRefs = explicitRefs ?? earlyImportRefs;
     setSubmitting(true);
     setSubmitError(null);
     events.reset();
@@ -528,7 +576,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
         vcs_enabled: vcsEnabled,
         vpm_packages: Object.keys(selectedPkgs),
         custom_package_ids: [],
-        early_import_item_ids: earlyImportIds,
+        early_import_items: itemRefs,
       });
       onCreated(project);
     } catch (err) {
@@ -688,7 +736,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
 
           {step === 3 && (
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              <EarlyImportStep selectedIds={earlyImportIds} onToggle={toggleEarlyImport} />
+              <EarlyImportStep selectedRefs={earlyImportRefs} onToggle={toggleEarlyImport} onSetVariant={setEarlyImportVariant} />
             </div>
           )}
 
@@ -727,14 +775,14 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
               </button>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => { setEarlyImportIds([]); handleSubmit(); }}
+                  onClick={() => handleSubmit([])  /* Omitir: explicitly pass empty */}
                   disabled={submitting}
                   className="flex items-center gap-1.5 rounded-md bg-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-600 transition-colors disabled:opacity-40"
                 >
                   {t("create_project_skip")}
                 </button>
                 <button
-                  onClick={handleSubmit}
+                  onClick={() => handleSubmit()}
                   disabled={submitting}
                   className="flex items-center gap-1.5 rounded-md bg-red-600 px-5 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >

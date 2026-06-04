@@ -46,6 +46,44 @@ fn sanitize_dir_name(name: &str) -> String {
         .to_string()
 }
 
+/// Extracts a named sub-zip from inside a main archive, then extracts that sub-zip to dest.
+fn extract_sub_zip_for_early_import(
+    archive: &std::path::Path,
+    sub_zip_name: &str,
+    dest: &std::path::Path,
+) -> Result<(), String> {
+    let file = std::fs::File::open(archive).map_err(|e| e.to_string())?;
+    let mut main_zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+
+    // Find the sub-zip entry (case-insensitive search by filename)
+    let idx = (0..main_zip.len())
+        .find(|&i| {
+            main_zip
+                .by_index(i)
+                .ok()
+                .map(|f| {
+                    std::path::Path::new(f.name())
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.eq_ignore_ascii_case(sub_zip_name))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| format!("Sub-zip '{sub_zip_name}' not found inside archive"))?;
+
+    // Write sub-zip to a temp file, then extract it
+    let mut entry = main_zip.by_index(idx).map_err(|e| e.to_string())?;
+    let tmp_path = std::env::temp_dir().join(format!("vrcstudio_early_{}", uuid::Uuid::new_v4()));
+    {
+        let mut tmp = std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut tmp).map_err(|e| e.to_string())?;
+    }
+    let result = extract_archive_for_early_import(&tmp_path, dest);
+    let _ = std::fs::remove_file(&tmp_path);
+    result
+}
+
 fn extract_archive_for_early_import(archive: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
     let ext = archive
         .extension()
@@ -345,18 +383,17 @@ pub async fn create_project(
     )?;
 
     // Insert early import rows if any were selected
-    if !request.early_import_item_ids.is_empty() {
-        // Mark project as needing first-open import
+    if !request.early_import_items.is_empty() {
         conn.execute(
             "UPDATE projects SET early_import_done = 0 WHERE id = ?1",
             params![project_id],
         )?;
-        for (idx, item_id) in request.early_import_item_ids.iter().enumerate() {
+        for (idx, item_ref) in request.early_import_items.iter().enumerate() {
             let entry_id = Uuid::new_v4().to_string();
             conn.execute(
-                "INSERT INTO project_early_imports (id, project_id, item_id, status, sort_order)
-                 VALUES (?1, ?2, ?3, 'pending', ?4)",
-                params![entry_id, project_id, item_id, idx as i64],
+                "INSERT INTO project_early_imports (id, project_id, item_id, status, sort_order, sub_zip_name)
+                 VALUES (?1, ?2, ?3, 'pending', ?4, ?5)",
+                params![entry_id, project_id, item_ref.item_id, idx as i64, item_ref.sub_zip_name],
             )?;
         }
     }
@@ -386,10 +423,10 @@ pub async fn open_project_in_unity(
 
     if needs_import {
         // Load pending items
-        let items: Vec<(String, String, String, String, i64)> = {
+        let items: Vec<(String, String, String, String, i64, Option<String>)> = {
             let conn = pool.get()?;
             let mut stmt = conn.prepare(
-                "SELECT pei.id, pei.item_id, COALESCE(ii.display_name, ii.name), ii.local_path, pei.sort_order
+                "SELECT pei.id, pei.item_id, COALESCE(ii.display_name, ii.name), ii.local_path, pei.sort_order, pei.sub_zip_name
                  FROM project_early_imports pei
                  JOIN inventory_items ii ON ii.id = pei.item_id
                  WHERE pei.project_id = ?1 AND pei.status = 'pending'
@@ -397,11 +434,12 @@ pub async fn open_project_in_unity(
             )?;
             let rows = stmt.query_map(params![project_id], |row| {
                 Ok((
-                    row.get::<_, String>(0)?,  // entry id
-                    row.get::<_, String>(1)?,  // item_id
-                    row.get::<_, String>(2)?,  // item_name
-                    row.get::<_, String>(3)?,  // local_path
-                    row.get::<_, i64>(4)?,     // sort_order
+                    row.get::<_, String>(0)?,          // entry id
+                    row.get::<_, String>(1)?,          // item_id
+                    row.get::<_, String>(2)?,          // item_name
+                    row.get::<_, String>(3)?,          // local_path
+                    row.get::<_, i64>(4)?,             // sort_order
+                    row.get::<_, Option<String>>(5)?,  // sub_zip_name
                 ))
             })?;
             let mut v = Vec::new();
@@ -412,7 +450,7 @@ pub async fn open_project_in_unity(
         let total = items.len();
         let project_dir = std::path::PathBuf::from(&project_path);
 
-        for (idx, (entry_id, item_id, item_name, local_path, _)) in items.iter().enumerate() {
+        for (idx, (entry_id, item_id, item_name, local_path, _, sub_zip_name)) in items.iter().enumerate() {
             let current = idx + 1;
             // Emit extracting event
             let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
@@ -463,7 +501,12 @@ pub async fn open_project_in_unity(
                 continue;
             }
 
-            match extract_archive_for_early_import(archive, &dest) {
+            let extract_result = if let Some(ref sub_zip) = sub_zip_name {
+                extract_sub_zip_for_early_import(archive, sub_zip, &dest)
+            } else {
+                extract_archive_for_early_import(archive, &dest)
+            };
+            match extract_result {
                 Ok(_) => {
                     let conn = pool.get()?;
                     conn.execute(
@@ -1242,7 +1285,8 @@ pub async fn get_project_early_imports(
            COALESCE(ii.display_name, ii.name) AS item_name,
            ii.thumbnail_url,
            ii.local_path,
-           pei.status, pei.imported_at, pei.error_msg, pei.sort_order
+           pei.status, pei.imported_at, pei.error_msg, pei.sort_order,
+           pei.sub_zip_name
          FROM project_early_imports pei
          JOIN inventory_items ii ON ii.id = pei.item_id
          WHERE pei.project_id = ?1
@@ -1250,16 +1294,17 @@ pub async fn get_project_early_imports(
     )?;
     let rows = stmt.query_map(params![project_id], |row| {
         Ok(crate::models::EarlyImportEntry {
-            id:          row.get(0)?,
-            project_id:  row.get(1)?,
-            item_id:     row.get(2)?,
-            item_name:   row.get(3)?,
+            id:           row.get(0)?,
+            project_id:   row.get(1)?,
+            item_id:      row.get(2)?,
+            item_name:    row.get(3)?,
             thumbnail_url: row.get(4)?,
-            local_path:  row.get(5)?,
-            status:      row.get(6)?,
-            imported_at: row.get(7)?,
-            error_msg:   row.get(8)?,
-            sort_order:  row.get(9)?,
+            local_path:   row.get(5)?,
+            status:       row.get(6)?,
+            imported_at:  row.get(7)?,
+            error_msg:    row.get(8)?,
+            sort_order:   row.get(9)?,
+            sub_zip_name: row.get(10)?,
         })
     })?;
     let mut entries = Vec::new();

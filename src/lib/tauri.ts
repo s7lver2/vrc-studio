@@ -81,7 +81,12 @@ export interface CreateProjectRequest {
   vcs_enabled: boolean;
   vpm_packages: string[];
   custom_package_ids: string[];
-  early_import_item_ids: string[];
+  early_import_items: EarlyImportRef[];
+}
+
+export interface EarlyImportRef {
+  item_id: string;
+  sub_zip_name: string | null;
 }
 
 export interface CreateProjectProgress {
@@ -102,6 +107,7 @@ export interface EarlyImportEntry {
   imported_at: string | null;
   error_msg: string | null;
   sort_order: number;
+  sub_zip_name: string | null;
 }
 
 export interface EarlyImportProgressEvent {
