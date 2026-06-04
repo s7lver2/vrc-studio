@@ -234,42 +234,50 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
       if (rawActiveId.startsWith("folder-")) {
         const sourceFolderId = rawActiveId.replace("folder-", "");
         if (targetId.startsWith("folder:")) {
-          // Dropped onto another folder — make it a child
           const destFolderId = targetId.replace("folder:", "");
           if (destFolderId !== sourceFolderId) {
             await moveFolderToParent(sourceFolderId, destFolderId);
           }
         } else if (targetId === "root") {
-          // Dropped on "go up" zone — move to root
           await moveFolderToParent(sourceFolderId, null);
         }
-        // else: reorder among sibling folders — handled by existing reorderFolders logic below
         setLocalOrder(null);
         return;
       }
 
       // ── Inventory item being dragged ─────────────────────────────────────
       const itemId = rawActiveId;
+
+      // If dragging a selected item into a folder → move ALL selected items
+      const isMultiDrag = selectedItemIds.has(itemId) && selectedItemIds.size > 1;
+
       if (targetId.startsWith("folder:")) {
         const folderId = targetId.replace("folder:", "");
-        await moveItem(itemId, folderId);
+        if (isMultiDrag) {
+          await Promise.all([...selectedItemIds].map((id) => moveItem(id, folderId)));
+        } else {
+          await moveItem(itemId, folderId);
+        }
         setLocalOrder(null);
         return;
       }
       if (targetId === "root" && selectedFolderId) {
-        await moveItem(itemId, "__root__");
+        if (isMultiDrag) {
+          await Promise.all([...selectedItemIds].map((id) => moveItem(id, "__root__")));
+        } else {
+          await moveItem(itemId, "__root__");
+        }
         setLocalOrder(null);
         return;
       }
       // ── PERSISTIR ORDEN MANUAL ──
       if (localOrder) {
-        // Cambiar a orden personalizada para que no se reordene por fecha/nombre
         useInventoryStore.getState().setSortField("custom");
         await reorderItems(localOrder);
       }
       setLocalOrder(null);
     },
-    [moveItem, moveFolderToParent, selectedFolderId, localOrder, sortField, reorderItems]
+    [moveItem, moveFolderToParent, selectedFolderId, localOrder, sortField, reorderItems, selectedItemIds]
   );
 
   const handleGridContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -359,7 +367,7 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
                         onCheckboxToggle={() => toggleSelectItem(item.id)}
                         onShiftClick={(id) => rangeSelectItems(lastSelectedId ?? id, id, visibleItems.map(i => i.id))}
                         isMultiSelectActive={selectedItemIds.size > 0}
-                        isDragging={activeId === item.id}
+                        isDragging={activeId !== null && (activeId === item.id || selectedItemIds.has(item.id))}
                       />
                     </div>
                   );
@@ -373,15 +381,77 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
             {activeId && (() => {
               const item = visibleItems.find((i) => i.id === activeId);
               if (!item) return null;
+              const isMultiDrag = selectedItemIds.has(item.id) && selectedItemIds.size > 1;
+              if (!isMultiDrag) {
+                return (
+                  <div className="pointer-events-none opacity-90 shadow-xl">
+                    <InventoryItemCard
+                      item={item}
+                      viewMode="list"
+                      isSelected={false}
+                      onCheckboxToggle={() => { }}
+                      isDragging={false}
+                    />
+                  </div>
+                );
+              }
+              // Multi-select stack for list mode: stagger rows vertically
+              const otherSelected = visibleItems
+                .filter((i) => selectedItemIds.has(i.id) && i.id !== item.id)
+                .slice(0, 4);
               return (
-                <div className="pointer-events-none opacity-90 shadow-xl">
-                  <InventoryItemCard
-                    item={item}
-                    viewMode="list"
-                    isSelected={false}
-                    onCheckboxToggle={() => { }}
-                    isDragging={false}
-                  />
+                <div className="pointer-events-none relative" style={{ willChange: "transform" }}>
+                  {otherSelected.map((ghost, idx) => (
+                    <div
+                      key={ghost.id}
+                      className="absolute inset-0"
+                      style={{
+                        transform: `translateY(${(idx + 1) * 4}px) translateX(${[4, -4, 6, -6][idx] ?? 0}px)`,
+                        opacity: Math.max(0.1, 0.45 - idx * 0.08),
+                        zIndex: -1 - idx,
+                      }}
+                    >
+                      <InventoryItemCard
+                        item={ghost}
+                        viewMode="list"
+                        isSelected={false}
+                        onCheckboxToggle={() => { }}
+                        isDragging={false}
+                      />
+                    </div>
+                  ))}
+                  <div className="relative opacity-95 shadow-xl" style={{ zIndex: 10 }}>
+                    <InventoryItemCard
+                      item={item}
+                      viewMode="list"
+                      isSelected={false}
+                      onCheckboxToggle={() => { }}
+                      isDragging={false}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: -8,
+                      right: -8,
+                      zIndex: 20,
+                      background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+                      color: "white",
+                      borderRadius: "9999px",
+                      minWidth: 22,
+                      height: 22,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "0 6px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                      border: "2px solid rgba(255,255,255,0.15)",
+                    }}
+                  >
+                    {selectedItemIds.size}
+                  </div>
                 </div>
               );
             })()}
@@ -439,7 +509,7 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
                 viewMode="grid"
                 isSelected={selectedItemIds.has(item.id)}
                 onCheckboxToggle={() => toggleSelectItem(item.id)}
-                isDragging={activeId === item.id}
+                isDragging={activeId !== null && (activeId === item.id || selectedItemIds.has(item.id))}
               />
             ))}
           </SortableContext>
@@ -448,27 +518,110 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
           duration: 220,
           easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)",
         }}>
-          {activeItem && (
-            <div
-              className="pointer-events-none"
-              style={{
-                transform: "rotate(2deg) scale(1.06)",
-                opacity: 0.92,
-                boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
-                borderRadius: "0.5rem",
-                willChange: "transform",
-                transition: "none",
-              }}
-            >
-              <InventoryItemCard
-                item={activeItem}
-                viewMode="grid"
-                isSelected={false}
-                onCheckboxToggle={() => { }}
-                isDragging={false}
-              />
-            </div>
-          )}
+          {activeItem && (() => {
+            const isMultiDrag = selectedItemIds.has(activeItem.id) && selectedItemIds.size > 1;
+            if (!isMultiDrag) {
+              return (
+                <div
+                  className="pointer-events-none"
+                  style={{
+                    transform: "rotate(2deg) scale(1.06)",
+                    opacity: 0.92,
+                    boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
+                    borderRadius: "0.5rem",
+                    willChange: "transform",
+                    transition: "none",
+                  }}
+                >
+                  <InventoryItemCard
+                    item={activeItem}
+                    viewMode="grid"
+                    isSelected={false}
+                    onCheckboxToggle={() => { }}
+                    isDragging={false}
+                  />
+                </div>
+              );
+            }
+            // Multi-select stack: show up to 3 ghost cards behind the active one
+            const otherSelected = sortedItems
+              .filter((i) => selectedItemIds.has(i.id) && i.id !== activeItem.id)
+              .slice(0, 4);
+            const stackAngles = [3.5, -2.5, 4.5, -3.0];
+            const stackOffsets = [
+              { x: 6, y: 4 },
+              { x: -5, y: 7 },
+              { x: 8, y: 9 },
+              { x: -8, y: 5 },
+            ];
+            return (
+              <div className="pointer-events-none relative" style={{ willChange: "transform" }}>
+                {/* Ghost cards behind */}
+                {otherSelected.map((ghost, idx) => (
+                  <div
+                    key={ghost.id}
+                    className="absolute inset-0"
+                    style={{
+                      transform: `rotate(${stackAngles[idx]}deg) translate(${stackOffsets[idx].x}px, ${stackOffsets[idx].y}px)`,
+                      opacity: 0.55 - idx * 0.12,
+                      zIndex: -1 - idx,
+                    }}
+                  >
+                    <InventoryItemCard
+                      item={ghost}
+                      viewMode="grid"
+                      isSelected={false}
+                      onCheckboxToggle={() => { }}
+                      isDragging={false}
+                    />
+                  </div>
+                ))}
+                {/* Active card on top */}
+                <div
+                  style={{
+                    transform: "rotate(1.5deg) scale(1.05)",
+                    opacity: 0.95,
+                    boxShadow: "0 24px 48px rgba(0,0,0,0.65)",
+                    borderRadius: "0.5rem",
+                    position: "relative",
+                    zIndex: 10,
+                  }}
+                >
+                  <InventoryItemCard
+                    item={activeItem}
+                    viewMode="grid"
+                    isSelected={false}
+                    onCheckboxToggle={() => { }}
+                    isDragging={false}
+                  />
+                </div>
+                {/* Count badge */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -8,
+                    right: -8,
+                    zIndex: 20,
+                    background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+                    color: "white",
+                    borderRadius: "9999px",
+                    minWidth: 22,
+                    height: 22,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "0 6px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                    border: "2px solid rgba(255,255,255,0.15)",
+                  }}
+                >
+                  {selectedItemIds.size}
+                </div>
+              </div>
+            );
+          })()}
         </DragOverlay>
         {gridMenu && (
           <GridContextMenu
@@ -481,4 +634,3 @@ export function InventoryGrid({ tagFilter, searchQuery = "" }: InventoryGridProp
     </DndContext>
   );
 }
-
