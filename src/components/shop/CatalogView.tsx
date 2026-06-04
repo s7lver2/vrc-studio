@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Loader2, LayoutGrid } from "lucide-react";
 import { tauriSearchShop, ShopProduct } from "../../lib/tauri";
 import { ProductCard } from "./ProductCard";
+import { ProductModal } from "./ProductModal";
+import { CollectionPickerModal } from "./CollectionPickerModal";
 import { useAppStore } from "../../store/app";
 import { useAppearanceStore } from "@/store/appearanceStore";
 
@@ -289,6 +291,15 @@ export function CatalogView({ onClose }: CatalogViewProps) {
       </div>
 
       {/* ── Results ── */}
+      {/*
+        ProductModal (z-50) and CollectionPickerModal (z-100) must be rendered
+        INSIDE CatalogView so they are part of the same z-[200] stacking context
+        and appear on top of the catalog overlay. If rendered in Shop.tsx they
+        would be at z-50/z-100 in the document root — invisible behind z-[200].
+      */}
+      <ProductModal />
+      <CollectionPickerModal />
+
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {results.length === 0 && loading ? (
           <div className="grid gap-3" style={gridStyle}>
