@@ -1,4 +1,3 @@
-// vite.config.ts — reemplazar el export default por:
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -17,18 +16,19 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true },
   build: {
+    // Target modern Chromium (Tauri's WebView) — smaller output, no legacy polyfills
+    target: "chrome120",
+    // Increase chunk size warning threshold (app is a desktop app, not a website)
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks: {
-          // Vendor react — siempre en caché
+          // Keep React runtime isolated for best caching
           "vendor-react": ["react", "react-dom"],
-          // Páginas pesadas en su propio chunk
-          "page-settings": ["src/pages/Settings.tsx"],
-          "page-inventory": [
-            "src/pages/Inventory.tsx",
-            "src/components/inventory/ScanDriveWizard.tsx",
-          ],
-          "page-workspace": ["src/components/workspace/WorkspacePage.tsx"],
+          // DnD kit — heavy but shared across inventory pages
+          "vendor-dnd": ["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
+          // Zustand stores — shared state, never changes much
+          "vendor-state": ["zustand"],
         },
       },
     },
