@@ -17,6 +17,12 @@ pub enum AppError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Parse error: {0}")]
+    Parse(String),
+
     #[error("Generic error: {0}")]
     Generic(String),
 }

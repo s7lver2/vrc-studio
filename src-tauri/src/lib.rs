@@ -301,6 +301,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::collections::collection_item_move,
             // ── Tools ──
             commands::tools::tools_list,
+            commands::tools::tools_fetch_registry,
             // ── Booth Dependencies ──
             commands::booth_deps::booth_deps_read,
             commands::booth_deps::booth_deps_add,

@@ -2,6 +2,8 @@
 use crate::db::DbPool;
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
+use tauri::Manager;
 use tauri::State;
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -80,4 +82,61 @@ pub fn tools_list(pool: State<'_, DbPool>) -> Result<Vec<InstalledTool>, AppErro
         .filter_map(|r| r.ok())
         .collect();
     Ok(tools)
+}
+
+const REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/YOUR_ORG/vrc-studio-tools/main/registry.json";
+const REGISTRY_TTL_SECS: u64 = 3600; // 1 hour
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolsRegistry {
+    pub version: u32,
+    pub tools: Vec<ToolRegistryEntry>,
+}
+
+/// Fetches the remote tools registry (cached locally for 1 hour).
+/// Returns the list of available tools.
+#[tauri::command]
+pub async fn tools_fetch_registry(
+    app: tauri::AppHandle,
+) -> Result<Vec<ToolRegistryEntry>, AppError> {
+    let cache_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::Io(e.to_string()))?;
+    let cache_path = cache_dir.join("tools_registry_cache.json");
+
+    // Return cached version if fresh enough
+    if let Ok(meta) = std::fs::metadata(&cache_path) {
+        if let Ok(modified) = meta.modified() {
+            let age = SystemTime::now()
+                .duration_since(modified)
+                .unwrap_or_default()
+                .as_secs();
+            if age < REGISTRY_TTL_SECS {
+                if let Ok(data) = std::fs::read_to_string(&cache_path) {
+                    if let Ok(registry) = serde_json::from_str::<ToolsRegistry>(&data) {
+                        return Ok(registry.tools);
+                    }
+                }
+            }
+        }
+    }
+
+    // Fetch fresh copy
+    let response = reqwest::get(REGISTRY_URL)
+        .await
+        .map_err(|e| AppError::Network(e.to_string()))?;
+    let text = response
+        .text()
+        .await
+        .map_err(|e| AppError::Network(e.to_string()))?;
+
+    let registry: ToolsRegistry = serde_json::from_str(&text)
+        .map_err(|e| AppError::Parse(e.to_string()))?;
+
+    // Cache to disk
+    let _ = std::fs::write(&cache_path, &text);
+
+    Ok(registry.tools)
 }
