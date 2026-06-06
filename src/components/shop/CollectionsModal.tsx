@@ -40,6 +40,7 @@ interface Props {
 export function CollectionsModal({ onClose }: Props) {
   const {
     collections,
+    load,
     createCollection,
     setCover,
     removeItemFromCollection,
@@ -51,6 +52,12 @@ export function CollectionsModal({ onClose }: Props) {
     renameCollection,
     deleteCollection,
   } = useCollectionsStore();
+
+  // Re-fetch on open in case HMR or navigation reset the store
+  useEffect(() => {
+    if (collections.length === 0) load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [items, setItems] = useState<CollectionItem[]>([]);
