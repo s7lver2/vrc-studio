@@ -1183,3 +1183,56 @@ export const tauriImportInventoryItemsEarly = (project_id: string, item_ids: str
 
 export const tauriIsExpositorMode = (): Promise<boolean> =>
   invoke("is_expositor_mode");
+
+// ── Tools ─────────────────────────────────────────────────────────────────
+
+export interface ToolDownloads {
+  ui_bundle: string;
+  sidecar_windows: string;
+  sidecar_macos: string;
+  sidecar_linux: string;
+}
+
+export interface ToolRegistryEntry {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  icon_url: string;
+  banner_url: string;
+  screenshots: string[];
+  category: string;
+  downloads: ToolDownloads;
+  dependencies: string[];
+  requires_unity: boolean;
+  min_unity_version: string;
+  featured: boolean;
+}
+
+export interface InstalledTool {
+  id: string;
+  name: string;
+  version: string;
+  installed_at: string;
+  enabled: boolean;
+  metadata: ToolRegistryEntry;
+}
+
+export async function tauriToolsList(): Promise<InstalledTool[]> {
+  return invoke<InstalledTool[]>("tools_list");
+}
+
+export async function tauriToolsFetchRegistry(): Promise<ToolRegistryEntry[]> {
+  return invoke<ToolRegistryEntry[]>("tools_fetch_registry");
+}
+
+export async function tauriToolsInstall(
+  entry: ToolRegistryEntry
+): Promise<InstalledTool> {
+  return invoke<InstalledTool>("tools_install", { entry });
+}
+
+export async function tauriToolsUninstall(id: string): Promise<void> {
+  return invoke<void>("tools_uninstall", { id });
+}
