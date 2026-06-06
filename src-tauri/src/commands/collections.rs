@@ -242,3 +242,91 @@ pub fn collection_update_description(
     )?;
     Ok(())
 }
+
+#[tauri::command]
+pub fn collection_move_to_parent(
+    pool: State<'_, DbPool>,
+    collection_id: String,
+    parent_id: Option<String>,
+) -> Result<(), AppError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE shop_collections SET parent_id = ?1, updated_at = ?2 WHERE id = ?3",
+        params![parent_id, now, collection_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn collections_reorder(
+    pool: State<'_, DbPool>,
+    ids: Vec<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    for (i, id) in ids.iter().enumerate() {
+        conn.execute(
+            "UPDATE shop_collections SET sort_order = ?1 WHERE id = ?2",
+            params![i as i64, id],
+        )?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn collection_items_reorder(
+    pool: State<'_, DbPool>,
+    collection_id: String,
+    ids: Vec<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    for (i, id) in ids.iter().enumerate() {
+        conn.execute(
+            "UPDATE shop_collection_items SET sort_order = ?1 WHERE id = ?2 AND collection_id = ?3",
+            params![i as i64, id, collection_id],
+        )?;
+    }
+    Ok(())
+}
+
+/// Mueve un item de una colección a otra.
+/// Si el item ya existe en la colección destino, simplemente lo elimina del origen.
+#[tauri::command]
+pub fn collection_item_move(
+    pool: State<'_, DbPool>,
+    item_id: String,
+    from_collection_id: String,
+    to_collection_id: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+
+    // Obtener source y source_id para detectar duplicados en destino
+    let (source, source_id): (String, String) = conn.query_row(
+        "SELECT source, source_id FROM shop_collection_items WHERE id = ?1 AND collection_id = ?2",
+        params![item_id, from_collection_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    // ¿Ya existe el item en la colección destino?
+    let exists_in_target: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM shop_collection_items
+         WHERE collection_id = ?1 AND source = ?2 AND source_id = ?3",
+        params![to_collection_id, &source, &source_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    if exists_in_target > 0 {
+        // Ya está en destino: solo borrar del origen
+        conn.execute(
+            "DELETE FROM shop_collection_items WHERE id = ?1",
+            params![item_id],
+        )?;
+    } else {
+        // No está en destino: actualizar collection_id
+        conn.execute(
+            "UPDATE shop_collection_items SET collection_id = ?1 WHERE id = ?2",
+            params![to_collection_id, item_id],
+        )?;
+    }
+    Ok(())
+}
