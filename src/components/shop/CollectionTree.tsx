@@ -1,7 +1,7 @@
 // src/components/shop/CollectionTree.tsx
 import { useState, useCallback } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { ChevronRight, ChevronDown, Folder, Plus } from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, Plus, Edit2, Trash2, Check } from "lucide-react";
 import type { Collection } from "../../lib/tauri";
 
 // ── CollectionRow ────────────────────────────────────────────────────────────
@@ -12,12 +12,20 @@ interface RowProps {
   isSelected: boolean;
   hasChildren: boolean;
   isExpanded: boolean;
+  isEditing: boolean;
+  editingName: string;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
+  onStartEdit: (id: string, currentName: string) => void;
+  onConfirmEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  onEditingNameChange: (name: string) => void;
+  onDelete: (id: string) => void;
 }
 
 function CollectionRow({
-  col, depth, isSelected, hasChildren, isExpanded, onSelect, onToggleExpand,
+  col, depth, isSelected, hasChildren, isExpanded, isEditing, editingName,
+  onSelect, onToggleExpand, onStartEdit, onConfirmEdit, onCancelEdit, onEditingNameChange, onDelete,
 }: RowProps) {
   const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({
     id: `col:${col.id}`,
@@ -26,7 +34,6 @@ function CollectionRow({
     id: `col:${col.id}`,
   });
 
-  // Merge both refs into one callback ref
   const setRef = useCallback(
     (node: HTMLDivElement | null) => {
       setDraggableRef(node);
@@ -40,12 +47,12 @@ function CollectionRow({
       ref={setRef}
       style={{ paddingLeft: depth * 14 }}
       className={[
-        "flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-colors",
+        "group flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-colors",
         isSelected ? "bg-zinc-800 border border-zinc-700" : "hover:bg-zinc-900",
         isOver ? "bg-red-950/30 border border-red-700/40" : "",
         isDragging ? "opacity-40" : "",
       ].filter(Boolean).join(" ")}
-      onClick={() => onSelect(col.id)}
+      onClick={() => !isEditing && onSelect(col.id)}
       {...attributes}
     >
       {/* Expand/collapse toggle */}
@@ -69,13 +76,54 @@ function CollectionRow({
         )}
       </div>
 
-      {/* Name */}
-      <span className={`flex-1 text-[11px] truncate ${isSelected ? "text-zinc-100 font-semibold" : "text-zinc-400"}`}>
-        {col.name}
-      </span>
+      {/* Name — inline edit or static */}
+      {isEditing ? (
+        <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+          <input
+            autoFocus
+            className="flex-1 min-w-0 text-[11px] bg-zinc-800 border border-zinc-600 rounded px-1.5 py-0.5 text-zinc-200 outline-none focus:border-zinc-400"
+            value={editingName}
+            onChange={(e) => onEditingNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onConfirmEdit(col.id);
+              if (e.key === "Escape") onCancelEdit();
+            }}
+          />
+          <button
+            onClick={(e) => { e.stopPropagation(); onConfirmEdit(col.id); }}
+            className="text-emerald-400 hover:text-emerald-300 shrink-0"
+          >
+            <Check className="h-3 w-3" />
+          </button>
+        </div>
+      ) : (
+        <>
+          <span className={`flex-1 text-[11px] truncate ${isSelected ? "text-zinc-100 font-semibold" : "text-zinc-400"}`}>
+            {col.name}
+          </span>
 
-      {/* Count badge */}
-      <span className="text-[9px] text-zinc-600 shrink-0">{col.item_count}</span>
+          {/* Count + hover actions */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <span className="text-[9px] text-zinc-600 group-hover:hidden">{col.item_count}</span>
+            <div className="hidden group-hover:flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => onStartEdit(col.id, col.name)}
+                className="w-4 h-4 flex items-center justify-center text-zinc-600 hover:text-zinc-300 transition-colors"
+                title="Rename"
+              >
+                <Edit2 className="h-2.5 w-2.5" />
+              </button>
+              <button
+                onClick={() => onDelete(col.id)}
+                className="w-4 h-4 flex items-center justify-center text-zinc-600 hover:text-red-400 transition-colors"
+                title="Delete"
+              >
+                <Trash2 className="h-2.5 w-2.5" />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -102,14 +150,18 @@ function RootDropZone({ isDraggingCol }: { isDraggingCol: boolean }) {
 interface Props {
   collections: Collection[];
   selectedId: string | null;
-  activeId: string | null;          // active drag id from parent DndContext
+  activeId: string | null;
   onSelect: (id: string) => void;
   onCreateCollection: (name: string) => void;
+  onRenameCollection: (id: string, newName: string) => Promise<void>;
+  onDeleteCollection: (id: string) => Promise<void>;
 }
 
-export function CollectionTree({ collections, selectedId, activeId, onSelect, onCreateCollection }: Props) {
+export function CollectionTree({ collections, selectedId, activeId, onSelect, onCreateCollection, onRenameCollection, onDeleteCollection }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -135,6 +187,7 @@ export function CollectionTree({ collections, selectedId, activeId, onSelect, on
     return children.map((col) => {
       const hasChildren = collections.some((c) => c.parent_id === col.id);
       const isExpanded = expandedIds.has(col.id);
+      const isEditing = editingId === col.id;
       return (
         <div key={col.id}>
           <CollectionRow
@@ -143,8 +196,23 @@ export function CollectionTree({ collections, selectedId, activeId, onSelect, on
             isSelected={selectedId === col.id}
             hasChildren={hasChildren}
             isExpanded={isExpanded}
+            isEditing={isEditing}
+            editingName={isEditing ? editingName : ""}
             onSelect={onSelect}
             onToggleExpand={toggleExpand}
+            onStartEdit={(id, name) => { setEditingId(id); setEditingName(name); }}
+            onConfirmEdit={async (id) => {
+              if (editingName.trim()) await onRenameCollection(id, editingName.trim());
+              setEditingId(null);
+            }}
+            onCancelEdit={() => setEditingId(null)}
+            onEditingNameChange={setEditingName}
+            onDelete={async (id) => {
+              if (window.confirm("¿Eliminar esta colección?")) {
+                await onDeleteCollection(id);
+                if (selectedId === id) onSelect("");
+              }
+            }}
           />
           {isExpanded && hasChildren && renderTree(col.id, depth + 1)}
         </div>

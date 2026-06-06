@@ -48,6 +48,8 @@ export function CollectionsModal({ onClose }: Props) {
     reorderCollections,
     reorderItems,
     moveItem,
+    renameCollection,
+    deleteCollection,
   } = useCollectionsStore();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -248,6 +250,8 @@ export function CollectionsModal({ onClose }: Props) {
                 activeId={activeId}
                 onSelect={setSelectedId}
                 onCreateCollection={handleCreateCollection}
+                onRenameCollection={renameCollection}
+                onDeleteCollection={deleteCollection}
               />
             </div>
 
