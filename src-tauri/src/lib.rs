@@ -304,6 +304,9 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::tools::tools_fetch_registry,
             commands::tools::tools_install,
             commands::tools::tools_uninstall,
+            commands::tools::tools_scan_scenes,
+            commands::tools::tools_scan_avatars,
+            commands::tools::tools_run_sidecar,
             // ── Booth Dependencies ──
             commands::booth_deps::booth_deps_read,
             commands::booth_deps::booth_deps_add,

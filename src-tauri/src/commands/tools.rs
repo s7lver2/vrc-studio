@@ -275,3 +275,167 @@ pub async fn tools_uninstall(
     conn.execute("DELETE FROM tools_installed WHERE id = ?1", params![id])?;
     Ok(())
 }
+
+// ── Scene/Avatar scanning + sidecar runner ────────────────────────────────
+
+use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
+use tokio::process::Command as TokioCommand;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SceneFile {
+    pub path: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AvatarDescriptor {
+    pub name: String,
+    pub file_id: String,
+}
+
+/// Lists all .unity scene files under a project's Assets folder.
+#[tauri::command]
+pub fn tools_scan_scenes(project_path: String) -> Result<Vec<SceneFile>, AppError> {
+    let assets = std::path::Path::new(&project_path).join("Assets");
+    if !assets.exists() {
+        return Err(AppError::Io(format!("Assets folder not found: {}", assets.display())));
+    }
+    let mut scenes = Vec::new();
+    for entry in walkdir::WalkDir::new(&assets)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|x| x == "unity").unwrap_or(false))
+    {
+        let rel = entry.path()
+            .strip_prefix(&project_path)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        let name = entry.path()
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        scenes.push(SceneFile { path: rel, name });
+    }
+    Ok(scenes)
+}
+
+/// Parses a .unity scene file and returns all GameObjects with a VRC_AvatarDescriptor component.
+#[tauri::command]
+pub fn tools_scan_avatars(
+    project_path: String,
+    scene_path: String,
+) -> Result<Vec<AvatarDescriptor>, AppError> {
+    let full_path = format!("{}/{}", project_path, scene_path);
+    let text = std::fs::read_to_string(&full_path)
+        .map_err(|e| AppError::Io(e.to_string()))?;
+
+    let mut avatars = Vec::new();
+    let doc_sep = regex::Regex::new(r"--- !u!(\d+) &(\d+)").unwrap();
+    let documents: Vec<_> = doc_sep.find_iter(&text).collect();
+
+    let name_re = regex::Regex::new(r"m_Name:\s*(.+)").unwrap();
+    let file_id_re = regex::Regex::new(r"m_GameObject:\s*\{fileID:\s*(\d+)").unwrap();
+
+    for (i, header_match) in documents.iter().enumerate() {
+        let start = header_match.start();
+        let end = if i + 1 < documents.len() { documents[i + 1].start() } else { text.len() };
+        let doc_text = &text[start..end];
+
+        let class_id: u32 = doc_sep.captures(doc_text)
+            .and_then(|c| c.get(1))
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(0);
+
+        if class_id != 114 { continue; }
+
+        let is_avatar_descriptor = doc_text.contains("viewPosition:")
+            && (doc_text.contains("lipSync:") || doc_text.contains("customEyeLookSettings:"));
+
+        if !is_avatar_descriptor { continue; }
+
+        let go_file_id = file_id_re.captures(doc_text)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+
+        let go_name = find_go_name(&text, &go_file_id, &name_re);
+
+        avatars.push(AvatarDescriptor { name: go_name, file_id: go_file_id });
+    }
+
+    Ok(avatars)
+}
+
+fn find_go_name(scene_text: &str, file_id: &str, name_re: &regex::Regex) -> String {
+    let pattern = format!("&{}", file_id);
+    if let Some(pos) = scene_text.find(&pattern) {
+        let section = &scene_text[pos..std::cmp::min(scene_text.len(), pos + 500)];
+        if let Some(cap) = name_re.captures(section) {
+            return cap[1].trim().to_string();
+        }
+    }
+    format!("Avatar (fileID {})", file_id)
+}
+
+/// Spawns the tool's sidecar binary, sends request JSON via stdin,
+/// streams progress events, returns the final JSON result.
+#[tauri::command]
+pub async fn tools_run_sidecar(
+    app: tauri::AppHandle,
+    tool_id: String,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, AppError> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::Io(e.to_string()))?;
+
+    let sidecar_name = if cfg!(target_os = "windows") { "core.exe" } else { "core" };
+    let sidecar_path = app_data.join("tools").join(&tool_id).join(sidecar_name);
+
+    if !sidecar_path.exists() {
+        return Err(AppError::Io(format!("Sidecar not found: {}", sidecar_path.display())));
+    }
+
+    let request_json = serde_json::to_string(&request)
+        .map_err(|e| AppError::Parse(e.to_string()))?;
+
+    let mut child = TokioCommand::new(&sidecar_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| AppError::Io(e.to_string()))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(request_json.as_bytes()).await
+            .map_err(|e| AppError::Io(e.to_string()))?;
+        stdin.write_all(b"\n").await.ok();
+    }
+
+    let stdout = child.stdout.take().ok_or_else(|| AppError::Io("no stdout".into()))?;
+    let mut lines = AsyncBufReader::new(stdout).lines();
+    let mut last_line = String::new();
+
+    while let Some(line) = lines.next_line().await.map_err(|e| AppError::Io(e.to_string()))? {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+            if val.get("progress").is_some() {
+                let _ = app.emit("tools://sidecar-progress", &val);
+            } else {
+                last_line = line;
+            }
+        }
+    }
+
+    child.wait().await.ok();
+
+    if last_line.is_empty() {
+        return Err(AppError::Parse("Sidecar returned no output".into()));
+    }
+
+    serde_json::from_str(&last_line)
+        .map_err(|e| AppError::Parse(format!("Invalid sidecar JSON: {e}")))
+}
