@@ -4,9 +4,14 @@ import { Wrench, Store } from "lucide-react";
 import { useToolsStore } from "../store/toolsStore";
 import { ToolCard } from "../components/tools/ToolCard";
 import { Marketplace } from "../components/tools/Marketplace";
+import { AvatarPerf } from "../components/tools/runners/AvatarPerf";
 import type { InstalledTool } from "../lib/tauri";
 
 type View = "installed" | "marketplace";
+
+const RUNNERS: Record<string, React.ComponentType<{ toolId: string; onBack: () => void }>> = {
+  "avatar-performance-analyzer": AvatarPerf,
+};
 
 export default function ToolsPage() {
   const { installed, load, uninstall } = useToolsStore();
@@ -15,8 +20,12 @@ export default function ToolsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // TODO (Plan 2): render activeTool runner when not null
   if (activeTool) {
+    const Runner = RUNNERS[activeTool.id];
+    if (Runner) {
+      return <Runner toolId={activeTool.id} onBack={() => setActiveTool(null)} />;
+    }
+    // Tool sin runner implementado
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-6 py-3 border-b border-zinc-800">
@@ -27,7 +36,7 @@ export default function ToolsPage() {
           <span className="text-sm font-semibold text-zinc-100">{activeTool.name}</span>
         </div>
         <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
-          Runner para "{activeTool.name}" — implementado en Plan 2
+          Runner no implementado para "{activeTool.id}"
         </div>
       </div>
     );
