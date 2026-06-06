@@ -35,8 +35,20 @@ export interface Project {
   shader: "liltoon" | "poiyomi" | null;
   vcs_enabled: boolean;
   last_screenshot: string | null;
+  cover_image_path: string | null;
   is_compressed: boolean;
   unity_path: string;
+  folder_id: string | null;
+}
+
+export interface ProjectFolder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  color: string | null;
+  sort_order: number | null;
+  emoji: string | null;
+  image: string | null;
 }
 
 export interface UnityInstallation {
@@ -238,6 +250,9 @@ export const tauriGetProjectEarlyImports = (projectId: string): Promise<EarlyImp
 
 export const tauriSaveProjectScreenshot = (id: string, screenshotPath: string): Promise<Project> =>
   invoke("save_project_screenshot", { id, screenshotPath });
+
+export const tauriSetProjectCoverImage = (id: string, coverImagePath: string | null): Promise<Project> =>
+  invoke("set_project_cover_image", { id, coverImagePath });
 
 export interface ScannedProject {
   path: string;
@@ -569,8 +584,8 @@ export const vcs = {
     invoke<string>("vcs_read_gitignore", { projectPath }),
   writeGitignore: (projectPath: string, content: string) =>
     invoke<void>("vcs_write_gitignore", { projectPath, content }),
-  getCommitFiles: (projectPath: string, commitSha: string) =>
-    invoke<CommitDiffFile[]>("vcs_get_commit_files", { projectPath, commitSha }),
+  renameBranch: (projectPath: string, oldName: string, newName: string) =>
+    invoke<void>("vcs_rename_branch", { projectPath, oldName, newName }),
 };
 
 export interface ConflictFile {
@@ -941,6 +956,8 @@ export interface Collection {
   name: string;
   cover_url: string;
   description: string;
+  parent_id: string | null;
+  sort_order: number;
   created_at: string;
   updated_at: string;
   item_count: number;
@@ -957,6 +974,7 @@ export interface CollectionItem {
   price_display: string;
   url: string;
   added_at: string;
+  sort_order: number;
 }
 
 export const tauriCollectionsList = () => invoke<Collection[]>("collections_list");
@@ -983,6 +1001,19 @@ export const tauriCollectionGetItems = (collectionId: string) =>
   invoke<CollectionItem[]>("collection_get_items", { collectionId });
 export const tauriCollectionGetItemCollections = (source: string, source_id: string) =>
   invoke<string[]>("collection_get_item_collections", { source, sourceId: source_id });
+
+export const tauriCollectionMoveToParent = (collectionId: string, parentId: string | null) =>
+  invoke<void>("collection_move_to_parent", { collectionId, parentId });
+
+export const tauriCollectionsReorder = (ids: string[]) =>
+  invoke<void>("collections_reorder", { ids });
+
+export const tauriCollectionItemsReorder = (collectionId: string, ids: string[]) =>
+  invoke<void>("collection_items_reorder", { collectionId, ids });
+
+export const tauriCollectionItemMove = (itemId: string, fromCollectionId: string, toCollectionId: string) =>
+  invoke<void>("collection_item_move", { itemId, fromCollectionId, toCollectionId });
+
 // ── Booth Downloadables ─────────────────────────────────────────────────────
 
 export interface BoothDownloadable {
@@ -1053,14 +1084,22 @@ export const tauriProjectCloneFromGithub = (args: {
 
 export interface DiscordActivity {
   project_name?: string | null;
+  project_cover_image?: string | null;
   section: string;
+  details?: string;
   github_url?: string | null;
   unity_open: boolean;
   session_start_ts: number;
+  large_image_key?: string;
+  large_image_text?: string;
 }
 
 export async function tauriDiscordRpcUpdate(activity: DiscordActivity): Promise<void> {
   return invoke<void>("discord_rpc_update", { activity });
+}
+
+export async function tauriDiscordRpcUpdateWithCover(activity: DiscordActivity): Promise<void> {
+  return invoke<void>("discord_rpc_update_with_cover", { activity });
 }
 
 export async function tauriDiscordRpcClear(): Promise<void> {
@@ -1112,3 +1151,35 @@ export async function tauriScanVRChatPhotos(
 ): Promise<string[]> {
   return invoke<string[]>("scan_vrchat_photos", { folderPath, maxCount });
 }
+// ── Project Folders ───────────────────────────────────────────────────────────
+export const tauriCreateProjectFolder = (name: string, parent_id?: string): Promise<string> =>
+  invoke("create_project_folder", { name, parentId: parent_id ?? null });
+
+export const tauriListProjectFolders = (): Promise<ProjectFolder[]> =>
+  invoke("list_project_folders");
+
+export const tauriMoveProjectToFolder = (project_id: string, folder_id: string | null): Promise<void> =>
+  invoke("move_project_to_folder", { projectId: project_id, folderId: folder_id });
+
+export const tauriMoveProjectFolderToParent = (folder_id: string, parent_id: string | null): Promise<void> =>
+  invoke("move_project_folder_to_parent", { folderId: folder_id, parentId: parent_id });
+
+export const tauriDeleteProjectFolder = (folder_id: string): Promise<void> =>
+  invoke("delete_project_folder", { folderId: folder_id });
+
+export const tauriRenameProjectFolder = (
+  folder_id: string, name: string, color?: string | null, emoji?: string | null, image?: string | null
+): Promise<void> =>
+  invoke("rename_project_folder", { folderId: folder_id, name, color: color ?? null, emoji: emoji ?? null, image: image ?? null });
+
+export const tauriReorderProjectFolders = (ordered_ids: string[]): Promise<void> =>
+  invoke("reorder_project_folders", { orderedIds: ordered_ids });
+
+export const tauriReorderProjects = (ordered_ids: string[]): Promise<void> =>
+  invoke("reorder_projects", { orderedIds: ordered_ids });
+
+export const tauriImportInventoryItemsEarly = (project_id: string, item_ids: string[]): Promise<void> =>
+  invoke("import_inventory_items_early", { projectId: project_id, itemIds: item_ids });
+
+export const tauriIsExpositorMode = (): Promise<boolean> =>
+  invoke("is_expositor_mode");
