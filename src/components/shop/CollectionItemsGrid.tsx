@@ -1,10 +1,13 @@
 // src/components/shop/CollectionItemsGrid.tsx
+import { useState } from "react";
 import { SortableContext, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Package2, Image, BookmarkX, ShoppingCart } from "lucide-react";
-import type { CollectionItem } from "../../lib/tauri";
+import { Package2, Image, BookmarkX, ShoppingCart, Download, Loader2 } from "lucide-react";
+import type { CollectionItem, BoothDownloadable } from "../../lib/tauri";
+import { tauriStartDownload, tauriBoothListDownloadables } from "../../lib/tauri";
 import { useCartStore } from "../../store/cartStore";
 import { useShopStore } from "../../store/shopStore";
+import { BoothDownloadPickerModal } from "./BoothDownloadPickerModal";
 
 // ── SortableItemCard ─────────────────────────────────────────────────────────
 
@@ -20,6 +23,9 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
 
   const { isInCart, addItem, removeItem } = useCartStore();
   const { boothOwnedIds } = useShopStore();
+
+  const [isStarting, setIsStarting] = useState(false);
+  const [downloadables, setDownloadables] = useState<BoothDownloadable[] | null>(null);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -47,6 +53,30 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
         url: item.url,
       });
     }
+  };
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isStarting) return;
+    if (item.source !== "booth") {
+      setIsStarting(true);
+      try {
+        await tauriStartDownload({ source: item.source, source_id: item.source_id, name: item.name, author: item.author, thumbnail_url: item.thumbnail_url });
+      } finally { setIsStarting(false); }
+      return;
+    }
+    setIsStarting(true);
+    try {
+      const files = await tauriBoothListDownloadables(item.source_id);
+      if (files.length > 1) {
+        setDownloadables(files);
+      } else {
+        await tauriStartDownload({ source: item.source, source_id: item.source_id, name: item.name, author: item.author, thumbnail_url: item.thumbnail_url });
+      }
+    } catch {
+      // fallback: direct download
+      try { await tauriStartDownload({ source: item.source, source_id: item.source_id, name: item.name, author: item.author, thumbnail_url: item.thumbnail_url }); } catch { /* ignore */ }
+    } finally { setIsStarting(false); }
   };
 
   return (
@@ -93,7 +123,16 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
             <Image className="h-3 w-3" />
           </button>
         )}
-        {!isPurchased && (
+        {isPurchased ? (
+          <button
+            onClick={handleDownload}
+            disabled={isStarting}
+            className="w-6 h-6 rounded-md bg-zinc-950/80 border border-zinc-700 text-emerald-400 hover:text-emerald-300 flex items-center justify-center backdrop-blur-sm disabled:opacity-50"
+            title="Download"
+          >
+            {isStarting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+          </button>
+        ) : (
           <button
             onClick={handleCartToggle}
             className={`w-6 h-6 rounded-md bg-zinc-950/80 border border-zinc-700 flex items-center justify-center backdrop-blur-sm ${
@@ -112,6 +151,22 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
           <BookmarkX className="h-3 w-3" />
         </button>
       </div>
+
+      {/* Downloadables picker — shown when item has multiple files */}
+      {downloadables && (
+        <BoothDownloadPickerModal
+          productName={item.name}
+          downloadables={downloadables}
+          onSelect={async () => {
+            setDownloadables(null);
+            setIsStarting(true);
+            try {
+              await tauriStartDownload({ source: item.source, source_id: item.source_id, name: item.name, author: item.author, thumbnail_url: item.thumbnail_url });
+            } finally { setIsStarting(false); }
+          }}
+          onClose={() => setDownloadables(null)}
+        />
+      )}
     </div>
   );
 }
