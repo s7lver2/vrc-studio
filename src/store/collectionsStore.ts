@@ -161,12 +161,19 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
 
   moveItem: async (itemId, fromCollectionId, toCollectionId) => {
     await tauriCollectionItemMove(itemId, fromCollectionId, toCollectionId);
-    set((s) => ({
-      collections: s.collections.map((c) => {
-        if (c.id === fromCollectionId) return { ...c, item_count: Math.max(0, c.item_count - 1) };
-        if (c.id === toCollectionId)   return { ...c, item_count: c.item_count + 1 };
-        return c;
-      }),
-    }));
+    // Refetch to get accurate item_counts (handles duplicate-in-target case)
+    try {
+      const updated = await tauriCollectionsList();
+      set({ collections: updated });
+    } catch {
+      // Fallback to optimistic update if refetch fails
+      set((s) => ({
+        collections: s.collections.map((c) => {
+          if (c.id === fromCollectionId) return { ...c, item_count: Math.max(0, c.item_count - 1) };
+          if (c.id === toCollectionId)   return { ...c, item_count: c.item_count + 1 };
+          return c;
+        }),
+      }));
+    }
   },
 }));
