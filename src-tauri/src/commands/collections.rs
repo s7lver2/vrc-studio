@@ -313,7 +313,7 @@ pub fn collection_item_move(
          WHERE collection_id = ?1 AND source = ?2 AND source_id = ?3",
         params![to_collection_id, &source, &source_id],
         |row| row.get(0),
-    ).unwrap_or(0);
+    )?;
 
     if exists_in_target > 0 {
         // Ya está en destino: solo borrar del origen
