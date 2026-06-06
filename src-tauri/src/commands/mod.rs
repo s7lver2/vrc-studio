@@ -12,6 +12,7 @@ pub mod tracker;
 pub mod app_settings;
 pub mod cart;
 pub mod collections;
+pub mod tools;
 pub mod booth_deps;
 pub mod multi_avatar;
 pub mod vrchat_photos;

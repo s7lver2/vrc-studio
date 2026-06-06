@@ -299,6 +299,8 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::collections::collections_reorder,
             commands::collections::collection_items_reorder,
             commands::collections::collection_item_move,
+            // ── Tools ──
+            commands::tools::tools_list,
             // ── Booth Dependencies ──
             commands::booth_deps::booth_deps_read,
             commands::booth_deps::booth_deps_add,
