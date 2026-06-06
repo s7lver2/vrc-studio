@@ -5,8 +5,17 @@ pub mod models;
 pub mod services;
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use crate::db::DbPool;
+
+/// True si el ejecutable fue lanzado con el flag --expositor.
+static EXPOSITOR_FLAG: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn is_expositor_mode() -> bool {
+    EXPOSITOR_FLAG.load(Ordering::Relaxed)
+}
 
 /// Estado de autenticación de Booth.pm.
 /// `purchased_ids`: IDs de items comprados, cargados tras el login.
@@ -46,7 +55,13 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
         .manage(commands::build_monitor::BuildMonitorState::default())
         .manage(crate::services::discord_rpc::DiscordRpcState::default())
         .manage(crate::services::discord_auth::DiscordAuthState::default())
+        .manage(crate::services::discord_assets::DiscordAssetCache::default())
         .setup(|app| {
+            // Detectar flag --expositor en línea de comandos
+            if std::env::args().any(|a| a == "--expositor") {
+                EXPOSITOR_FLAG.store(true, Ordering::Relaxed);
+                log::info!("[expositor] Modo Expositor activado via CLI");
+            }
             let app_data_dir = app
                 .path()
                 .app_data_dir()
@@ -95,6 +110,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(tauri::generate_handler![
             // helpers
             read_file_as_string,
+            is_expositor_mode,
 
             commands::ping,
             // ── Projects ──
@@ -109,6 +125,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::projects::scan_for_projects,
             commands::projects::import_existing_project,
             commands::projects::save_project_screenshot,
+            commands::projects::set_project_cover_image,
             commands::projects::get_installed_vpm_packages,
             commands::projects::install_vpm_package_to_project,
             commands::projects::remove_vpm_package_from_project,
@@ -239,6 +256,15 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::app_settings::debug_vcc_sources,
             commands::app_settings::read_vcc_repos,
             commands::projects::fetch_vpm_repo,
+            commands::projects::create_project_folder,
+            commands::projects::list_project_folders,
+            commands::projects::move_project_to_folder,
+            commands::projects::move_project_folder_to_parent,
+            commands::projects::delete_project_folder,
+            commands::projects::rename_project_folder,
+            commands::projects::reorder_project_folders,
+            commands::projects::reorder_projects,
+            commands::projects::import_inventory_items_early,
             commands::app_settings::check_git_installed,
             commands::vcs::create_vcs_branch_from_commit,
             commands::vcs::github_list_repos,
@@ -249,6 +275,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::vcs::vcs_read_gitignore,
             commands::vcs::vcs_write_gitignore,
             commands::vcs::vcs_merge_by_sha,
+            commands::vcs::vcs_rename_branch,
             commands::inventory::download_to_temp,
             commands::shop::booth_capture_session_cookie,
             commands::inventory::reorder_folders, 
@@ -267,6 +294,11 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::collections::collection_remove_item,
             commands::collections::collection_get_items,
             commands::collections::collection_get_item_collections,
+            commands::collections::collection_update_description,
+            commands::collections::collection_move_to_parent,
+            commands::collections::collections_reorder,
+            commands::collections::collection_items_reorder,
+            commands::collections::collection_item_move,
             // ── Booth Dependencies ──
             commands::booth_deps::booth_deps_read,
             commands::booth_deps::booth_deps_add,
@@ -275,7 +307,8 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::booth_deps::project_clone_from_github,
             // ── Discord Rich Presence ──
             crate::services::discord_rpc::discord_rpc_update,
-            crate::services::discord_rpc::discord_rpc_clear,
+            crate::services::discord_rpc::discord_rpc_update_with_cover,        
+            crate::services::discord_rpc::discord_rpc_clear,        
             crate::services::discord_rpc::discord_rpc_set_enabled,
             // ── Discord Auth ──
             crate::services::discord_auth::discord_authorize,
