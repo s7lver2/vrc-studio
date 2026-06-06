@@ -146,12 +146,15 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
 
   reorderCollections: async (ids) => {
     await tauriCollectionsReorder(ids);
-    set((s) => ({
-      collections: s.collections.map((c) => {
+    set((s) => {
+      // Update sort_order values and re-sort the array so renderTree stays in sync
+      const updated = s.collections.map((c) => {
         const idx = ids.indexOf(c.id);
         return idx !== -1 ? { ...c, sort_order: idx } : c;
-      }),
-    }));
+      });
+      updated.sort((a, b) => a.sort_order - b.sort_order);
+      return { collections: updated };
+    });
   },
 
   // items live in local modal state — only persists, does not update store

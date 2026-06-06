@@ -7,6 +7,7 @@ import type { CollectionItem, BoothDownloadable } from "../../lib/tauri";
 import { tauriStartDownload, tauriBoothListDownloadables } from "../../lib/tauri";
 import { useCartStore } from "../../store/cartStore";
 import { useShopStore } from "../../store/shopStore";
+import type { ShopProduct } from "../../lib/tauri";
 import { BoothDownloadPickerModal } from "./BoothDownloadPickerModal";
 
 // ── SortableItemCard ─────────────────────────────────────────────────────────
@@ -22,7 +23,7 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
     useSortable({ id: `item:${item.id}` });
 
   const { isInCart, addItem, removeItem } = useCartStore();
-  const { boothOwnedIds } = useShopStore();
+  const { boothOwnedIds, selectProduct } = useShopStore();
 
   const [isStarting, setIsStarting] = useState(false);
   const [downloadables, setDownloadables] = useState<BoothDownloadable[] | null>(null);
@@ -37,6 +38,18 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
 
   const inCart = isInCart(item.source, item.source_id);
   const isPurchased = item.source === "booth" && boothOwnedIds.has(item.source_id);
+
+  const handleOpenProduct = () => {
+    selectProduct({
+      source: item.source as ShopProduct["source"],
+      source_id: item.source_id,
+      name: item.name,
+      author: item.author,
+      thumbnail_url: item.thumbnail_url,
+      price_display: item.price_display,
+      url: item.url,
+    });
+  };
 
   const handleCartToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -85,6 +98,7 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
       style={style}
       {...attributes}
       {...listeners}
+      onClick={handleOpenProduct}
       className="group relative bg-zinc-900 border border-zinc-800 rounded-[10px] overflow-hidden hover:border-zinc-600 transition-colors select-none"
     >
       {/* Thumbnail */}
@@ -109,10 +123,11 @@ function SortableItemCard({ item, onSetCover, onRemove }: CardProps) {
         <p className="text-[8px] text-zinc-600 truncate mt-0.5">{item.author}</p>
       </div>
 
-      {/* Hover actions — onPointerDown stopPropagation prevents drag activation */}
+      {/* Hover actions — stopPropagation prevents drag activation AND card click */}
       <div
         className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
         onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         {item.thumbnail_url && (
           <button

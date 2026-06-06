@@ -183,7 +183,9 @@ export function CollectionTree({ collections, selectedId, activeId, onSelect, on
 
   // Recursive tree render
   const renderTree = (parentId: string | null, depth: number): React.ReactNode => {
-    const children = collections.filter((c) => c.parent_id === parentId);
+    const children = collections
+      .filter((c) => c.parent_id === parentId)
+      .sort((a, b) => a.sort_order - b.sort_order);
     return children.map((col) => {
       const hasChildren = collections.some((c) => c.parent_id === col.id);
       const isExpanded = expandedIds.has(col.id);
