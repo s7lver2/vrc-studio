@@ -13,6 +13,10 @@ import {
   tauriCollectionGetItems,
   tauriCollectionGetItemCollections,
   tauriCollectionUpdateDescription,
+  tauriCollectionMoveToParent,
+  tauriCollectionsReorder,
+  tauriCollectionItemsReorder,
+  tauriCollectionItemMove,
 } from "../lib/tauri";
 
 interface CollectionsState {
@@ -31,6 +35,10 @@ interface CollectionsState {
   getCollectionItems: (collectionId: string) => Promise<CollectionItem[]>;
   getItemCollectionIds: (source: string, source_id: string) => Promise<string[]>;
   updateDescription: (id: string, description: string) => Promise<void>;
+  moveCollectionToParent: (id: string, parentId: string | null) => Promise<void>;
+  reorderCollections: (ids: string[]) => Promise<void>;
+  reorderItems: (collectionId: string, ids: string[]) => Promise<void>;
+  moveItem: (itemId: string, fromCollectionId: string, toCollectionId: string) => Promise<void>;
 
   openPicker: (product: ShopProduct) => void;
   closePicker: () => void;
@@ -124,6 +132,41 @@ export const useCollectionsStore = create<CollectionsState>((set, get) => ({
       collections: s.collections.map((c) =>
         c.id === id ? { ...c, description } : c
       ),
+    }));
+  },
+
+  moveCollectionToParent: async (id, parentId) => {
+    await tauriCollectionMoveToParent(id, parentId);
+    set((s) => ({
+      collections: s.collections.map((c) =>
+        c.id === id ? { ...c, parent_id: parentId } : c
+      ),
+    }));
+  },
+
+  reorderCollections: async (ids) => {
+    await tauriCollectionsReorder(ids);
+    set((s) => ({
+      collections: s.collections.map((c) => {
+        const idx = ids.indexOf(c.id);
+        return idx !== -1 ? { ...c, sort_order: idx } : c;
+      }),
+    }));
+  },
+
+  // items live in local modal state — only persists, does not update store
+  reorderItems: async (collectionId, ids) => {
+    await tauriCollectionItemsReorder(collectionId, ids);
+  },
+
+  moveItem: async (itemId, fromCollectionId, toCollectionId) => {
+    await tauriCollectionItemMove(itemId, fromCollectionId, toCollectionId);
+    set((s) => ({
+      collections: s.collections.map((c) => {
+        if (c.id === fromCollectionId) return { ...c, item_count: Math.max(0, c.item_count - 1) };
+        if (c.id === toCollectionId)   return { ...c, item_count: c.item_count + 1 };
+        return c;
+      }),
     }));
   },
 }));
