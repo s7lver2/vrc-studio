@@ -8,7 +8,7 @@ import { tauriSearchShop } from "../lib/tauri";
 import { useShopSearch } from "../hooks/useShopSearch";
 import { ShopHome } from "../components/shop/ShopHome";
 import { useInventoryStore } from "../store/inventoryStore";
-import { CollectionsView } from "../components/shop/CollectionsView";
+import { CollectionsModal } from "../components/shop/CollectionsModal";
 import { useAppStore } from "@/store/app";
 import { CollectionPickerModal } from "../components/shop/CollectionPickerModal";
 import { useT } from "../i18n";
@@ -243,7 +243,7 @@ export default function Shop() {
       <ProductModal />
       <CartDrawer />
 
-      {collectionsOpen && <CollectionsView onClose={() => setCollectionsOpen(false)} />}
+      {collectionsOpen && <CollectionsModal onClose={() => setCollectionsOpen(false)} />}
       {catalogOpen && <CatalogView onClose={() => setCatalogOpen(false)} />}
 
       <CollectionPickerModal />
