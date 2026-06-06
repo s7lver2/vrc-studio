@@ -1,5 +1,5 @@
 // src/components/shop/CollectionsModal.tsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DndContext, DragEndEvent, DragOverEvent, DragStartEvent,
   DragOverlay, pointerWithin, useSensor, useSensors, PointerSensor,
@@ -41,19 +41,28 @@ export function CollectionsModal({ onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [localOrder, setLocalOrder] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const localOrderRef = useRef<string[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  // Keep ref in sync with localOrder
+  useEffect(() => {
+    localOrderRef.current = localOrder;
+  }, [localOrder]);
 
   // Load items when selected collection changes
   useEffect(() => {
     if (!selectedId) { setItems([]); setLocalOrder([]); return; }
+    let cancelled = false;
     setLoading(true);
     getCollectionItems(selectedId)
       .then((loaded) => {
+        if (cancelled) return;
         setItems(loaded);
         setLocalOrder(loaded.map((i) => `item:${i.id}`));
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedId, getCollectionItems]);
 
   // Close on Escape
@@ -108,7 +117,7 @@ export function CollectionsModal({ onClose }: Props) {
         }
       } else if (oid.startsWith("item:") && selectedId) {
         // Persist reorder
-        await reorderItems(selectedId, localOrder.map((id) => id.replace("item:", "")));
+        await reorderItems(selectedId, localOrderRef.current.map((id) => id.replace("item:", "")));
       }
       return;
     }
@@ -147,7 +156,7 @@ export function CollectionsModal({ onClose }: Props) {
         }
       }
     }
-  }, [selectedId, localOrder, collections, moveItem, reorderItems, moveCollectionToParent, reorderCollections]);
+  }, [selectedId, collections, moveItem, reorderItems, moveCollectionToParent, reorderCollections]);
 
   // ── UI helpers ───────────────────────────────────────────────────────────
 
