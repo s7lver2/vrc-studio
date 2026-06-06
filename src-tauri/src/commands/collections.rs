@@ -11,8 +11,10 @@ pub struct Collection {
     pub id: String,
     pub name: String,
     pub cover_url: String,
-    pub created_at: String,
     pub description: String,
+    pub parent_id: Option<String>,
+    pub sort_order: i64,
+    pub created_at: String,
     pub updated_at: String,
     pub item_count: i64,
 }
@@ -29,31 +31,34 @@ pub struct CollectionItem {
     pub price_display: String,
     pub url: String,
     pub added_at: String,
+    pub sort_order: i64,
 }
 
 #[tauri::command]
 pub fn collections_list(pool: State<'_, DbPool>) -> Result<Vec<Collection>, AppError> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
-    "SELECT c.id, c.name, c.cover_url, c.description, c.created_at, c.updated_at,
-            COUNT(ci.id) as item_count
-     FROM shop_collections c
-     LEFT JOIN shop_collection_items ci ON ci.collection_id = c.id
-     GROUP BY c.id
-     ORDER BY c.updated_at DESC",
-)?;
-let cols = stmt
-    .query_map([], |row| {
-        Ok(Collection {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            cover_url: row.get(2)?,
-            description: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
-            item_count: row.get(6)?,
-        })
-    })?
+        "SELECT c.id, c.name, c.cover_url, c.description, c.parent_id, c.sort_order,
+                c.created_at, c.updated_at, COUNT(ci.id) as item_count
+         FROM shop_collections c
+         LEFT JOIN shop_collection_items ci ON ci.collection_id = c.id
+         GROUP BY c.id
+         ORDER BY c.sort_order ASC, c.updated_at DESC",
+    )?;
+    let cols = stmt
+        .query_map([], |row| {
+            Ok(Collection {
+                id:          row.get(0)?,
+                name:        row.get(1)?,
+                cover_url:   row.get(2)?,
+                description: row.get(3)?,
+                parent_id:   row.get(4)?,
+                sort_order:  row.get(5)?,
+                created_at:  row.get(6)?,
+                updated_at:  row.get(7)?,
+                item_count:  row.get(8)?,
+            })
+        })?
         .filter_map(|r| r.ok())
         .collect();
     Ok(cols)
@@ -77,6 +82,8 @@ pub fn collection_create(
         name,
         cover_url: String::new(),
         description: String::new(),
+        parent_id: None,
+        sort_order: 0,
         created_at: now.clone(),
         updated_at: now,
         item_count: 0,
@@ -175,24 +182,26 @@ pub fn collection_get_items(
 ) -> Result<Vec<CollectionItem>, AppError> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
-        "SELECT id, collection_id, source, source_id, name, author, thumbnail_url, price_display, url, added_at
+        "SELECT id, collection_id, source, source_id, name, author, thumbnail_url,
+                price_display, url, added_at, sort_order
          FROM shop_collection_items
          WHERE collection_id = ?1
-         ORDER BY added_at DESC",
+         ORDER BY sort_order ASC, added_at DESC",
     )?;
     let items = stmt
         .query_map(params![collection_id], |row| {
             Ok(CollectionItem {
-                id: row.get(0)?,
+                id:            row.get(0)?,
                 collection_id: row.get(1)?,
-                source: row.get(2)?,
-                source_id: row.get(3)?,
-                name: row.get(4)?,
-                author: row.get(5)?,
+                source:        row.get(2)?,
+                source_id:     row.get(3)?,
+                name:          row.get(4)?,
+                author:        row.get(5)?,
                 thumbnail_url: row.get(6)?,
                 price_display: row.get(7)?,
-                url: row.get(8)?,
-                added_at: row.get(9)?,
+                url:           row.get(8)?,
+                added_at:      row.get(9)?,
+                sort_order:    row.get(10)?,
             })
         })?
         .filter_map(|r| r.ok())
