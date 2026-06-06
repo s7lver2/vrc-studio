@@ -6,4 +6,4 @@ dist/
 tools/keys/
 tools/vrc-studio-setup.iss
 releases/
-__pycache__/
+__pycache__/.superpowers/
