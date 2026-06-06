@@ -69,6 +69,11 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (23, include_str!("migrations/023_folder_fill_rename.sql")),
     (24, include_str!("migrations/024_early_imports.sql")),
     (25, include_str!("migrations/025_early_import_sub_zip.sql")),
+    (26, include_str!("migrations/026_project_cover_image.sql")),
+    (27, include_str!("migrations/027_project_folders.sql")),
+    (28, include_str!("migrations/028_project_sort_order.sql")),
+    (29, include_str!("migrations/029_project_folder_image.sql")),
+    (30, include_str!("migrations/030_collections_folders.sql")),
 ];
 
 fn run_migrations(pool: &Pool<SqliteConnectionManager>) -> Result<(), AppError> {
