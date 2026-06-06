@@ -1,5 +1,19 @@
 // src/components/shop/CollectionsModal.tsx
 import { useState, useEffect, useCallback, useRef } from "react";
+
+/** Returns true if `ancestorId` is an ancestor of `colId` in the collection tree. */
+function isDescendant(collections: { id: string; parent_id: string | null }[], colId: string, ancestorId: string): boolean {
+  let current: string | null = ancestorId;
+  const visited = new Set<string>();
+  while (current !== null) {
+    if (visited.has(current)) break; // cycle already exists — stop
+    visited.add(current);
+    if (current === colId) return true;
+    const parent = collections.find((c) => c.id === current)?.parent_id ?? null;
+    current = parent;
+  }
+  return false;
+}
 import {
   DndContext, DragEndEvent, DragOverEvent, DragStartEvent,
   DragOverlay, pointerWithin, useSensor, useSensors, PointerSensor,
@@ -151,8 +165,10 @@ export function CollectionsModal({ onClose }: Props) {
             await reorderCollections(arrayMove(sameLevel, oldIdx, newIdx));
           }
         } else {
-          // Different level → nest under targetCol
-          await moveCollectionToParent(colId, targetColId);
+          // Different level → nest under targetCol (guard against cycles)
+          if (!isDescendant(collections, targetColId, colId)) {
+            await moveCollectionToParent(colId, targetColId);
+          }
         }
       }
     }

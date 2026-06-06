@@ -72,10 +72,16 @@ pub fn collection_create(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let conn = pool.get()?;
+    // Assign sort_order = MAX(sort_order) + 1 among root-level collections
+    let next_order: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM shop_collections WHERE parent_id IS NULL",
+        [],
+        |row| row.get(0),
+    ).unwrap_or(0);
     conn.execute(
-        "INSERT INTO shop_collections (id, name, cover_url, description, created_at, updated_at)
-         VALUES (?1, ?2, '', '', ?3, ?3)",
-        params![id, name, now],
+        "INSERT INTO shop_collections (id, name, cover_url, description, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, '', '', ?3, ?4, ?4)",
+        params![id, name, next_order, now],
     )?;
     Ok(Collection {
         id,
@@ -83,7 +89,7 @@ pub fn collection_create(
         cover_url: String::new(),
         description: String::new(),
         parent_id: None,
-        sort_order: 0,
+        sort_order: next_order,
         created_at: now.clone(),
         updated_at: now,
         item_count: 0,
@@ -263,13 +269,15 @@ pub fn collections_reorder(
     pool: State<'_, DbPool>,
     ids: Vec<String>,
 ) -> Result<(), AppError> {
-    let conn = pool.get()?;
+    let mut conn = pool.get()?;
+    let tx = conn.transaction()?;
     for (i, id) in ids.iter().enumerate() {
-        conn.execute(
+        tx.execute(
             "UPDATE shop_collections SET sort_order = ?1 WHERE id = ?2",
             params![i as i64, id],
         )?;
     }
+    tx.commit()?;
     Ok(())
 }
 
@@ -279,13 +287,15 @@ pub fn collection_items_reorder(
     collection_id: String,
     ids: Vec<String>,
 ) -> Result<(), AppError> {
-    let conn = pool.get()?;
+    let mut conn = pool.get()?;
+    let tx = conn.transaction()?;
     for (i, id) in ids.iter().enumerate() {
-        conn.execute(
+        tx.execute(
             "UPDATE shop_collection_items SET sort_order = ?1 WHERE id = ?2 AND collection_id = ?3",
             params![i as i64, id, collection_id],
         )?;
     }
+    tx.commit()?;
     Ok(())
 }
 
