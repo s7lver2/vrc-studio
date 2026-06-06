@@ -1236,3 +1236,72 @@ export async function tauriToolsInstall(
 export async function tauriToolsUninstall(id: string): Promise<void> {
   return invoke<void>("tools_uninstall", { id });
 }
+
+// ── Tools — Scene/Avatar scanning + Sidecar ───────────────────────────────
+
+export interface SceneFile {
+  path: string;
+  name: string;
+}
+
+export interface AvatarDescriptor {
+  name: string;
+  file_id: string;
+}
+
+export interface AvatarMetrics {
+  triangles: number;
+  skinned_mesh_renderers: number;
+  mesh_renderers: number;
+  material_slots: number;
+  bones: number;
+  physbone_components: number;
+  physbone_transforms: number;
+  physbone_colliders: number;
+  particle_systems: number;
+  trail_renderers: number;
+  lights: number;
+  audio_sources: number;
+  vram_mb: number;
+}
+
+export interface Recommendation {
+  metric: string;
+  severity: "critical" | "warning";
+  current_value: string;
+  limit_good: string;
+  message: string;
+}
+
+export type VrcRank = "Excellent" | "Good" | "Medium" | "Poor" | "VeryPoor";
+
+export interface AnalysisResult {
+  ok: boolean;
+  error?: string;
+  avatar_name: string;
+  scene: string;
+  metrics: AvatarMetrics;
+  rank_pc: VrcRank;
+  rank_quest: VrcRank;
+  recommendations: Recommendation[];
+  thumbnail_path?: string;
+  gltf_path?: string;
+}
+
+export async function tauriToolsScanScenes(projectPath: string): Promise<SceneFile[]> {
+  return invoke<SceneFile[]>("tools_scan_scenes", { projectPath });
+}
+
+export async function tauriToolsScanAvatars(
+  projectPath: string,
+  scenePath: string
+): Promise<AvatarDescriptor[]> {
+  return invoke<AvatarDescriptor[]>("tools_scan_avatars", { projectPath, scenePath });
+}
+
+export async function tauriToolsRunSidecar(
+  toolId: string,
+  request: object
+): Promise<AnalysisResult> {
+  return invoke<AnalysisResult>("tools_run_sidecar", { toolId, request });
+}

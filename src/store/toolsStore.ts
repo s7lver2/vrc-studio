@@ -3,10 +3,12 @@ import { create } from "zustand";
 import {
   InstalledTool,
   ToolRegistryEntry,
+  AnalysisResult,
   tauriToolsList,
   tauriToolsFetchRegistry,
   tauriToolsInstall,
   tauriToolsUninstall,
+  tauriToolsRunSidecar,
 } from "../lib/tauri";
 import { listen } from "@tauri-apps/api/event";
 
@@ -28,6 +30,7 @@ interface ToolsState {
   fetchRegistry: () => Promise<void>;
   install: (entry: ToolRegistryEntry) => Promise<void>;
   uninstall: (id: string) => Promise<void>;
+  runSidecar: (toolId: string, request: object) => Promise<AnalysisResult>;
 }
 
 export const useToolsStore = create<ToolsState>((set, get) => {
@@ -101,5 +104,7 @@ export const useToolsStore = create<ToolsState>((set, get) => {
       await tauriToolsUninstall(id);
       set((s) => ({ installed: s.installed.filter((t) => t.id !== id) }));
     },
+
+    runSidecar: (toolId, request) => tauriToolsRunSidecar(toolId, request),
   };
 });
