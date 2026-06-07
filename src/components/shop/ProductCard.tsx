@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import { ShopProduct, tauriStartDownload, tauriBoothListDownloadables, BoothDownloadable } from "../../lib/tauri";
 import { BoothDownloadPickerModal } from "./BoothDownloadPickerModal";
 import { useShopStore } from "../../store/shopStore";
@@ -20,7 +20,7 @@ const SOURCE_STYLES: Record<string, string> = {
   booth: "bg-pink-500/20 text-pink-300 border-pink-500/30",
 };
 
-export function ProductCard({ product }: Props) {
+export const ProductCard = memo(function ProductCard({ product }: Props) {
   const t = useT();
   const { selectProduct, boothOwnedIds } = useShopStore();
   const { items: inventoryItems } = useInventoryStore();
@@ -37,8 +37,9 @@ export function ProductCard({ product }: Props) {
   const isPurchased =
     product.source === "booth" && boothOwnedIds.has(product.source_id);
 
-  const isInInventory = inventoryItems.some(
-    (i) => i.source === product.source && i.source_id === product.source_id
+  const isInInventory = useMemo(
+    () => inventoryItems.some((i) => i.source === product.source && i.source_id === product.source_id),
+    [inventoryItems, product.source, product.source_id]
   );
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -283,4 +284,4 @@ export function ProductCard({ product }: Props) {
       )}
     </div>
   );
-}
+});

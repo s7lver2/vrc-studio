@@ -15,18 +15,21 @@ import {
   tauriOpenProjectInUnity,
   tauriListUnityInstallations,
   tauriBoothDepsRead,
+  tauriListProjectFolders,
   Project,
   CloneResult,
 } from "@/lib/tauri";
 import { useBoothDepsStore } from "@/store/boothDepsStore";
 import { useT } from "@/i18n";
+import { useAppearanceStore } from "@/store/appearanceStore";
 
 export default function Projects() {
   const t = useT();
   const {
     projects, isLoading, wizardOpen,
     setProjects, setLoading, removeProject, addProject, openWizard, closeWizard, updateProject,
-    markProjectOpen, openProjectIds,
+
+    markProjectOpen, openProjectIds, setFolders,
   } = useProjectsStore();
 
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
@@ -38,14 +41,17 @@ export default function Projects() {
   const [showResolverModal, setShowResolverModal] = useState(false);
   const [resolverProjectPath, setResolverProjectPath] = useState<string | null>(null);
   const { setPending } = useBoothDepsStore();
+  const expositorMode = useAppearanceStore((s) => s.expositorMode);
 
   useEffect(() => {
+    // En modo expositor los stores ya están pre-cargados con datos falsos
+    if (expositorMode) { setLoading(false); return; }
     setLoading(true);
-    tauriListProjects()
-      .then(setProjects)
+    Promise.all([tauriListProjects(), tauriListProjectFolders()])
+      .then(([projs, fols]) => { setProjects(projs); setFolders(fols); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [expositorMode]);
 
   const handleOpen = async (project: Project) => {
     const installations = await tauriListUnityInstallations().catch(() => []);
@@ -214,6 +220,7 @@ export default function Projects() {
           onClose={() => setDetailProject(null)}
           onDelete={(p) => { setDetailProject(null); setDeletingProject(p); }}
           onUpdated={handleDetailUpdated}
+          onOpen={(p) => markProjectOpen(p.id)}
         />
       )}
 

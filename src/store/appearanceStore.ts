@@ -244,6 +244,9 @@ export interface AppearanceState {
   setThemeId: (id: ThemeId) => void;
   setWallpaper: (cfg: Partial<WallpaperConfig>) => void;
   setBetaFeaturesEnabled: (v: boolean) => void;
+  /** Modo Expositor — rellena la app con datos falsos para capturas web. Solo disponible en debug. */
+  expositorMode: boolean;
+  setExpositorMode: (v: boolean) => void;
   setLoadingScreen: (v: "classic" | "carousel") => void;
   setCarouselImages: (images: CarouselImageEntry[]) => void;
   addCarouselImage: (entry: CarouselImageEntry) => void;
@@ -261,7 +264,7 @@ function load(): Omit<AppearanceState,
   "setShowTagsInGrid" | "setShowTypeIcons" | "setSidebarWidth" |
   "setFontSize" | "setAnimSpeed" | "setAccentColor" | "setBgStyle" |
   "setDefaultView" | "setThemeId" | "setWallpaper" |
-  "setBetaFeaturesEnabled" | "setLoadingScreen" | "setCarouselImages" |
+  "setBetaFeaturesEnabled" | "setExpositorMode" | "setLoadingScreen" | "setCarouselImages" |
   "addCarouselImage" | "removeCarouselImage" | "setCustomWallpaper" | "clearCustomWallpaper" |
   "setVRChatGallery"
 > {
@@ -292,6 +295,7 @@ function load(): Omit<AppearanceState,
           }
           : DEFAULT_WALLPAPER,
         betaFeaturesEnabled: parsed.betaFeaturesEnabled ?? true,
+        expositorMode: parsed.expositorMode ?? false,
         loadingScreen: (parsed.loadingScreen ?? "classic") as "classic" | "carousel",
         carouselImages: parsed.carouselImages ?? [],
         vrchatGallery: parsed.vrchatGallery ?? { consented: false, enabled: false, folderPath: "" },
@@ -316,6 +320,7 @@ function load(): Omit<AppearanceState,
     customWallpaperAccent: null,
     wallpaper: DEFAULT_WALLPAPER,
     betaFeaturesEnabled: true,
+    expositorMode: false,
     loadingScreen: "classic" as const,
     carouselImages: [],
     vrchatGallery: { consented: false, enabled: false, folderPath: "" },
@@ -337,6 +342,10 @@ export const useAppearanceStore = create<AppearanceState>((set, get) => ({
   setBetaFeaturesEnabled: (betaFeaturesEnabled) => {
     set({ betaFeaturesEnabled });
     save({ ...get(), betaFeaturesEnabled });
+  },
+  setExpositorMode: (expositorMode) => {
+    set({ expositorMode });
+    save({ ...get(), expositorMode });
   },
   setLoadingScreen: (loadingScreen) => {
     set({ loadingScreen });

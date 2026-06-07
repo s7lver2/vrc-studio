@@ -965,6 +965,332 @@ def cmd_release(forced_version=None, channel="stable", notes="", no_publish=Fals
 
     print(f"\n{BOLD}Release {version} ({channel}) completada en {elapsed()}{RESET}")
 
+
+# ─────────────────────────────────────────────
+#  TOOLS REGISTRY GENERATOR
+# ─────────────────────────────────────────────
+#
+#  Estructura de cada tool en tools/<tool-id>/tool.json:
+#
+#  {
+#    "id":               "avatar-performance-analyzer",
+#    "name":             "Avatar Performance Analyzer",
+#    "version":          "1.0.0",          ← se sobreescribe con Cargo.toml si existe
+#    "description":      "...",
+#    "author":           "s7lver",
+#    "icon_url":         "https://raw.githubusercontent.com/.../icon.png",
+#    "banner_url":       "https://raw.githubusercontent.com/.../banner.png",
+#    "screenshots":      [],
+#    "category":         "performance",    ← performance | workflow | visuals | util
+#    "requires_unity":   true,
+#    "min_unity_version": "2022.3",
+#    "featured":         false,
+#    "downloads": {
+#      "sidecar_windows": "",              ← se rellena automáticamente si hay release
+#      "sidecar_macos":   "",
+#      "sidecar_linux":   "",
+#      "ui_bundle":       ""
+#    }
+#  }
+#
+#  Uso:
+#    python tools/build.py registry              Genera registry.json localmente
+#    python tools/build.py registry --push       Genera + sube al repo GitHub
+#    python tools/build.py registry --release v1.0.0  Inyecta URLs de release
+
+TOOLS_REGISTRY_VERSION = 1
+TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
+
+# Repo donde vive el registry (formato "owner/repo")
+REGISTRY_REPO   = "s7lver2/vrc-studio"
+# Rama por defecto donde se sube el registry.json (puede sobreescribirse con --branch)
+REGISTRY_BRANCH = "main"
+# Subcarpeta dentro del repo donde vive el registry (evita colisión con código)
+REGISTRY_SUBDIR = "tools-registry"
+# URL base de raw.githubusercontent.com para assets
+REGISTRY_RAW_BASE = f"https://raw.githubusercontent.com/{REGISTRY_REPO}/{REGISTRY_BRANCH}/{REGISTRY_SUBDIR}"
+# URL que apunta al registry.json generado (pegar en REGISTRY_URL de tools.rs)
+REGISTRY_JSON_URL = f"{REGISTRY_RAW_BASE}/registry.json"
+
+# GitHub releases base del mismo repo
+TOOLS_RELEASES_BASE = f"https://github.com/{REGISTRY_REPO}/releases/download"
+
+
+def _read_cargo_tool_version(tool_dir):
+    """Lee la versión del Cargo.toml del sidecar si existe."""
+    cargo_path = os.path.join(tool_dir, "Cargo.toml")
+    if not os.path.exists(cargo_path):
+        return None
+    try:
+        for line in open(cargo_path, encoding="utf-8"):
+            m = re.match(r'version\s*=\s*"([^"]+)"', line.strip())
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def _discover_tools():
+    """
+    Escanea tools/<name>/ buscando directorios con tool.json.
+    Devuelve lista de (tool_dir, tool_meta_dict).
+    """
+    found = []
+    if not os.path.isdir(TOOLS_DIR):
+        return found
+
+    for entry in sorted(os.listdir(TOOLS_DIR)):
+        tool_dir = os.path.join(TOOLS_DIR, entry)
+        if not os.path.isdir(tool_dir):
+            continue
+        meta_path = os.path.join(tool_dir, "tool.json")
+        if not os.path.exists(meta_path):
+            # Sin tool.json → ignorar
+            continue
+        try:
+            meta = json.load(open(meta_path, encoding="utf-8"))
+        except Exception as e:
+            warn(f"  tool.json inválido en {entry}: {e}")
+            continue
+        found.append((tool_dir, meta))
+    return found
+
+
+def _build_registry_entry(tool_dir, meta, release_tag=None):
+    """
+    Construye un ToolRegistryEntry a partir de tool.json.
+    Si release_tag se provee, inyecta las URLs de descarga de ese release.
+    """
+    tool_id = meta.get("id", os.path.basename(tool_dir))
+
+    # La versión puede venir del Cargo.toml del sidecar (fuente de verdad)
+    cargo_version = _read_cargo_tool_version(tool_dir)
+    version = cargo_version or meta.get("version", "0.1.0")
+
+    tag = release_tag or f"v{version}"
+
+    # URLs de release del sidecar — se rellenan solo si el release existe
+    def sidecar_url(suffix):
+        if release_tag:
+            return f"{TOOLS_RELEASES_BASE}/{tag}/{tool_id}-{suffix}"
+        return meta.get("downloads", {}).get(
+            f"sidecar_{suffix.split('-')[0]}", ""
+        )
+
+    downloads = {
+        "ui_bundle":       meta.get("downloads", {}).get("ui_bundle", ""),
+        "sidecar_windows": sidecar_url("windows-x64.exe"),
+        "sidecar_macos":   sidecar_url("macos-arm64"),
+        "sidecar_linux":   sidecar_url("linux-x64"),
+    }
+
+    entry = {
+        "id":                tool_id,
+        "name":              meta.get("name", tool_id),
+        "version":           version,
+        "description":       meta.get("description", ""),
+        "author":            meta.get("author", ""),
+        "icon_url":          meta.get("icon_url", ""),
+        "banner_url":        meta.get("banner_url", ""),
+        "screenshots":       meta.get("screenshots", []),
+        "category":          meta.get("category", "util"),
+        "downloads":         downloads,
+        "dependencies":      meta.get("dependencies", []),
+        "requires_unity":    meta.get("requires_unity", False),
+        "min_unity_version": meta.get("min_unity_version", ""),
+        "featured":          meta.get("featured", False),
+    }
+    return entry
+
+
+def _generate_registry_json(release_tag=None):
+    """Genera el objeto registry.json completo y lo devuelve como dict."""
+    tools_found = _discover_tools()
+    if not tools_found:
+        warn("  No se encontraron tool.json en tools/*/. Crea uno primero.")
+        warn("  Ejemplo: tools/avatar-perf-core/tool.json")
+        return None
+
+    entries = []
+    for tool_dir, meta in tools_found:
+        entry = _build_registry_entry(tool_dir, meta, release_tag)
+        entries.append(entry)
+        ok(f"  ✓ {entry['id']} v{entry['version']}")
+
+    registry = {
+        "version": TOOLS_REGISTRY_VERSION,
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "tools": entries,
+    }
+    return registry
+
+
+def _write_registry(registry, out_path):
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=2, ensure_ascii=False)
+    ok(f"  registry.json → {out_path}")
+
+
+def _push_registry_to_github(registry_path, branch=None):
+    """
+    Hace push de registry.json al repo REGISTRY_REPO usando 'gh' CLI.
+    Estrategia: crea/actualiza el archivo directamente vía gh api
+    (no necesita clonar el repo de tools).
+    """
+    target_branch = branch or REGISTRY_BRANCH
+    if not shutil.which("gh"):
+        warn("  gh CLI no encontrada. Instala: https://cli.github.com/")
+        warn(f"  Sube manualmente {registry_path} a {REGISTRY_REPO}:{target_branch}/{REGISTRY_SUBDIR}/registry.json")
+        return False
+
+    content_bytes = open(registry_path, "rb").read()
+    import base64
+    content_b64 = base64.b64encode(content_bytes).decode()
+
+    # Obtener el SHA actual del archivo (necesario para actualizar, no para crear)
+    sha = ""
+    try:
+        result = subprocess.run(
+            ["gh", "api", f"repos/{REGISTRY_REPO}/contents/{REGISTRY_SUBDIR}/registry.json",
+             "--jq", ".sha",
+             "-H", f"X-GitHub-Ref: {target_branch}"],
+            capture_output=True, text=True
+        )
+        if not result.stdout.strip():
+            # Try with ?ref= query parameter via env var or direct flag
+            result2 = subprocess.run(
+                ["gh", "api", f"repos/{REGISTRY_REPO}/contents/{REGISTRY_SUBDIR}/registry.json?ref={target_branch}",
+                 "--jq", ".sha"],
+                capture_output=True, text=True
+            )
+            sha = result2.stdout.strip().strip('"')
+        else:
+            sha = result.stdout.strip().strip('"')
+    except Exception:
+        pass
+
+    # Construir el payload para la API
+    payload = {
+        "message": f"chore: update tools registry [{target_branch}]",
+        "content": content_b64,
+        "branch":  target_branch,
+    }
+    if sha:
+        payload["sha"] = sha
+
+    payload_json = json.dumps(payload)
+    tmp_payload = os.path.join(PROJECT_ROOT, ".registry_payload_tmp.json")
+    with open(tmp_payload, "w", encoding="utf-8") as f:
+        f.write(payload_json)
+
+    result = subprocess.run(
+        ["gh", "api", "--method", "PUT",
+         f"repos/{REGISTRY_REPO}/contents/{REGISTRY_SUBDIR}/registry.json",
+         "--input", tmp_payload],
+        capture_output=True, text=True, cwd=PROJECT_ROOT
+    )
+    os.remove(tmp_payload)
+
+    raw_base = f"https://raw.githubusercontent.com/{REGISTRY_REPO}/{target_branch}/{REGISTRY_SUBDIR}"
+    registry_json_url = f"{raw_base}/registry.json"
+
+    if result.returncode == 0:
+        ok(f"  registry.json subido a {REGISTRY_REPO}:{target_branch}/{REGISTRY_SUBDIR}/registry.json")
+        ok(f"  URL: {registry_json_url}")
+        return True
+    else:
+        error(f"  gh api falló: {result.stderr.strip()}")
+        warn(f"  Sube manualmente {registry_path} a {REGISTRY_REPO}:{target_branch}/registry.json")
+        return False
+
+
+def _create_tool_json_template(tool_id):
+    """Crea un tool.json de ejemplo en tools/<tool_id>/tool.json."""
+    tool_dir = os.path.join(TOOLS_DIR, tool_id)
+    os.makedirs(tool_dir, exist_ok=True)
+    meta_path = os.path.join(tool_dir, "tool.json")
+    if os.path.exists(meta_path):
+        warn(f"  {meta_path} ya existe. No sobreescribiendo.")
+        return
+
+    template = {
+        "id":                tool_id,
+        "name":              tool_id.replace("-", " ").title(),
+        "version":           "1.0.0",
+        "description":       "Descripción de la tool.",
+        "author":            "s7lver",
+        "icon_url":          f"{REGISTRY_RAW_BASE}/assets/{tool_id}/icon.png",
+        "banner_url":        f"{REGISTRY_RAW_BASE}/assets/{tool_id}/banner.png",
+        "screenshots":       [],
+        "category":          "util",
+        "requires_unity":    False,
+        "min_unity_version": "",
+        "featured":          False,
+        "downloads":         {
+            "ui_bundle":       "",
+            "sidecar_windows": "",
+            "sidecar_macos":   "",
+            "sidecar_linux":   "",
+        },
+    }
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(template, f, indent=2, ensure_ascii=False)
+    ok(f"  Creado template → {meta_path}")
+    info(f"  Edítalo y luego ejecuta: python tools/build.py registry --push")
+
+
+def cmd_registry(push=False, release_tag=None, init_tool=None, branch=None):
+    """
+    Genera registry.json a partir de tools/*/tool.json.
+    --push          Sube el JSON al repo GitHub via gh API
+    --release v1.x  Inyecta URLs de release en los downloads
+    --init <id>     Crea un tool.json de ejemplo para una nueva tool
+    --branch <name> Rama donde subir el registry (por defecto: main)
+                    Ejemplo: --branch feature/tools-system
+    """
+    step("→ registry")
+
+    if init_tool:
+        info(f"Inicializando tool.json para: {init_tool}")
+        _create_tool_json_template(init_tool)
+        return
+
+    target_branch = branch or REGISTRY_BRANCH
+
+    # Actualizar constantes derivadas de la rama elegida
+    raw_base = f"https://raw.githubusercontent.com/{REGISTRY_REPO}/{target_branch}/{REGISTRY_SUBDIR}"
+    registry_json_url = f"{raw_base}/registry.json"
+
+    info("Escaneando tools/*/tool.json…")
+    registry = _generate_registry_json(release_tag=release_tag)
+    if registry is None:
+        sys.exit(1)
+
+    # Guardar localmente en tools/
+    registry_path = os.path.join(TOOLS_DIR, "registry.json")
+    _write_registry(registry, registry_path)
+
+    # Resumen
+    n = len(registry["tools"])
+    print()
+    info(f"  {n} tool{'s' if n != 1 else ''} en el registry")
+    info(f"  Rama de destino: {BOLD}{target_branch}{RESET}")
+    info(f"  Pon esta URL en REGISTRY_REPO de src-tauri/src/commands/tools.rs")
+    info(f"  (la rama se lee dinámicamente desde app-settings.json)")
+    print(f"  {BOLD}{registry_json_url}{RESET}")
+    print()
+
+    if push:
+        step(f"Subiendo registry.json a GitHub (rama: {target_branch})…")
+        _push_registry_to_github(registry_path, branch=target_branch)
+    else:
+        info(f"  Para subir a main:                  python tools/build.py registry --push")
+        info(f"  Para subir a feature/tools-system:  python tools/build.py registry --push --branch feature/tools-system")
+
+
 # ─────────────────────────────────────────────
 #  ENTRY POINT
 # ─────────────────────────────────────────────
@@ -976,6 +1302,10 @@ def parse_args():
     channel        = "stable"
     notes          = ""
     no_publish     = False
+    push           = False
+    release_tag    = None
+    init_tool      = None
+    registry_branch = None
     filtered       = []
     i = 0
     while i < len(raw):
@@ -991,22 +1321,32 @@ def parse_args():
             notes = raw[i + 1]; i += 2
         elif raw[i] == "--no-publish":
             no_publish = True; i += 1
+        elif raw[i] == "--push":
+            push = True; i += 1
+        elif raw[i] == "--release" and i + 1 < len(raw):
+            release_tag = raw[i + 1]; i += 2
+        elif raw[i] == "--init" and i + 1 < len(raw):
+            init_tool = raw[i + 1]; i += 2
+        elif raw[i] == "--branch" and i + 1 < len(raw):
+            registry_branch = raw[i + 1]; i += 2
         elif raw[i].startswith("--"):
             error(f"Flag desconocido: {raw[i]}")
             sys.exit(1)
         else:
             filtered.append(raw[i]); i += 1
     command = filtered[0].lower() if filtered else "dev"
-    return command, forced_version, deep_clean, quick, channel, notes, no_publish
+    return command, forced_version, deep_clean, quick, channel, notes, no_publish, push, release_tag, init_tool, registry_branch
 
 def main():
-    command, forced_version, deep_clean, quick, channel, notes, no_publish = parse_args()
+    command, forced_version, deep_clean, quick, channel, notes, no_publish, push, release_tag, init_tool, registry_branch = parse_args()
     if command == "clean":
         warn("Esto eliminará dist/ y releases/." + (" Y target/." if deep_clean else ""))
         if input("  ¿Continuar? [s/N] ").strip().lower() in ("s","si","y","yes"):
             clean(deep=deep_clean)
     elif command == "release":
         cmd_release(forced_version, channel=channel, notes=notes, no_publish=no_publish)
+    elif command == "registry":
+        cmd_registry(push=push, release_tag=release_tag, init_tool=init_tool, branch=registry_branch)
     elif command == "gen-keys":
         cmd_gen_keys()
     elif command == "show-keys":

@@ -1,4 +1,4 @@
-import { Boxes, Package, ShoppingBag, Archive, Bell, Settings, User, GitBranch, ScrollText } from "lucide-react";
+import { Boxes, ShoppingBag, Archive, Bell, Settings, User, GitBranch, ScrollText, Wrench, Tv2 } from "lucide-react";
 import { useAppStore, Section } from "@/store/app";
 import { useState, useEffect } from 'react';
 import { useTrackerStore } from "@/store/trackerStore";
@@ -14,6 +14,7 @@ export function Sidebar() {
   const trackerUnread = useTrackerStore((s) => s.unreadCount);
   const logsErrorCount = useLogsStore((s) => s.errorCount);
   const sidebarWidth = useAppearanceStore((s) => s.sidebarWidth);
+  const expositorMode = useAppearanceStore((s) => s.expositorMode);
   const isNarrow = sidebarWidth === "narrow";
   const [appVersion, setAppVersion] = useState('v0.0.0');
 
@@ -25,11 +26,11 @@ export function Sidebar() {
     tourId?: string;
   }[] = [
     { section: "projects",  label: t("nav_projects"),  icon: Boxes,       tourId: "nav-projects"  },
-    { section: "packages",  label: t("nav_packages"),  icon: Package,     tourId: "nav-packages"  },
     { section: "shop",      label: t("nav_shop"),      icon: ShoppingBag, tourId: "nav-shop",      wip: true },
     { section: "inventory", label: t("nav_inventory"), icon: Archive,     tourId: "nav-inventory" },
     { section: "tracker",   label: t("nav_tracker"),   icon: Bell,        tourId: "nav-tracker",   wip: true },
     { section: "git",       label: "Git",              icon: GitBranch,   wip: true },
+    { section: "tools",     label: "Tools",            icon: Wrench },
   ];
 
   useEffect(() => {
@@ -133,6 +134,18 @@ export function Sidebar() {
         <p className="px-3 text-xs text-zinc-600 text-center mt-2 tracking-wider">
           {appVersion}
         </p>
+      )}
+      {/* Expositor Mode Indicator */}
+      {expositorMode && !isNarrow && (
+        <div className="mx-2 mb-1 px-2 py-1 rounded-md flex items-center gap-1.5 bg-violet-500/10 border border-violet-500/25">
+          <Tv2 className="h-3 w-3 text-violet-400 shrink-0" />
+          <span className="text-[9px] font-bold uppercase tracking-wider text-violet-400 truncate">Modo Expositor</span>
+        </div>
+      )}
+      {expositorMode && isNarrow && (
+        <div className="mx-auto mb-1 w-7 h-7 rounded-md flex items-center justify-center bg-violet-500/10 border border-violet-500/25" title="Modo Expositor activo">
+          <Tv2 className="h-3.5 w-3.5 text-violet-400" />
+        </div>
       )}
     </aside>
   );

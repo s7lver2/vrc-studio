@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "-p", "5199", "docs/mockups"],
       "port": 5199
+    },
+    {
+      "name": "vrcstudio-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 1420
     }
   ]
 }

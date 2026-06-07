@@ -7,6 +7,7 @@ import { useBoothStatus } from "@/hooks/useBoothStatus";
 import {
   github, GithubUserInfo,
   tauriDiscordAuthorize, tauriDiscordLogout, tauriDiscordRpcSetEnabled,
+  tauriDiscordReauthenticate,
 } from "@/lib/tauri";
 import { useAppearanceStore } from "@/store/appearanceStore";
 import { useAppStore } from "@/store/app";
@@ -201,6 +202,7 @@ const DISCORD_LOGO = (
 
 function DiscordConnectionCard() {
   const discordUser = useAppStore((s) => s.discordUser);
+  const discordAccessToken = useAppStore((s) => s.discordAccessToken);
   const setDiscordUser = useAppStore((s) => s.setDiscordUser);
   const setDiscordAccessToken = useAppStore((s) => s.setDiscordAccessToken);
   const discordRpcEnabled = useAppStore((s) => s.discordRpcEnabled);
@@ -213,7 +215,9 @@ function DiscordConnectionCard() {
   const [expanded, setExpanded] = useState(false);
 
   const isConnected = discordUser != null;
-  const statusColor = isConnected ? "#34d399" : "#52525b";
+  // Token is saved but user info wasn't restored (Discord was closed at startup, or token was refreshed)
+  const hasSavedToken = !isConnected && discordAccessToken != null;
+  const statusColor = isConnected ? "#34d399" : hasSavedToken ? "#f59e0b" : "#52525b";
 
   const accountLine = discordUser
     ? (discordUser.discriminator === "0" || discordUser.discriminator === "")
@@ -234,6 +238,26 @@ function DiscordConnectionCard() {
       setConnecting(false);
     }
   }, [setDiscordUser, setDiscordAccessToken]);
+
+  // Reconnect using saved token (no OAuth flow needed — just re-fetch user info)
+  const handleReconnect = useCallback(async () => {
+    if (!discordAccessToken) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const user = await tauriDiscordReauthenticate(discordAccessToken);
+      setDiscordUser(user);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Token is expired/invalid — clear it so the user can do a fresh OAuth flow
+      if (msg.toLowerCase().includes("401") || msg.toLowerCase().includes("unauthorized") || msg.toLowerCase().includes("expired")) {
+        setDiscordAccessToken(null);
+      }
+      setError("Token expired — please connect again");
+    } finally {
+      setConnecting(false);
+    }
+  }, [discordAccessToken, setDiscordUser, setDiscordAccessToken]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -291,7 +315,13 @@ function DiscordConnectionCard() {
           <div className="flex items-center gap-2 mb-0.5">
             <p className="text-sm font-semibold text-zinc-100">{t("conn_discord_title")}</p>
             <span className="text-[10px] font-medium" style={{ color: statusColor }}>
-              {isConnected ? t("conn_discord_status_connected") : connecting ? t("conn_discord_status_connecting") : t("conn_discord_status_disconnected")}
+              {isConnected
+                ? t("conn_discord_status_connected")
+                : connecting
+                  ? t("conn_discord_status_connecting")
+                  : hasSavedToken
+                    ? "Token saved"
+                    : t("conn_discord_status_disconnected")}
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 leading-relaxed">
@@ -320,6 +350,23 @@ function DiscordConnectionCard() {
             </>
           ) : connecting ? (
             <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+          ) : hasSavedToken ? (
+            // Token saved but user not loaded — offer quick reconnect (no OAuth) or full disconnect
+            <>
+              <button
+                onClick={handleReconnect}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-semibold text-white transition-all"
+                style={{ background: "#5865F2", boxShadow: "0 0 14px rgba(88,101,242,0.3)" }}
+              >
+                Reconnect
+              </button>
+              <button
+                onClick={handleDisconnect}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-[11px] text-zinc-500 hover:text-red-400 hover:border-red-900 transition-all"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </>
           ) : (
             <button
               onClick={handleConnect}

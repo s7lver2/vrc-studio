@@ -329,6 +329,14 @@ pub async fn vcs_create_branch_with_init(
 }
 
 #[tauri::command]
+pub async fn vcs_rename_branch(project_path: String, old_name: String, new_name: String) -> Result<(), String> {
+    let path = PathBuf::from(&project_path);
+    tokio::task::spawn_blocking(move || git_service::rename_branch(&path, &old_name, &new_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn vcs_read_gitignore(project_path: String) -> Result<String, String> {
     let path = PathBuf::from(&project_path);
     tokio::task::spawn_blocking(move || git_service::read_gitignore(&path))

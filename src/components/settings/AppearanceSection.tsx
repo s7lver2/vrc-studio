@@ -295,7 +295,6 @@ export function AppearanceSection() {
     const t = useT();
     const store = useAppearanceStore();
     const {
-        betaFeaturesEnabled, setBetaFeaturesEnabled,
         loadingScreen, setLoadingScreen,
         shopItemSize, inventoryItemSize, uiScale,
         setShopItemSize, setInventoryItemSize, setUiScale,
@@ -316,7 +315,7 @@ export function AppearanceSection() {
             <div className="flex flex-col gap-4">
                 <SectionLabel icon={Palette}>{t("appearance_presets_label")}</SectionLabel>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {(Object.values(THEMES) as AppTheme[]).map((theme) => (
+                    {(Object.values(THEMES) as AppTheme[]).filter((t) => t.id !== "wallpaper").map((theme) => (
                         <ThemePreviewCard key={theme.id} theme={theme} isActive={themeId === theme.id} onSelect={() => setThemeId(theme.id as ThemeId)} />
                     ))}
                 </div>
@@ -324,26 +323,10 @@ export function AppearanceSection() {
 
             {/* ── LOADING SCREEN ── */}
             <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                    <SectionLabel icon={MonitorIcon}>{t("appearance_loading_screen_label")}</SectionLabel>
-                    <BetaTag />
-                </div>
+                <SectionLabel icon={MonitorIcon}>{t("appearance_loading_screen_label")}</SectionLabel>
 
-                {/* Beta toggle — compact row */}
-                <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900">
-                    <div className="flex items-center gap-2.5">
-                        <FlaskConical className="h-3.5 w-3.5" style={{ color: "#fbbf24" }} />
-                        <div>
-                            <p className="text-sm font-medium text-zinc-200">{t("appearance_beta_label")}</p>
-                            <p className="text-[10px] text-zinc-600 mt-0.5">{t("appearance_beta_desc")}</p>
-                        </div>
-                    </div>
-                    <Toggle value={betaFeaturesEnabled} onChange={setBetaFeaturesEnabled} />
-                </div>
-
-                {betaFeaturesEnabled && (
-                    <>
-                        {/* Classic / Carousel picker */}
+                <>
+                    {/* Classic / Carousel picker */}
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setLoadingScreen("classic")}
@@ -441,7 +424,6 @@ export function AppearanceSection() {
                             </div>
                         </div>
                     </>
-                )}
             </div>
 
             {/* ── LAYOUT ── */}

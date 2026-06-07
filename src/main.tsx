@@ -1,6 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+/* TEMP: mock Tauri for browser screenshot mode */
+if (!(window as any).__TAURI_INTERNALS__) {
+  (window as any).__TAURI_INTERNALS__ = { invoke: () => Promise.resolve(null), transformCallback: (cb: any) => cb };
+}
 import "./index.css";
 import {
   useAppearanceStore,

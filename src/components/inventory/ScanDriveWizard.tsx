@@ -965,15 +965,16 @@ function ScannedItemRow({
 interface Props {
   onClose: () => void;
   onComplete?: (count: number) => void;
+  initialDir?: string | null;
 }
 
-export function ScanDriveWizard({ onClose, onComplete }: Props) {
+export function ScanDriveWizard({ onClose, onComplete, initialDir }: Props) {
   const t = useT();
   const [step, setStep] = useState<1 | 2>(1);
 
   const [boothPickerOpen, setBoothPickerOpen] = useState(false);
   const [boothPickerForItemId, setBoothPickerForItemId] = useState<string | null>(null);
-  const [rootDir, setRootDir] = useState<string | null>(null);
+  const [rootDir, setRootDir] = useState<string | null>(initialDir ?? null);
   const [recursive, setRecursive] = useState(true);
   const [scanTypes, setScanTypes] = useState<Set<string>>(new Set(["unitypackage", "zip", "fbx", "vrm", "glb"]));
 

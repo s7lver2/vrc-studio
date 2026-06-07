@@ -10,10 +10,11 @@ import {
   Settings as SettingsIcon, Bug,
   Archive, Download, Shield, Wifi, Palette,
   Lock, FolderOpen, Terminal, FileText, Play,
-  LogOut, X, FlaskConical
+  LogOut, X, FlaskConical, Tv2, Eye, Wrench
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CompressionSection } from "@/components/settings/CompressionSection";
+import { ToolsSection } from "@/components/settings/ToolsSection";
 import {
   tauriPing,
   tauriFetchVpmRepo,
@@ -32,6 +33,8 @@ import { UpdateSettingsPanel } from "@/components/settings/UpdateSettingsPanel";
 import { invoke } from "@tauri-apps/api/core";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { activateDemoMode, deactivateDemoMode } from "@/lib/demo";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -828,13 +831,161 @@ function UpdatesSection() {
   );
 }
 
-function LogsSection() {
+// ── Logs settings ────────────────────────────────────────────────────────────
+
+type LogDisplayLevel = "all" | "warn_error" | "error_only";
+
+function LogsSettingsSection() {
   const t = useT();
+  const [displayLevel, setDisplayLevel] = React.useState<LogDisplayLevel>("all");
+  const [exported, setExported] = React.useState(false);
+  const [cleared, setCleared] = React.useState(false);
+
+  // Import logsStore lazily at component level
+  const [logsState, setLogsState] = React.useState<{ count: number; errorCount: number; warnCount: number }>({
+    count: 0, errorCount: 0, warnCount: 0,
+  });
+
+  React.useEffect(() => {
+    import("@/store/logsStore").then(({ useLogsStore }) => {
+      const state = useLogsStore.getState();
+      setLogsState({ count: state.entries.length, errorCount: state.errorCount, warnCount: state.warnCount });
+      return useLogsStore.subscribe((s) =>
+        setLogsState({ count: s.entries.length, errorCount: s.errorCount, warnCount: s.warnCount })
+      );
+    });
+  }, []);
+
+  const handleClear = async () => {
+    const { useLogsStore } = await import("@/store/logsStore");
+    useLogsStore.getState().clear();
+    setCleared(true);
+    setTimeout(() => setCleared(false), 2000);
+  };
+
+  const handleExportReport = async () => {
+    const { useLogsStore } = await import("@/store/logsStore");
+    const entries = useLogsStore.getState().entries;
+    const appVersion = await invoke<string>("get_app_version").catch(() => "unknown");
+    const ua = navigator.userAgent;
+    const now = new Date().toISOString();
+
+    const lines: string[] = [
+      `VRC Studio — System Report`,
+      `Generated: ${now}`,
+      `App version: ${appVersion}`,
+      `Platform: ${ua}`,
+      `Log entries: ${entries.length}`,
+      ``,
+      `── LOG ENTRIES ──────────────────────────────────────────────`,
+      ...entries.slice(0, 500).map((e) => {
+        const ts = new Date(e.timestamp).toISOString();
+        return `[${ts}] [${e.level.toUpperCase()}] ${e.source ?? ""} ${e.message}${e.detail ? `\n  ${e.detail}` : ""}`;
+      }),
+    ];
+
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vrcstudio-report-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setExported(true);
+    setTimeout(() => setExported(false), 2500);
+  };
+
+  const LEVEL_OPTS: { id: LogDisplayLevel; label: string; desc: string }[] = [
+    { id: "all",        label: "All",          desc: "Show every log entry" },
+    { id: "warn_error", label: "Warn + Error",  desc: "Warnings and errors only" },
+    { id: "error_only", label: "Errors only",   desc: "Only critical errors" },
+  ];
+
   return (
     <>
-      <SectionHeader icon={Terminal} title={t("settings_logs_title")} description={t("settings_logs_desc")} />
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-        <Logs embedded />
+      <SectionHeader icon={Terminal} title="Logs & Diagnostics" description="Configure log visibility and export a system report for debugging." />
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Total entries", value: logsState.count, color: "text-zinc-300" },
+          { label: "Warnings", value: logsState.warnCount, color: "text-amber-400" },
+          { label: "Errors", value: logsState.errorCount, color: "text-red-400" },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 flex flex-col gap-1">
+            <span className={`text-xl font-bold font-mono ${stat.color}`}>{stat.value}</span>
+            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{stat.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Log level filter */}
+      <div className="flex flex-col gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Display level</p>
+        <div className="flex gap-2">
+          {LEVEL_OPTS.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setDisplayLevel(opt.id)}
+              className="flex-1 flex flex-col gap-1 px-3 py-2.5 rounded-xl border-2 text-left transition-all"
+              style={displayLevel === opt.id
+                ? { borderColor: "var(--accent-color)", background: "hsl(var(--accent-h) var(--accent-s) var(--accent-l) / 0.08)" }
+                : { borderColor: "rgb(39,39,42)", background: "rgb(24,24,27)" }}
+            >
+              <span className="text-xs font-semibold text-zinc-200">{opt.label}</span>
+              <span className="text-[10px] text-zinc-500">{opt.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden divide-y divide-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Generate system report</p>
+            <p className="text-[10px] text-zinc-500 mt-0.5">Export a .txt file with app version, platform info and all log entries</p>
+          </div>
+          <button
+            onClick={handleExportReport}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 text-xs font-medium text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors"
+          >
+            {exported ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Download className="h-3.5 w-3.5" />}
+            {exported ? "Exported!" : "Export report"}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Clear log history</p>
+            <p className="text-[10px] text-zinc-500 mt-0.5">Remove all {logsState.count} entries from the in-memory log store</p>
+          </div>
+          <button
+            onClick={handleClear}
+            disabled={logsState.count === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 text-xs font-medium text-zinc-400 hover:border-red-600/60 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {cleared ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {cleared ? "Cleared!" : "Clear logs"}
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-4">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">View full log console</p>
+            <p className="text-[10px] text-zinc-500 mt-0.5">See all entries with filtering and search in the Logs page</p>
+          </div>
+          <button
+            onClick={() => {
+              const { useAppStore } = require("@/store/app") as typeof import("@/store/app");
+              useAppStore.getState().setActiveSection("logs");
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 text-xs font-medium text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            <Terminal className="h-3.5 w-3.5" />
+            Open Logs
+          </button>
+        </div>
       </div>
     </>
   );
@@ -860,8 +1011,29 @@ function DebugSection() {
   const t = useT();
   const { fetchAll: fetchInventory, addDebugItems, clearDebugItems } = useInventoryStore();
   const { openGetStarted } = useAppStore();
+  const expositorMode = useAppearanceStore((s) => s.expositorMode);
+  const setExpositorMode = useAppearanceStore((s) => s.setExpositorMode);
+
+  const handleExpositorToggle = (enable: boolean) => {
+    setExpositorMode(enable);
+    if (enable) {
+      activateDemoMode();
+    } else {
+      deactivateDemoMode();
+    }
+  };
   const [pingResponse, setPingResponse] = useState<string | null>(null);
   const [pingError, setPingError] = useState<string | null>(null);
+
+  // Persistent connections toggle
+  const [persistConnections, setPersistConnectionsState] = useState(() => {
+    try { return localStorage.getItem("persist_connections") !== "false"; }
+    catch { return true; }
+  });
+  const setPersistConnections = (v: boolean) => {
+    setPersistConnectionsState(v);
+    try { localStorage.setItem("persist_connections", String(v)); } catch {}
+  };
 
   // reimport state
   const [reimportState, setReimportState] = useState<"idle" | "running" | "done">("idle");
@@ -1009,6 +1181,62 @@ function DebugSection() {
 
       <SectionHeader icon={Bug} title={t("settings_debug_title")} description={t("settings_debug_desc")} />
       <div className="flex flex-col gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Connections</p>
+        <SettingsCard>
+          <CardRow>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100">Persist connections on restart</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Save Discord credentials and silently reconnect on app startup. Disable if you prefer to connect manually each session.
+                </p>
+              </div>
+              <button
+                onClick={() => setPersistConnections(!persistConnections)}
+                className={`relative h-5 w-9 rounded-full transition-colors shrink-0 ${persistConnections ? "bg-red-600" : "bg-zinc-700"}`}
+                role="switch"
+                aria-checked={persistConnections}
+              >
+                <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${persistConnections ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+          </CardRow>
+        </SettingsCard>
+
+        {/* ── Expositor Mode ── */}
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+          <Tv2 className="h-3 w-3" /> Modo Expositor
+        </p>
+        <SettingsCard>
+          <CardRow last>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-100 flex items-center gap-2">
+                  Activar Modo Expositor
+                  <span className="text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded font-semibold tracking-wider">SOLO DEBUG</span>
+                </p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  Rellena la app con proyectos, inventario, commits y tracker falsos — sin necesidad de backend. Ideal para capturas y demostraciones web.
+                </p>
+                {expositorMode && (
+                  <div className="mt-2 flex items-center gap-1.5 text-[10px] text-violet-400">
+                    <Eye className="h-3 w-3" />
+                    <span>Modo Expositor activo — datos reales no se cargarán hasta desactivarlo.</span>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => handleExpositorToggle(!expositorMode)}
+                className={`relative h-5 w-9 rounded-full transition-colors shrink-0 ${expositorMode ? "bg-violet-600" : "bg-zinc-700"}`}
+                role="switch"
+                aria-checked={expositorMode}
+              >
+                <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${expositorMode ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+          </CardRow>
+        </SettingsCard>
+
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t("settings_debug")}</p>
         <SettingsCard>
           {/* Restart with Get Started */}
@@ -1265,7 +1493,7 @@ function DebugSection() {
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 
 type SettingsTab = "general" | "packages" | "connections" |
-  "storage-compression" | "updates" | "debug" | "appearance" | "logs";
+  "storage-compression" | "updates" | "debug" | "appearance" | "logs" | "tools";
 
 interface NavGroup {
   groupKey: "settings_group_app" | "settings_group_connect" | "settings_group_system";
@@ -1292,6 +1520,7 @@ const NAV_GROUPS: NavGroup[] = [
     groupKey: "settings_group_system",
     items: [
       { id: "updates", labelKey: "settings_tab_updates", icon: RefreshCw },
+      { id: "tools", labelKey: "settings_tab_tools", icon: Wrench },
       { id: "logs", labelKey: "settings_tab_logs", icon: FileText },
       { id: "debug", labelKey: "settings_tab_debug", icon: Bug },
     ],
@@ -1353,7 +1582,8 @@ export default function Settings() {
         {activeTab === "connections" && <ConnectionHub />}
         {activeTab === "storage-compression" && <StorageCompressionSection />}
         {activeTab === "updates" && <UpdatesSection />}
-        {activeTab === "logs" && <LogsSection />}
+        {activeTab === "tools" && <ToolsSection />}
+        {activeTab === "logs" && <LogsSettingsSection />}
         {activeTab === "debug" && <DebugSection />}
       </main>
     </div>

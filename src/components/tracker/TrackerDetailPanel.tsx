@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   ExternalLink, TrendingDown, Clock, Package, BarChart2,
   Loader2, Zap, AlertTriangle, Activity, Info, Settings2,
-  ChevronLeft, Play, Pause, Trash2, Bell, BellOff
+  ChevronLeft, Play, Pause, Trash2, Bell, BellOff,
 } from "lucide-react";
 import { useTrackerStore } from "@/store/trackerStore";
 import {
@@ -439,6 +439,54 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
                 .map((ev) => {
                   let payload: Record<string, unknown> = {};
                   try { payload = JSON.parse(ev.payload); } catch { }
+
+                  // new_item events (author + keyword) — show as product card
+                  if (ev.event_type === "new_item" && (payload.name || payload.thumbnail)) {
+                    const itemUrl = typeof payload.url === "string" ? payload.url : null;
+                    return (
+                      <div key={ev.id} className="flex items-center gap-3 p-3 rounded-xl border border-zinc-800/60 bg-zinc-800/20 hover:bg-zinc-800/30 transition-colors">
+                        {/* Thumbnail */}
+                        {payload.thumbnail ? (
+                          <img
+                            src={payload.thumbnail as string}
+                            alt=""
+                            className="w-12 h-12 rounded-lg object-cover shrink-0 bg-zinc-700"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                            <Package className="w-5 h-5 text-zinc-600" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className={`text-[10px] font-semibold ${EVENT_TEXT["new_item"]}`}>New item</span>
+                            <span className="text-[9px] text-zinc-600">{formatDateTime(ev.detected_at)}</span>
+                          </div>
+                          <p className="text-xs font-medium text-zinc-200 truncate">
+                            {typeof payload.name === "string" ? payload.name : `Booth #${payload.booth_id}`}
+                          </p>
+                          {(payload.price as string | number | undefined) && (
+                            <p className="text-[10px] font-mono font-bold text-emerald-400 mt-0.5">
+                              {typeof payload.price === "string" ? payload.price : `¥${payload.price}`}
+                            </p>
+                          )}
+                        </div>
+                        {itemUrl && (
+                          <a
+                            href={itemUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300 transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Other event types (price change, back in stock, etc.)
                   return (
                     <div key={ev.id} className="flex items-start gap-3 p-3 rounded-xl border border-zinc-800/60 bg-zinc-800/20 hover:bg-zinc-800/30 transition-colors">
                       <div className={`w-2 h-2 mt-1.5 rounded-full ${EVENT_DOT[ev.event_type] ?? "bg-zinc-500"}`} />
@@ -450,10 +498,8 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
                           <span className="text-[10px] text-zinc-600">{formatDateTime(ev.detected_at)}</span>
                         </div>
                         <p className="text-xs text-zinc-400 mt-0.5">
-                        {ev.event_type === "price_change" || ev.event_type === "price_drop"
+                          {ev.event_type === "price_change" || ev.event_type === "price_drop"
                             ? `Price: ¥${payload.new_price ?? "unknown"}`
-                            : ev.event_type === "new_item"
-                            ? `Booth ID: ${payload.booth_id ?? payload.name ?? ""}`
                             : (typeof payload.reason === "string" ? payload.reason : JSON.stringify(payload))}
                         </p>
                       </div>
