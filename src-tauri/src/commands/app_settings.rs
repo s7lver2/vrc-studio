@@ -46,11 +46,17 @@ pub struct AppSettings {
     /// Por defecto "main". Útil para apuntar a "feature/tools-system" durante desarrollo.
     #[serde(default = "default_tools_registry_branch")]
     pub tools_registry_branch: String,
+
+    /// Si true, los tools embebidos (como AvatarPerf) usan el SDK interno
+    /// en lugar de llamar a Tauri directamente. Por defecto true.
+    #[serde(default = "default_use_sdk_internally")]
+    pub use_sdk_internally: bool,
 }
 
 fn default_image_cache_enabled() -> bool { true }
 fn default_image_cache_max_count() -> u32 { 300 }
 fn default_tools_registry_branch() -> String { "main".to_string() }
+fn default_use_sdk_internally() -> bool { true }
 
 fn default_unity_boot_wait_secs() -> u32 { 180 }
 
