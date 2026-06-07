@@ -67,7 +67,7 @@ export function AvatarPerfMetrics({ result, activeTab, onTabChange }: Props) {
   const warnCount = result.recommendations.filter((r) => r.severity === "warning").length;
 
   return (
-    <div className="flex flex-col overflow-hidden h-full">
+    <div className={`flex flex-col overflow-hidden ${activeTab === "metrics" ? "h-full" : "shrink-0"}`}>
       {/* Platform tabs */}
       <div className="flex border-b border-zinc-800 bg-zinc-950 shrink-0">
         <button
@@ -106,7 +106,7 @@ export function AvatarPerfMetrics({ result, activeTab, onTabChange }: Props) {
       </div>
 
       {/* Metrics list */}
-      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">
+      {activeTab === "metrics" && <><div className="flex-1 overflow-y-auto p-3 flex flex-col gap-1.5">
         {PC_METRICS.map((def) => {
           const raw = result.metrics[def.key] as number;
           const status = getStatus(raw, def.limitGood, def.limitPoor);
@@ -153,7 +153,8 @@ export function AvatarPerfMetrics({ result, activeTab, onTabChange }: Props) {
             Ver fixes →
           </button>
         )}
-      </div>
+      </div></>
+    }
     </div>
   );
 }
