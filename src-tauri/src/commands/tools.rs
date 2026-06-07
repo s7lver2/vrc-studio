@@ -444,8 +444,12 @@ pub fn tools_scan_avatars(
 
         if class_id != 114 { continue; }
 
-        let is_avatar_descriptor = doc_text.contains("viewPosition:")
-            && (doc_text.contains("lipSync:") || doc_text.contains("customEyeLookSettings:"));
+        let is_avatar_descriptor = doc_text.contains("VRC_AvatarDescriptor")
+            || (doc_text.contains("viewPosition:")
+                && (doc_text.contains("lipSync:")
+                    || doc_text.contains("customEyeLookSettings:")
+                    || doc_text.contains("enableEyeLook:")
+                    || doc_text.contains("AnimationLayers:")));
 
         if !is_avatar_descriptor { continue; }
 
