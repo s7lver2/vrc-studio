@@ -10,10 +10,21 @@ Modos:
   python tools/build.py --quick      Build debug compilado + copia directa (sin wizard)
   python tools/build.py clean        Limpia dist/ y releases/
   python tools/build.py clean --deep También limpia target/ y node_modules/
-  python tools/build.py release                        Build todas las plataformas
+
+  python tools/build.py release                        Build todas las plataformas (stable)
   python tools/build.py release --version 1.2.3        Fuerza versión explícita
   python tools/build.py release --version 1.2.3 --no-publish  Solo compilar y firmar
   python tools/build.py release --version 1.2.3 --channel testing
+  python tools/build.py release --notes "Notas de la release"
+
+  python tools/build.py release --branch feature/tools-system
+    → Beta privada: slug=tools-system, build número auto-incrementado,
+      code generado en beta-registry.json, GitHub Release taggeado beta-tools-system-N
+
+  python tools/build.py beta-codes            Lista los códigos de beta actuales
+  python tools/build.py beta-codes --set <slug> <code>   Fuerza un código concreto
+  python tools/build.py beta-codes --remove <slug>        Elimina una beta del registry
+
   python tools/build.py gen-keys     Genera par de claves Ed25519
   python tools/build.py show-keys    Muestra las claves públicas actuales
 
@@ -22,7 +33,12 @@ Cross-compilation sin Docker:
   pip install ziglang
 """
 
-import argparse, datetime, json, os, platform, re, shutil, subprocess, sys, textwrap, time
+import argparse, datetime, json, os, platform, random, re, shutil, string, subprocess, sys, textwrap, time, urllib.request
+
+# Force UTF-8 output on Windows
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN CENTRAL — NADA MÁS QUE EDITAR
@@ -41,6 +57,8 @@ KEYS_DIR       = os.path.join(PROJECT_ROOT, "tools", "keys")
 UPDATE_MANIFEST_STABLE  = os.path.join(RELEASE_DIR, "update-stable.json")
 UPDATE_MANIFEST_TESTING = os.path.join(RELEASE_DIR, "update-testing.json")
 GITHUB_RELEASES_BASE    = "https://github.com/s7lver2/vrc-studio/releases/download"
+GITHUB_REPO             = "s7lver2/vrc-studio"
+BETA_REGISTRY_FILE      = os.path.join(PROJECT_ROOT, "beta-registry.json")
 PUBLISHER               = "Tu Nombre / Equipo"
 PUBLISHER_URL           = "https://github.com/s7lver2/vrc-studio"
 
@@ -67,12 +85,14 @@ GREEN = "\033[32m" if _HAS_COLOR else ""
 CYAN  = "\033[36m" if _HAS_COLOR else ""
 YELLOW= "\033[33m" if _HAS_COLOR else ""
 RED   = "\033[31m" if _HAS_COLOR else ""
+PURPLE= "\033[35m" if _HAS_COLOR else ""
 
 def ok(msg):    print(f"{GREEN}✓{RESET} {msg}")
 def info(msg):  print(f"{CYAN}▶{RESET} {msg}")
 def warn(msg):  print(f"{YELLOW}⚠{RESET}  {msg}")
 def error(msg): print(f"{RED}✗{RESET} {msg}", file=sys.stderr)
 def step(msg):  print(f"\n{BOLD}→ {msg}{RESET}")
+def beta(msg):  print(f"{PURPLE}β{RESET} {msg}")
 
 _BUILD_START = time.monotonic()
 def elapsed():
@@ -103,7 +123,7 @@ def _sanitize_version(v):
     v = v.lstrip("v")
     m = re.match(r"(\d+(?:\.\d+)*)", v)
     if not m:
-        return f"0.0.0"
+        return "0.0.0"
     parts = m.group(1).split(".")
     while len(parts) < 3:
         parts.append("0")
@@ -161,7 +181,6 @@ def _patch_tauri_version(version):
             continue
         content = open(path, encoding="utf-8").read()
         if path.endswith(".toml"):
-            # Solo la primera aparición de version = "..." (la del [package])
             new_content = re.sub(
                 r'^(version\s*=\s*")[^"]+(")',
                 f'\\g<1>{version}\\g<2>',
@@ -194,6 +213,165 @@ def clean(deep=False):
     os.makedirs(BUILD_DIR,   exist_ok=True)
     os.makedirs(RELEASE_DIR, exist_ok=True)
     ok("Directorios limpios")
+
+# ─────────────────────────────────────────────
+#  BETA UTILITIES
+# ─────────────────────────────────────────────
+
+def _branch_to_slug(branch: str) -> str:
+    """
+    Converts a branch name to a beta slug.
+    feature/tools-system → tools-system
+    experimental/new-ui  → new-ui
+    my-feature           → my-feature
+    """
+    # Strip known prefixes
+    for prefix in ("feature/", "feat/", "experimental/", "wip/", "dev/"):
+        if branch.startswith(prefix):
+            branch = branch[len(prefix):]
+            break
+    # Replace remaining slashes and underscores with dashes, lowercase
+    slug = re.sub(r"[/_\s]+", "-", branch).lower()
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = slug.strip("-")
+    return slug or "unknown"
+
+def _slug_to_name(slug: str) -> str:
+    """tools-system → Tools System"""
+    return " ".join(word.capitalize() for word in slug.split("-"))
+
+def _load_beta_registry() -> dict:
+    if os.path.exists(BETA_REGISTRY_FILE):
+        try:
+            return json.loads(open(BETA_REGISTRY_FILE, encoding="utf-8").read())
+        except Exception:
+            pass
+    return {"codes": {}}
+
+def _save_beta_registry(registry: dict):
+    with open(BETA_REGISTRY_FILE, "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+def _generate_beta_code(slug: str) -> str:
+    """
+    Generates a stable, unique beta access code for a slug.
+    First call creates it; subsequent calls for the same slug reuse it.
+    Format: TOOLS-SYSTEM-XXXX (slug uppercased + 4-char random suffix).
+    """
+    registry = _load_beta_registry()
+    # Check if this slug already has a code
+    for code, entry in registry["codes"].items():
+        if entry.get("slug") == slug:
+            return code
+    # Generate a new code
+    prefix = slug.upper().replace("-", "-")[:20]
+    suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    code = f"{prefix}-{suffix}"
+    return code
+
+def _ensure_beta_registry_entry(slug: str, name: str, description: str = "") -> str:
+    """
+    Ensures slug has an entry in beta-registry.json.
+    Returns the access code for this slug.
+    """
+    registry = _load_beta_registry()
+
+    # Find existing code for this slug
+    existing_code = None
+    for code, entry in registry["codes"].items():
+        if entry.get("slug") == slug:
+            existing_code = code
+            # Update name/description if provided
+            if name:
+                entry["name"] = name
+            if description:
+                entry["description"] = description
+            break
+
+    if existing_code is None:
+        # Create new entry
+        code = _generate_beta_code(slug)
+        registry["codes"][code] = {
+            "slug":        slug,
+            "name":        name or _slug_to_name(slug),
+            "description": description,
+        }
+        _save_beta_registry(registry)
+        return code
+    else:
+        _save_beta_registry(registry)
+        return existing_code
+
+def _next_beta_build_number(slug: str) -> int:
+    """
+    Queries GitHub API to find the highest existing build number for this beta slug.
+    Returns highest + 1. Falls back to 1 if no releases found or API unavailable.
+    """
+    step(f"Consultando GitHub para determinar el próximo build number (slug={slug})")
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=100"
+        req = urllib.request.Request(
+            api_url,
+            headers={"User-Agent": "vrc-studio-build", "Accept": "application/vnd.github+json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            releases = json.loads(resp.read().decode())
+        prefix = f"beta-{slug}-"
+        max_build = 0
+        for rel in releases:
+            tag = rel.get("tag_name", "")
+            if tag.startswith(prefix):
+                try:
+                    n = int(tag[len(prefix):])
+                    max_build = max(max_build, n)
+                except ValueError:
+                    pass
+        next_build = max_build + 1
+        info(f"  Último build: #{max_build} → próximo: #{next_build}")
+        return next_build
+    except Exception as e:
+        warn(f"  No se pudo consultar GitHub ({e}) — usando build #1")
+        return 1
+
+def _commit_beta_registry(slug: str, build_num: int):
+    """Commits the updated beta-registry.json to the current branch."""
+    try:
+        subprocess.run(
+            ["git", "add", "beta-registry.json"],
+            cwd=PROJECT_ROOT, check=True, stdout=subprocess.DEVNULL
+        )
+        # Only commit if there are staged changes
+        status = subprocess.check_output(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=PROJECT_ROOT, stderr=subprocess.DEVNULL
+        ).decode().strip()
+        if status:
+            subprocess.run(
+                ["git", "commit", "-m",
+                 f"chore(beta): register {slug} build #{build_num} in beta-registry.json"],
+                cwd=PROJECT_ROOT, check=True,
+                stdout=subprocess.DEVNULL
+            )
+            ok("beta-registry.json commiteado")
+    except Exception as e:
+        warn(f"  No se pudo commitear beta-registry.json: {e}")
+
+def _push_beta_registry():
+    """Pushes the current branch to origin so beta-registry.json is live."""
+    try:
+        current_branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=PROJECT_ROOT, stderr=subprocess.DEVNULL
+        ).decode().strip()
+        subprocess.run(
+            ["git", "push", "origin", current_branch],
+            cwd=PROJECT_ROOT, check=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        ok(f"Rama {current_branch} pusheada → beta-registry.json visible en GitHub raw")
+    except Exception as e:
+        warn(f"  Push falló: {e}. Haz push manualmente para que el código sea válido.")
 
 # ─────────────────────────────────────────────
 #  BUILD: TAURI
@@ -310,7 +488,6 @@ def build_tauri(platform_key, version, debug=False):
         return None, None
 
     # ── Copiar a BUILD_DIR ────────────────────────────────────────────────────
-    # Copia todo el directorio release (incluye WebView2Loader.dll en Windows)
     _SKIP_DIRS = {"bundle", "incremental", ".fingerprint", "deps", "build", "examples"}
     _SKIP_EXTS = {".pdb", ".d", ".rlib", ".rmeta", ".exp", ".lib"}
 
@@ -822,6 +999,74 @@ def publish_github_release(version, channel, notes, manifest_path):
     except subprocess.CalledProcessError as e:
         warn(f"gh release create falló (exit={e.returncode}). Publícalo manualmente.")
 
+def publish_github_beta_release(slug, build_num, notes, installer_files):
+    """
+    Creates a GitHub prerelease tagged beta-<slug>-<N>.
+    Asset names use the beta tag format so the Rust updater can find them.
+    """
+    step(f"Publicando GitHub Beta Release → beta-{slug}-{build_num}")
+    if not _has_gh():
+        warn("`gh` CLI no instalada. Instala: https://cli.github.com/")
+        _print_beta_manual_steps(slug, build_num, installer_files)
+        return
+
+    tag   = f"beta-{slug}-{build_num}"
+    title = f"[Beta] {_slug_to_name(slug)} Build #{build_num}"
+    body  = notes or f"Private beta build #{build_num} for {_slug_to_name(slug)}."
+    body += f"\n\n**Slug:** `{slug}`  \n**Build:** `#{build_num}`\n\n"
+    body += "_This is a pre-release. Install via Settings → Updates → Private Betas._"
+
+    # Rename installer files to include platform key for the Rust asset matcher
+    # Expected format: anything containing "windows-amd64", "darwin-arm64", etc.
+    renamed = []
+    for fpath in installer_files:
+        fname  = os.path.basename(fpath)
+        # If already has platform key, keep as is; otherwise add it
+        has_pk = any(pk in fname for pk in PLATFORMS)
+        if not has_pk:
+            pk      = HOST_PLATFORM
+            base, _ = os.path.splitext(fname)
+            ext     = "".join(re.findall(r"\.[a-zA-Z0-9]+", fname)[-1:])
+            newname = f"{base}-{pk}{ext}"
+            newpath = os.path.join(os.path.dirname(fpath), newname)
+            shutil.copy2(fpath, newpath)
+            renamed.append(newpath)
+        else:
+            renamed.append(fpath)
+
+    # Tag and push
+    subprocess.run(["git", "tag", "-f", tag], cwd=PROJECT_ROOT,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["git", "push", "origin", tag, "--force"],
+                   cwd=PROJECT_ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    cmd = [
+        "gh", "release", "create", tag,
+        "--title", title,
+        "--notes", body,
+        "--prerelease",
+        "--latest=false",
+        "--verify-tag",
+    ] + renamed
+
+    try:
+        run(cmd, cwd=PROJECT_ROOT)
+        ok(f"GitHub Beta Release → {tag}")
+        ok(f"  URL: https://github.com/{GITHUB_REPO}/releases/tag/{tag}")
+    except subprocess.CalledProcessError as e:
+        warn(f"gh release create falló (exit={e.returncode}).")
+        _print_beta_manual_steps(slug, build_num, renamed)
+
+def _print_beta_manual_steps(slug, build_num, files):
+    tag = f"beta-{slug}-{build_num}"
+    print(f"\n{BOLD}Pasos manuales para publicar la beta:{RESET}")
+    print(f"  1. git tag -f {tag} && git push origin {tag} --force")
+    print(f"  2. En GitHub → New Release → tag: {tag}")
+    print(f"     Marcar como: Pre-release | Latest: false")
+    print(f"  3. Subir estos archivos:")
+    for f in files:
+        print(f"     • {os.path.basename(f)}")
+
 # ─────────────────────────────────────────────
 #  COMANDOS PRINCIPALES
 # ─────────────────────────────────────────────
@@ -832,74 +1077,6 @@ def cmd_dev(forced_version=None, quick=False):
     npm = shutil.which("npm") or "npm"
 
     if quick:
-        # build --debug rápido + copia directa
-        version, _, _ = get_version(forced_version)
-        _patch_tauri_version(version)
-
-        # Limpiar .next-equivalent (dist/) para forzar rebuild
-        for d in [os.path.join(PROJECT_ROOT, "dist")]:
-            if os.path.exists(d):
-                shutil.rmtree(d, ignore_errors=True)
-                info(f"  {d} eliminado")
-
-        run([npm, "run", "tauri", "build", "--", "--debug",
-             "--target", PLATFORMS[HOST_PLATFORM]["rust_target"]],
-            cwd=PROJECT_ROOT)
-        ok("Build dev completado.")
-        return
-
-    # Modo dev: lanza tauri dev con HMR completo
-    step("→ Iniciando VRC Studio en modo desarrollo (HMR)")
-    npm = shutil.which("npm") or "npm"
-
-    # npm install si hace falta
-    if not os.path.isdir(os.path.join(PROJECT_ROOT, "node_modules")):
-        info("  Instalando dependencias npm…")
-        run([npm, "install"], cwd=PROJECT_ROOT)
-
-    info("  Lanzando: npm run tauri dev")
-    info("  (Ctrl+C para salir · los cambios en src/ se recargan en tiempo real)")
-    print()
-
-    # Lanzar tauri dev — esto bloquea hasta que el usuario hace Ctrl+C
-    try:
-        subprocess.run(
-            [npm, "run", "tauri", "dev"],
-            cwd=PROJECT_ROOT
-        )
-    except KeyboardInterrupt:
-        print()
-        ok("Modo desarrollo cerrado.")
-    return
-
-    if not app_bundle:
-        error("Build falló.")
-        sys.exit(1)
-
-    if "windows" in HOST_PLATFORM:
-        create_windows_installer(app_bundle, version, HOST_PLATFORM)
-        # Lanzar el wizard
-        candidates = [
-            f for f in os.listdir(RELEASE_DIR)
-            if f.endswith(".exe") and "setup" in f.lower()
-        ]
-        if candidates:
-            installer = os.path.join(RELEASE_DIR, sorted(candidates)[-1])
-            info(f"Lanzando instalador → {os.path.basename(installer)}")
-            subprocess.run([installer])
-    else:
-        create_unix_installer(HOST_PLATFORM, app_bundle, version)
-
-    print(f"\n{BOLD}Build completado en {elapsed()}{RESET}")
-
-def cmd_dev(forced_version=None, quick=False):
-    step("→ dev" + (" [--quick]" if quick else ""))
-    info(f"Host: {HOST_PLATFORM}")
-
-    npm = shutil.which("npm") or "npm"
-
-    if quick:
-        # build --debug rápido + copia directa (comportamiento anterior)
         version, _, _ = get_version(forced_version)
         _patch_tauri_version(version)
 
@@ -914,7 +1091,6 @@ def cmd_dev(forced_version=None, quick=False):
         ok("Build dev completado.")
         return
 
-    # Modo dev: lanza tauri dev con HMR completo
     step("→ Iniciando VRC Studio en modo desarrollo (HMR)")
 
     if not os.path.isdir(os.path.join(PROJECT_ROOT, "node_modules")):
@@ -926,10 +1102,7 @@ def cmd_dev(forced_version=None, quick=False):
     print()
 
     try:
-        subprocess.run(
-            [npm, "run", "tauri", "dev"],
-            cwd=PROJECT_ROOT
-        )
+        subprocess.run([npm, "run", "tauri", "dev"], cwd=PROJECT_ROOT)
     except KeyboardInterrupt:
         print()
         ok("Modo desarrollo cerrado.")
@@ -965,17 +1138,150 @@ def cmd_release(forced_version=None, channel="stable", notes="", no_publish=Fals
 
     print(f"\n{BOLD}Release {version} ({channel}) completada en {elapsed()}{RESET}")
 
+def cmd_beta_release(branch, notes="", no_publish=False, name="", description=""):
+    """
+    Builds and publishes a private beta release for a feature branch.
+
+    Flow:
+      1. Derive slug from branch name
+      2. Auto-increment build number from GitHub releases
+      3. Build the app (host platform only — beta releases target current dev machine)
+      4. Create installer
+      5. Ensure beta-registry.json has an entry (generate code if needed)
+      6. Commit & push beta-registry.json
+      7. Create GitHub prerelease tagged beta-<slug>-<N>
+    """
+    slug      = _branch_to_slug(branch)
+    beta_name = name or _slug_to_name(slug)
+
+    print(f"\n{PURPLE}{'─'*60}{RESET}")
+    beta(f"Beta Release  branch={branch}")
+    beta(f"Slug:         {BOLD}{slug}{RESET}")
+    beta(f"Name:         {beta_name}")
+    print(f"{PURPLE}{'─'*60}{RESET}\n")
+
+    # 1. Determine build number
+    build_num = _next_beta_build_number(slug)
+    # Use a pseudo semver for Tauri (Tauri requires semver, but beta uses build num)
+    # We bake the build number into the patch: e.g., 0.0.<build_num>
+    base_version = _read_cargo_version() or "0.1.0"
+    major, minor, _ = (_sanitize_version(base_version) + ".0.0").split(".")[:3]
+    fake_version = f"{major}.{minor}.{build_num}"
+
+    info(f"Build #{build_num}  (Tauri version baked as {fake_version})")
+
+    if input(f"  ¿Publicar beta-{slug}-{build_num}? [s/N] ").strip().lower() not in ("s","si","y","yes"):
+        sys.exit(0)
+
+    clean(deep=False)
+
+    # 2. Build for host platform only
+    step(f"Platform: {HOST_PLATFORM}")
+    app_bundle, exe_name = build_tauri(HOST_PLATFORM, fake_version)
+    if not app_bundle:
+        error("Build falló.")
+        sys.exit(1)
+
+    # 3. Create installer
+    installer_files = []
+    if "windows" in HOST_PLATFORM:
+        iss = create_windows_installer(app_bundle, fake_version, HOST_PLATFORM)
+        # Find the generated .exe
+        for f in os.listdir(RELEASE_DIR):
+            if f.endswith(".exe") and "setup" in f.lower():
+                installer_files.append(os.path.join(RELEASE_DIR, f))
+    else:
+        tar = create_unix_installer(HOST_PLATFORM, app_bundle, fake_version)
+        installer_files.append(tar)
+
+    if not installer_files:
+        warn("No se encontraron archivos de instalador — la release se publicará sin assets.")
+
+    # 4. Ensure beta-registry.json entry
+    step("Actualizando beta-registry.json")
+    code = _ensure_beta_registry_entry(slug, beta_name, description)
+    ok(f"Código de acceso: {BOLD}{code}{RESET}")
+    ok(f"Slug:            {slug}")
+    ok(f"Build:           #{build_num}")
+
+    if not no_publish:
+        # 5. Commit and push beta-registry.json so the code is live
+        _commit_beta_registry(slug, build_num)
+        _push_beta_registry()
+
+        # 6. Create GitHub Release
+        publish_github_beta_release(slug, build_num, notes, installer_files)
+    else:
+        warn("--no-publish: artefactos generados localmente.")
+        _print_beta_manual_steps(slug, build_num, installer_files)
+
+    # 7. Summary
+    print(f"\n{PURPLE}{'═'*60}{RESET}")
+    print(f"{BOLD}Beta {build_num} publicada:{RESET}")
+    print(f"  Tag:    beta-{slug}-{build_num}")
+    print(f"  Código: {BOLD}{code}{RESET}  ← comparte este código con los testers")
+    print(f"  Los testers lo introducen en: Settings → Updates → Betas privadas")
+    print(f"{PURPLE}{'═'*60}{RESET}\n")
+    print(f"Completado en {elapsed()}")
+
+def cmd_beta_codes(set_slug=None, set_code=None, remove_slug=None):
+    """Lists, adds, or removes beta codes from beta-registry.json."""
+    step("Beta Codes — beta-registry.json")
+
+    if remove_slug:
+        registry = _load_beta_registry()
+        to_remove = [c for c, e in registry["codes"].items() if e.get("slug") == remove_slug]
+        if not to_remove:
+            warn(f"  No hay entrada para slug '{remove_slug}'")
+            return
+        for c in to_remove:
+            del registry["codes"][c]
+        _save_beta_registry(registry)
+        ok(f"  Eliminado slug '{remove_slug}' ({', '.join(to_remove)})")
+        return
+
+    if set_slug and set_code:
+        registry = _load_beta_registry()
+        # Remove existing entries for this slug
+        for c in [c for c, e in registry["codes"].items() if e.get("slug") == set_slug]:
+            del registry["codes"][c]
+        registry["codes"][set_code.upper()] = {
+            "slug":        set_slug,
+            "name":        _slug_to_name(set_slug),
+            "description": "",
+        }
+        _save_beta_registry(registry)
+        ok(f"  {set_code.upper()} → {set_slug}")
+        return
+
+    # List all
+    registry = _load_beta_registry()
+    if not registry["codes"]:
+        print("  (sin betas registradas)")
+        return
+    print(f"\n  {'CÓDIGO':<28}  {'SLUG':<24}  NOMBRE")
+    print(f"  {'─'*28}  {'─'*24}  {'─'*30}")
+    for code, entry in sorted(registry["codes"].items()):
+        print(f"  {BOLD}{code:<28}{RESET}  {entry.get('slug',''):<24}  {entry.get('name','')}")
+    print()
+
 # ─────────────────────────────────────────────
 #  ENTRY POINT
 # ─────────────────────────────────────────────
 def parse_args():
-    raw = sys.argv[1:]
+    raw            = sys.argv[1:]
     forced_version = None
     deep_clean     = False
     quick          = False
     channel        = "stable"
     notes          = ""
     no_publish     = False
+    branch         = None
+    beta_name      = ""
+    beta_desc      = ""
+    set_slug       = None
+    set_code       = None
+    remove_slug    = None
     filtered       = []
     i = 0
     while i < len(raw):
@@ -991,26 +1297,51 @@ def parse_args():
             notes = raw[i + 1]; i += 2
         elif raw[i] == "--no-publish":
             no_publish = True; i += 1
+        elif raw[i] == "--branch" and i + 1 < len(raw):
+            branch = raw[i + 1]; i += 2
+        elif raw[i] == "--name" and i + 1 < len(raw):
+            beta_name = raw[i + 1]; i += 2
+        elif raw[i] == "--description" and i + 1 < len(raw):
+            beta_desc = raw[i + 1]; i += 2
+        elif raw[i] == "--set" and i + 2 < len(raw):
+            set_slug = raw[i + 1]; set_code = raw[i + 2]; i += 3
+        elif raw[i] == "--remove" and i + 1 < len(raw):
+            remove_slug = raw[i + 1]; i += 2
         elif raw[i].startswith("--"):
             error(f"Flag desconocido: {raw[i]}")
             sys.exit(1)
         else:
             filtered.append(raw[i]); i += 1
     command = filtered[0].lower() if filtered else "dev"
-    return command, forced_version, deep_clean, quick, channel, notes, no_publish
+    return (command, forced_version, deep_clean, quick, channel, notes,
+            no_publish, branch, beta_name, beta_desc, set_slug, set_code, remove_slug)
 
 def main():
-    command, forced_version, deep_clean, quick, channel, notes, no_publish = parse_args()
+    (command, forced_version, deep_clean, quick, channel, notes,
+     no_publish, branch, beta_name, beta_desc, set_slug, set_code, remove_slug) = parse_args()
+
     if command == "clean":
         warn("Esto eliminará dist/ y releases/." + (" Y target/." if deep_clean else ""))
         if input("  ¿Continuar? [s/N] ").strip().lower() in ("s","si","y","yes"):
             clean(deep=deep_clean)
+
     elif command == "release":
-        cmd_release(forced_version, channel=channel, notes=notes, no_publish=no_publish)
+        if branch:
+            # Beta mode — branch overrides channel
+            cmd_beta_release(branch, notes=notes, no_publish=no_publish,
+                             name=beta_name, description=beta_desc)
+        else:
+            cmd_release(forced_version, channel=channel, notes=notes, no_publish=no_publish)
+
+    elif command == "beta-codes":
+        cmd_beta_codes(set_slug=set_slug, set_code=set_code, remove_slug=remove_slug)
+
     elif command == "gen-keys":
         cmd_gen_keys()
+
     elif command == "show-keys":
         cmd_show_keys()
+
     else:
         cmd_dev(forced_version, quick=quick)
 
