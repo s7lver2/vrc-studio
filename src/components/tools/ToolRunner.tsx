@@ -45,9 +45,11 @@ export function ToolRunner({ tool, onBack, bypassSdk }: Props) {
   const [useSdkInternally, setUseSdkInternally] = useState(true);
 
   useEffect(() => {
+    let alive = true;
     tauriGetAppSettings()
-      .then((s) => setUseSdkInternally(s.use_sdk_internally ?? true))
+      .then((s) => { if (alive) setUseSdkInternally(s.use_sdk_internally ?? true); })
       .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   // ── State for iframe SDK calls ─────────────────────────────────────────

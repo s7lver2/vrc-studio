@@ -35,7 +35,9 @@ export default function ToolsPage() {
         <Runner
           toolId={activeTool.id}
           onBack={() => setActiveTool(null)}
-          onInteractive={() => Promise.resolve(null)}
+          onInteractive={(_method: string, _args: Record<string, unknown>) => {
+            throw new Error(`onInteractive not available in direct render mode (method: ${_method})`);
+          }}
           bypassSdk
         />
       );

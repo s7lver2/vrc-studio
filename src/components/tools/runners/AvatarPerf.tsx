@@ -40,11 +40,6 @@ export function AvatarPerf({ toolId, onBack, onInteractive, bypassSdk }: Props) 
     setError(null);
     setLoading(true);
     try {
-      if (bypassSdk) {
-        // bypassSdk: project selection is handled by handleSelectProjectDirect below
-        setLoading(false);
-        return;
-      }
       const selected = await sdk.selectProject();
       if (!selected) { setLoading(false); return; }
       const projectPath = selected.path;
