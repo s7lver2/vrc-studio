@@ -1174,6 +1174,20 @@ def cmd_beta_release(branch, notes="", no_publish=False, name="", description=""
     if input(f"  ¿Publicar {build_id}? [s/N] ").strip().lower() not in ("s","si","y","yes"):
         sys.exit(0)
 
+    # ── Restore source files from git ──────────────────────────────────────
+    # Linters/editors may have reverted uncommitted changes to source files.
+    # Always build from the committed state so the binary matches the repo.
+    step("Restaurando archivos fuente desde git (git restore src/)")
+    try:
+        subprocess.run(
+            ["git", "restore", "src/", "src-tauri/src/"],
+            cwd=PROJECT_ROOT, check=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        ok("Archivos restaurados — el build usará el código commiteado")
+    except subprocess.CalledProcessError as e:
+        warn(f"  git restore falló ({e}) — el build puede usar archivos modificados localmente")
+
     clean(deep=False)
 
     # 2. Build for host platform only
