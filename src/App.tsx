@@ -193,6 +193,20 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
+  // Listen for import-package events dispatched by ImportPackagePicker (SDK bridge).
+  // Navigate to Inventory and set the pending import source so the page can open the
+  // correct dialog without requiring a direct ref into Inventory's local state.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const source = (e as CustomEvent<{ source: "scan" | "local" | "url" }>).detail?.source;
+      if (!source) return;
+      useAppStore.getState().setActiveSection("inventory");
+      useInventoryStore.getState().setPendingImportSource(source);
+    };
+    window.addEventListener("vrcstudio:import-package", handler);
+    return () => window.removeEventListener("vrcstudio:import-package", handler);
+  }, []);
+
   const wallpaperActive = useAppearanceStore((s) => s.wallpaper.enabled && !!s.wallpaper.path);
 
   useEffect(() => {

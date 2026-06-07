@@ -23,6 +23,15 @@ interface Props {
   onResolve: (callId: number, result: unknown) => void;
 }
 
+const HANDLED_METHODS = [
+  "selectProject",
+  "selectScene",
+  "selectAvatar",
+  "importPackage",
+  "browseProjectFiles",
+  "browseInventoryItemFiles",
+];
+
 export function SdkPickerModals({ pending, onResolve }: Props) {
   // Resolve inventory item path at component level (hooks can't be called in switch cases).
   const inventoryItems = useInventoryStore((s) => s.items);
@@ -30,6 +39,21 @@ export function SdkPickerModals({ pending, onResolve }: Props) {
     pending?.method === "browseInventoryItemFiles"
       ? (inventoryItems.find((i) => i.id === (pending.args.itemId as string))?.local_path ?? null)
       : null;
+
+  // Auto-resolve unhandled/unfulfillable cases after render (avoids side-effects during render).
+  const pendingCallId = pending?.callId;
+  const shouldAutoResolve =
+    pending != null &&
+    (
+      (pending.method === "browseInventoryItemFiles" && !inventoryItemRoot) ||
+      !HANDLED_METHODS.includes(pending.method)
+    );
+
+  useEffect(() => {
+    if (shouldAutoResolve && pendingCallId != null) {
+      onResolve(pendingCallId, null);
+    }
+  }, [shouldAutoResolve, pendingCallId, onResolve]);
 
   if (!pending) return null;
 
@@ -70,7 +94,7 @@ export function SdkPickerModals({ pending, onResolve }: Props) {
         />
       );
     case "browseInventoryItemFiles":
-      if (!inventoryItemRoot) { onResolve(pending.callId, null); return null; }
+      if (!inventoryItemRoot) return null; // useEffect resolves this
       return (
         <FileBrowserPicker
           callId={pending.callId}
@@ -81,9 +105,7 @@ export function SdkPickerModals({ pending, onResolve }: Props) {
         />
       );
     default:
-      // Unknown interactive call — resolve with null immediately
-      onResolve(pending.callId, null);
-      return null;
+      return null; // useEffect resolves unknown methods
   }
 }
 
@@ -308,8 +330,8 @@ function ImportPackagePicker({
   onResolve: (id: number, result: unknown) => void;
   onCancel: () => void;
 }) {
-  const handleSelect = (_source: "scan" | "local" | "url") => {
-    window.dispatchEvent(new CustomEvent("vrcstudio:import-package", { detail: { source: _source } }));
+  const handleSelect = (source: "scan" | "local" | "url") => {
+    window.dispatchEvent(new CustomEvent("vrcstudio:import-package", { detail: { source } }));
     onResolve(callId, null);
   };
   return (
@@ -334,7 +356,7 @@ function PickerModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 backdrop-blur-sm">
-      <div className={`${wide ? "w-[400px]" : "w-96"} bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden`}>
+      <div className={`${wide ? "w-[520px]" : "w-96"} bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden`}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
           <p className="text-sm font-semibold text-zinc-100">{title}</p>
           <button

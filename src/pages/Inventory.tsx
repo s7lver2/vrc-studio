@@ -309,6 +309,17 @@ export default function Inventory() {
     else if (source === "url") setShowUrlImport(true);
   };
 
+  // Consume pendingImportSource set by the SDK bridge event listener in App.tsx.
+  const pendingImportSource = useInventoryStore((s) => s.pendingImportSource);
+  const setPendingImportSource = useInventoryStore((s) => s.setPendingImportSource);
+  useEffect(() => {
+    if (!pendingImportSource) return;
+    setPendingImportSource(null);
+    if (pendingImportSource === "scan") setShowScan(true);
+    else if (pendingImportSource === "local") setShowImport(true);
+    else if (pendingImportSource === "url") setShowUrlImport(true);
+  }, [pendingImportSource, setPendingImportSource]);
+
   // Tauri 2 drag-drop events — use onDragDropEvent (unified API, replaces legacy listen calls)
   useEffect(() => {
     let unlisten: (() => void) | null = null;

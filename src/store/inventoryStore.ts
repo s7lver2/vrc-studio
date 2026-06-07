@@ -133,6 +133,8 @@ interface InventoryState {
   sortDir: SortDir;
   selectedItemIds: Set<string>;
   lastSelectedId: string | null;
+  /** Set by the vrcstudio:import-package event to trigger the import flow from outside Inventory. */
+  pendingImportSource: "scan" | "local" | "url" | null;
 
   fetchAll: () => Promise<void>;
   setViewMode: (m: "grid" | "list") => void;
@@ -166,6 +168,7 @@ interface InventoryState {
   removeFolder: (folderId: string) => Promise<void>;
   reorderFolders: (orderedIds: string[]) => Promise<void>;
   rangeSelectItems: (anchorId: string, targetId: string, orderedIds: string[]) => void;
+  setPendingImportSource: (source: "scan" | "local" | "url" | null) => void;
 }
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
@@ -182,6 +185,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   sortDir: "desc" as SortDir,
   selectedItemIds: new Set<string>(),
   lastSelectedId: null,
+  pendingImportSource: null,
+
+  setPendingImportSource: (source) => set({ pendingImportSource: source }),
 
   fetchAll: async () => {
     // En modo expositor los datos ya están inyectados; no tocar el backend
