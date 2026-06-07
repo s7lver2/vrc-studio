@@ -1,6 +1,6 @@
 [package]
 name = "vrc-studio"
-version = "0.0.22"
+version = "0.0.5"
 edition = "2021"
 
 [lib]
@@ -16,6 +16,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
+axum = { version = "0.7", features = ["json"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 thiserror = "1"
