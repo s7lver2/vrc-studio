@@ -31,7 +31,7 @@ type ItemBehavior = "base" | "outfit" | "accessory" | "material" | "shader" | nu
 
 const BEHAVIOR_ICON_CONFIG: Record<
   Exclude<ItemBehavior, null>,
-  { icon: React.ElementType; color: string; bg: string; label: string }
+  { icon: React.ComponentType<any>; color: string; bg: string; label: string }
 > = {
   base: { icon: User, color: "text-amber-400", bg: "bg-amber-900/30", label: "Base" },
   outfit: { icon: Shirt, color: "text-pink-400", bg: "bg-pink-900/30", label: "Outfit" },

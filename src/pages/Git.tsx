@@ -45,7 +45,7 @@ function fmtShort(ts: number) {
 
 type GitPage = "overview" | "changes" | "tree" | "conflicts" | "branches" | "github";
 
-const GIT_TABS: { id: GitPage; label: string; icon: React.ElementType }[] = [
+const GIT_TABS: { id: GitPage; label: string; icon: React.ComponentType<any> }[] = [
     { id: "overview", label: "Overview", icon: Eye },
     { id: "changes", label: "Changes", icon: GitCommit },
     { id: "tree", label: "Tree", icon: Layers },

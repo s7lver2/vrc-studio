@@ -243,7 +243,7 @@ export function TrackerDetailPanel({ item, onBack }: Props) {
   const title = item.item_name ?? item.author_name ?? item.search_keyword ?? "Tracked item";
   const thumbnail = item.item_thumbnail_url ?? boothDetail?.images?.[0] ?? null;
 
-  const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  const TABS: { id: Tab; label: string; icon: React.ComponentType<any> }[] = [
     { id: "info",     label: t("tracker_detail_tab_info"),     icon: Info },
     { id: "chart",    label: t("tracker_detail_tab_price"),    icon: BarChart2 },
     { id: "events",   label: t("tracker_detail_tab_events"),   icon: Clock },

@@ -138,7 +138,7 @@ function PackageDetailModal({
       .finally(() => setLoadingFiles(false));
   }, [activeTab, files, loadingFiles, pkgVer?.url]);
 
-  const TABS: { id: DetailTab; label: string; icon: React.ElementType; badge?: number }[] = [
+  const TABS: { id: DetailTab; label: string; icon: React.ComponentType<any>; badge?: number }[] = [
     { id: "overview", label: "Info",         icon: Info },
     { id: "versions", label: "Versions",    icon: GitBranch,  badge: versions.length },
     { id: "deps",     label: "Dependences", icon: Layers,     badge: depCount || undefined },
@@ -580,7 +580,7 @@ function PackageDetailModal({
 
 // small helper card for the overview tab
 function MetaCard({ label, value, mono, icon: Icon }: {
-  label: string; value: string; mono?: boolean; icon?: React.ElementType;
+  label: string; value: string; mono?: boolean; icon?: React.ComponentType<any>;
 }) {
   return (
     <div className="flex flex-col gap-1 bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2.5">

@@ -32,7 +32,7 @@ export function resetGetStarted() {
 interface Step {
   id: string;
   section: Section | null; // null = no navega
-  icon: React.ElementType;
+  icon: React.ComponentType<any>;
   color: string;
   bgColor: string;
   borderColor: string;
