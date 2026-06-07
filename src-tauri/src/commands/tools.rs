@@ -487,14 +487,19 @@ pub struct FileEntry {
 /// Returns entries sorted: directories first, then files, alphabetically.
 #[tauri::command]
 pub fn tools_list_dir(root: String, sub_path: String) -> Result<Vec<FileEntry>, AppError> {
+    // Guard against path traversal
+    if sub_path.contains("..") || sub_path.starts_with('/') || sub_path.starts_with('\\') {
+        return Err(AppError::Io("Invalid sub_path: must be a relative path without '..' components".into()));
+    }
+
     let full_path = if sub_path.is_empty() {
         std::path::PathBuf::from(&root)
     } else {
         std::path::Path::new(&root).join(&sub_path)
     };
 
-    if !full_path.exists() {
-        return Err(AppError::Io(format!("Path not found: {}", full_path.display())));
+    if !full_path.is_dir() {
+        return Err(AppError::Io(format!("Not a directory: {}", full_path.display())));
     }
 
     let mut entries: Vec<FileEntry> = std::fs::read_dir(&full_path)
