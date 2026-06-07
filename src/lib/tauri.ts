@@ -1204,16 +1204,35 @@ export interface ToolRegistryEntry {
   name: string;
   version: string;
   description: string;
+  /** Primary author username or display name */
   author: string;
+  /** Optional URL to the author's avatar/profile photo */
+  author_avatar_url?: string;
+  /** Optional GitHub username — used as fallback for avatar if author_avatar_url is missing */
+  author_github?: string;
   icon_url: string;
   banner_url: string;
   screenshots: string[];
   category: string;
+  tags: string[];
   downloads: ToolDownloads;
   dependencies: string[];
   requires_unity: boolean;
   min_unity_version: string;
   featured: boolean;
+  /** Human-readable requirements string */
+  requirements?: string;
+  /** Release notes for this version */
+  changelog?: string;
+  /** SDK calls this tool uses, shown in detail page */
+  sdk_calls?: SdkCallInfo[];
+}
+
+export interface SdkCallInfo {
+  /** e.g. "selectProject" */
+  method: string;
+  /** Human-readable description shown in tool detail */
+  description: string;
 }
 
 export interface InstalledTool {

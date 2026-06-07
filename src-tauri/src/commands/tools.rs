@@ -13,18 +13,30 @@ use tauri::State;
 
 /// An entry from the remote tools registry (tools-registry.json).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SdkCallInfo {
+    pub method: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ToolRegistryEntry {
     pub id: String,
     pub name: String,
     pub version: String,
     pub description: String,
     pub author: String,
+    #[serde(default)]
+    pub author_avatar_url: String,
+    #[serde(default)]
+    pub author_github: String,
     pub icon_url: String,
     pub banner_url: String,
     #[serde(default)]
     pub screenshots: Vec<String>,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub downloads: ToolDownloads,
     #[serde(default)]
     pub dependencies: Vec<String>,
@@ -34,6 +46,12 @@ pub struct ToolRegistryEntry {
     pub min_unity_version: String,
     #[serde(default)]
     pub featured: bool,
+    #[serde(default)]
+    pub requirements: String,
+    #[serde(default)]
+    pub changelog: String,
+    #[serde(default)]
+    pub sdk_calls: Vec<SdkCallInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
