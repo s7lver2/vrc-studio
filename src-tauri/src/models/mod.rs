@@ -25,6 +25,21 @@ pub struct Project {
     pub vcs_enabled: bool,
     /// Absolute path to the PNG screenshot taken after the last Unity session.
     pub last_screenshot: Option<String>,
+    /// Absolute path to a user-defined cover image for this project.
+    pub cover_image_path: Option<String>,
+    /// ID of the folder this project belongs to (None = root).
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectFolder {
+    pub id: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: Option<i32>,
+    pub emoji: Option<String>,
+    pub image: Option<String>,
 }
 
 /// Registro completo de un paquete VPM custom, incluyendo sus asset IDs cargados en runtime.

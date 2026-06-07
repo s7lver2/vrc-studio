@@ -8,14 +8,16 @@ interface Props {
 
 export function SplashScreen({ onDone, progress }: Props) {
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
-  const canExitRef = useRef(false);
+  // Use state (not ref) so the progress effect re-runs when this flips to true,
+  // even if progress already reached 100 before the minimum animation time passed.
+  const [canExit, setCanExit] = useState(false);
   const exitStartedRef = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => {
       setPhase("show");
       // Allow exit only after the enter animation has settled (500ms)
-      setTimeout(() => { canExitRef.current = true; }, 500);
+      setTimeout(() => setCanExit(true), 500);
     }, 80);
     // Hard fallback: never hang forever
     const fallback = setTimeout(() => triggerExit(), 30_000);
@@ -30,13 +32,14 @@ export function SplashScreen({ onDone, progress }: Props) {
     setTimeout(onDone, 500);
   };
 
-  // Exit once progress reaches 100 and the min animation time has passed
+  // Exit once progress reaches 100 AND the minimum animation time has passed.
+  // Both are in the dependency array so this fires whichever arrives last.
   useEffect(() => {
-    if (progress >= 100 && canExitRef.current) {
+    if (progress >= 100 && canExit) {
       triggerExit();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress]);
+  }, [progress, canExit]);
 
   const visible = phase !== "enter";
   const exiting = phase === "exit";

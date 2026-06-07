@@ -697,6 +697,20 @@ pub fn create_branch_with_init_commit(
     Ok(init_commit_id.to_string())
 }
 
+pub fn rename_branch(project_path: &Path, old_name: &str, new_name: &str) -> Result<(), String> {
+    let repo = Repository::open(project_path)
+        .map_err(|e| format!("failed to open repo: {e}"))?;
+
+    let mut branch = repo
+        .find_branch(old_name, BranchType::Local)
+        .map_err(|_| format!("branch '{old_name}' not found"))?;
+
+    branch.rename(new_name, false)
+        .map_err(|e| format!("rename failed: {e}"))?;
+
+    Ok(())
+}
+
 /// Lee el contenido del .gitignore del repositorio.
 /// Devuelve string vacío si el archivo no existe.
 pub fn read_gitignore(project_path: &Path) -> Result<String, String> {

@@ -1,0 +1,1 @@
+ALTER TABLE project_folders ADD COLUMN IF NOT EXISTS image TEXT;

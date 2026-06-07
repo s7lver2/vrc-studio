@@ -41,6 +41,12 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   scanning: false,
 
   load: async () => {
+    // En modo expositor los datos ya están inyectados; no tocar el backend
+    try {
+      const { useAppearanceStore } = await import("./appearanceStore");
+      if (useAppearanceStore.getState().expositorMode) { set({ loading: false }); return; }
+    } catch { /* ignorar */ }
+
     set({ loading: true, error: null });
     try {
       const [items, count] = await Promise.all([
@@ -72,6 +78,10 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   },
 
   loadEvents: async (trackerItemId) => {
+    try {
+      const { useAppearanceStore } = await import("./appearanceStore");
+      if (useAppearanceStore.getState().expositorMode) return; // datos ya inyectados
+    } catch { /* ignorar */ }
     const events = await tauriTrackerListEvents({ trackerItemId });
     set({ events });
   },
@@ -87,12 +97,19 @@ export const useTrackerStore = create<TrackerState>((set, get) => ({
   },
 
   refreshUnreadCount: async () => {
+    try {
+      const { useAppearanceStore } = await import("./appearanceStore");
+      if (useAppearanceStore.getState().expositorMode) return;
+    } catch { /* ignorar */ }
     const count = await tauriTrackerUnreadCount();
     set({ unreadCount: count });
   },
   runNow: async (id) => {
   set({ scanning: true });
   try {
+    // En modo expositor no llamar al backend
+    const { useAppearanceStore } = await import("./appearanceStore");
+    if (useAppearanceStore.getState().expositorMode) { set({ scanning: false }); return; }
     await tauriTrackerRunNow(id);
     // Recargar items y eventos tras el scan
     const [items, count] = await Promise.all([

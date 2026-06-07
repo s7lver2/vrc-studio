@@ -7,7 +7,6 @@ use crate::models::{TrackerItem, TrackerKind};
 use crate::services::booth;
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use regex::Regex;
 use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 use std::collections::HashSet;
@@ -251,38 +250,30 @@ fn send_os_notification(app: &AppHandle, item: &TrackerItem) {
     }
 }
 
-/// Check keyword results: fetch search page, detect new items, store events.
-/// Returns number of new events created (u32).
+/// Check keyword results using booth::search API.
+/// Returns number of new events created.
 async fn check_keyword_results(
     db: &DbPool,
     item: &TrackerItem,
     keyword: &str,
     now_str: &str,
 ) -> Result<u32> {
-    let encoded = urlencoding::encode(keyword);
-    let url = format!("https://booth.pm/en/browse?q={}&sort=new", encoded);
+    let client = reqwest::Client::builder()
+        .user_agent("VRC-Studio/1.0")
+        .build()?;
 
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("User-Agent", "Mozilla/5.0 (compatible; VRCStudio)")
-        .send()
+    // Use the same booth search API used everywhere else — more reliable than scraping
+    let products = booth::search(&client, keyword, 1, false)
         .await
-        .map_err(|e| anyhow!("HTTP error: {}", e))?;
-    let html = resp
-        .text()
-        .await
-        .map_err(|e| anyhow!("Body error: {}", e))?;
+        .map_err(|e| anyhow!("Booth search error: {}", e))?;
 
-    // Extract booth IDs
-    let re = Regex::new(r#"/items/(\d{5,8})"#).unwrap();
-    let found_ids: HashSet<String> = re
-        .captures_iter(&html)
-        .filter_map(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
-        .collect();
-
-    if found_ids.is_empty() {
+    if products.is_empty() {
+        // Update last_checked_at even when no results
+        let conn = db.get().map_err(|e| anyhow!("{}", e))?;
+        conn.execute(
+            "UPDATE tracker_items SET last_checked_at = ?1 WHERE id = ?2",
+            params![now_str, item.id],
+        )?;
         return Ok(0);
     }
 
@@ -295,12 +286,12 @@ async fn check_keyword_results(
         let conn = db.get().map_err(|e| anyhow!("{}", e))?;
         let mut created = 0u32;
 
-        // Get previously seen IDs from last 'keyword_seen' event
+        // Get previously seen IDs stored in 'keyword_seen' snapshot event
         let seen_ids: HashSet<String> = {
             let mut stmt = conn.prepare(
                 "SELECT payload FROM tracker_events
                  WHERE tracker_item_id = ?1 AND event_type = 'keyword_seen'
-                 ORDER BY detected_at DESC LIMIT 1"
+                 ORDER BY detected_at DESC LIMIT 1",
             )?;
             let snapshot: Option<String> = stmt
                 .query_row(params![&item_id], |row| row.get(0))
@@ -312,20 +303,25 @@ async fn check_keyword_results(
                 .collect()
         };
 
-        let new_ids: Vec<&String> = found_ids.iter().filter(|id| !seen_ids.contains(*id)).collect();
-        if !new_ids.is_empty() {
-            for booth_id in new_ids.iter().take(10) {
-                let payload = json!({
-                    "booth_id": booth_id,
-                    "keyword": keyword_owned,
-                    "url": format!("https://booth.pm/items/{}", booth_id)
-                });
-                insert_event_sync(&conn, &item_id, "new_item", &payload.to_string(), &now)?;
-                created += 1;
-            }
+        let found_ids: HashSet<String> = products.iter().map(|p| p.source_id.clone()).collect();
+        let new_products: Vec<_> = products.iter()
+            .filter(|p| !seen_ids.contains(&p.source_id))
+            .collect();
+
+        for product in new_products.iter().take(10) {
+            let payload = json!({
+                "booth_id": product.source_id,
+                "name":     product.name,
+                "price":    product.price_display,
+                "url":      product.url,
+                "thumbnail": product.thumbnail_url,
+                "keyword":  keyword_owned,
+            });
+            insert_event_sync(&conn, &item_id, "new_item", &payload.to_string(), &now)?;
+            created += 1;
         }
 
-        // Save updated snapshot
+        // Save updated seen snapshot
         let all_ids: Vec<String> = seen_ids.union(&found_ids).cloned().collect();
         let snapshot_payload = serde_json::to_string(&all_ids).unwrap_or_default();
         let snapshot_id = Uuid::new_v4().to_string();
@@ -335,7 +331,6 @@ async fn check_keyword_results(
             params![snapshot_id, item_id, snapshot_payload, now],
         )?;
 
-        // Update last_checked_at
         conn.execute(
             "UPDATE tracker_items SET last_checked_at = ?1 WHERE id = ?2",
             params![now, item_id],

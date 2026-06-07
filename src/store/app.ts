@@ -3,7 +3,7 @@ import type { Project } from "@/lib/tauri";
 import type { DiscordUserInfo } from "@/lib/tauri";
 import { isGetStartedDone, resetGetStarted } from "@/components/GetStarted";
 
-export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "creators" | "git";
+export type Section = "projects" | "packages" | "shop" | "inventory" | "tracker" | "settings" | "workspace" | "logs" | "creators" | "git" | "tools";
 
 interface AppState {
   activeSection: Section;

@@ -1,13 +1,9 @@
-/**
- * ProjectDetailModal — rich project detail overlay.
- */
-
 import React, { useState, useEffect, useCallback } from "react";
 import {
   X, ExternalLink, FolderOpen, GitBranch,
   Monitor, Layers, Cpu, HardDrive,
   Loader2, AlertTriangle, RefreshCw, Camera,
-  Info, FileSearch, Package, Download, Search,
+  Info, FileSearch, Package, Download, Search, Image, Trash2,
 } from "lucide-react";
 import {
   Project, FileNode,
@@ -15,7 +11,9 @@ import {
   tauriListUnityInstallations,
   tauriOpenProjectInUnity,
   tauriGetProjectEarlyImports, EarlyImportEntry,
+  tauriSetProjectCoverImage,
 } from "@/lib/tauri";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { FileTreeViewer } from "@/components/inventory/FileTreeViewver";
 import { VcsPanel } from "@/components/vcs/VcsPanel";
 import { PackagesTab } from "@/pages/Packages";
@@ -154,10 +152,11 @@ function TabBar({ active, onSelect, vcsEnabled }: {
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ project }: { project: Project }) {
+function OverviewTab({ project, onUpdated }: { project: Project; onUpdated: (p: Project) => void }) {
   const t = useT();
   const [diskSize, setDiskSize] = useState<string | null>(null);
   const [packageCount, setPackageCount] = useState<number | null>(null);
+  const [updatingCover, setUpdatingCover] = useState(false);
 
   useEffect(() => {
     tauriGetFileTree(project.path).then((tree) => {
@@ -171,10 +170,80 @@ function OverviewTab({ project }: { project: Project }) {
     }).catch(() => {});
   }, [project.path]);
 
+  const pickCoverImage = async () => {
+    const result = await openDialog({
+      title: "Select cover image",
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+      multiple: false,
+    }).catch(() => null);
+    if (!result || typeof result !== "string") return;
+    setUpdatingCover(true);
+    try {
+      const updated = await tauriSetProjectCoverImage(project.id, result);
+      onUpdated(updated);
+    } catch (e) {
+      console.error("Failed to set cover image:", e);
+    } finally {
+      setUpdatingCover(false);
+    }
+  };
+
+  const removeCoverImage = async () => {
+    setUpdatingCover(true);
+    try {
+      const updated = await tauriSetProjectCoverImage(project.id, null);
+      onUpdated(updated);
+    } catch (e) {
+      console.error("Failed to remove cover image:", e);
+    } finally {
+      setUpdatingCover(false);
+    }
+  };
+
+  const coverSrc = project.cover_image_path ? toAssetUrl(project.cover_image_path) : null;
   const shaderLabel = project.shader === "liltoon" ? "lilToon" : project.shader === "poiyomi" ? "Poiyomi" : null;
 
   return (
     <div className="p-5 space-y-4 overflow-y-auto flex-1">
+      {/* Cover image */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">Cover Image</p>
+        <div className="flex items-start gap-3">
+          <div className="w-24 h-24 rounded-xl overflow-hidden border border-zinc-700/40 bg-zinc-900 flex items-center justify-center shrink-0">
+            {coverSrc ? (
+              <img src={coverSrc} alt="Cover" className="w-full h-full object-cover" />
+            ) : (
+              <Image className="h-8 w-8 text-zinc-700" />
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <p className="text-[10px] text-zinc-500 leading-relaxed">
+              Used in the icon grid view and as your Discord Rich Presence image while working on this project.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={pickCoverImage}
+                disabled={updatingCover}
+                className="flex items-center gap-1.5 rounded-md border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-50"
+              >
+                {updatingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Image className="h-3 w-3" />}
+                {project.cover_image_path ? "Change image" : "Set cover image"}
+              </button>
+              {project.cover_image_path && (
+                <button
+                  onClick={removeCoverImage}
+                  disabled={updatingCover}
+                  className="flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1.5 text-xs text-zinc-600 hover:border-red-900 hover:text-red-400 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">Project Path</p>
         <div className="flex items-center gap-2 rounded-lg bg-zinc-800/60 border border-zinc-700/30 px-3 py-2">
@@ -456,9 +525,10 @@ interface Props {
   onClose: () => void;
   onDelete: (project: Project) => void;
   onUpdated: (project: Project) => void;
+  onOpen?: (project: Project) => void;
 }
 
-export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Props) {
+export function ProjectDetailModal({ project, onClose, onDelete, onUpdated, onOpen }: Props) {
   const t = useT();
   const [tab, setTab] = useState<Tab>("overview");
   const [opening, setOpening] = useState(false);
@@ -480,6 +550,8 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
         return;
       }
       await tauriOpenProjectInUnity(project.id, project.path, match.path);
+      // Notify parent so the store marks the project as open
+      onOpen?.(project);
     } finally {
       setOpening(false);
     }
@@ -550,6 +622,7 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
                     setOpening(true);
                     try {
                       await tauriOpenProjectInUnity(project.id, project.path, manualUnityPath);
+                      onOpen?.(project);
                     } finally {
                       setOpening(false);
                     }
@@ -585,7 +658,7 @@ export function ProjectDetailModal({ project, onClose, onDelete, onUpdated }: Pr
         <div className="flex flex-col flex-1 min-w-0">
           <TabBar active={tab} onSelect={setTab} vcsEnabled={project.vcs_enabled} />
           <div className={tab === "overview" ? "contents" : "hidden"}>
-            <OverviewTab project={project} />
+            <OverviewTab project={project} onUpdated={onUpdated} />
           </div>
           <div className={tab === "files" ? "contents" : "hidden"}>
             <FilesTab project={project} />

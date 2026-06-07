@@ -15,8 +15,6 @@ use uuid::Uuid;
 /// All users of VRC Studio share this single app identity.
 pub const CLIENT_ID: &str = "1510381566503813280";
 const CLIENT_SECRET: &str = "RWX2Hjf2nE4l3yc35inl6KWZNG-Y6d49";
-/// Must match one of the Redirect URIs registered in the portal.
-const REDIRECT_URI: &str = "http://127.0.0.1";
 
 // ── State ────────────────────────────────────────────────────────────────────
 pub struct DiscordAuthState {
@@ -99,38 +97,36 @@ fn ipc_handshake(pipe: &mut File) -> Result<(), String> {
     Ok(())
 }
 
-fn ipc_authenticate_with_token(pipe: &mut File, access_token: &str) -> Result<DiscordUserInfo, String> {
-    let nonce = Uuid::new_v4().to_string();
-    let payload = json!({
-        "cmd": "AUTHENTICATE",
-        "args": { "access_token": access_token },
-        "nonce": nonce
-    })
-    .to_string();
-    write_frame(pipe, 1, &payload)?;
-    // Loop until we get the AUTHENTICATE response (skip intermediate DISPATCH frames)
-    let user_data = loop {
-        let response = read_frame(pipe)?;
-        match response["cmd"].as_str() {
-            Some("AUTHENTICATE") => {
-                if response["evt"].as_str() == Some("ERROR") {
-                    return Err(format!(
-                        "Invalid or expired Discord token: {}",
-                        response["data"]["message"].as_str().unwrap_or("unknown error")
-                    ));
-                }
-                break response;
-            }
-            _ => continue,
-        }
-    };
-    let user = &user_data["data"]["user"];
+/// Fetch the authenticated user's profile from Discord's REST API.
+/// Requires only the `identify` scope — no privileged `rpc` scope needed.
+/// Replaces the IPC AUTHENTICATE command which requires `rpc` scope approval.
+async fn fetch_user_info(access_token: &str) -> Result<DiscordUserInfo, String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://discord.com/api/v10/users/@me")
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Error de red al obtener usuario: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Discord API error {status}: {body}"));
+    }
+
+    let user: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Respuesta invalida de Discord: {e}"))?;
+
     let avatar_url = match (user["id"].as_str(), user["avatar"].as_str()) {
         (Some(uid), Some(hash)) => Some(format!(
             "https://cdn.discordapp.com/avatars/{uid}/{hash}.png?size=128"
         )),
         _ => None,
     };
+
     Ok(DiscordUserInfo {
         username: user["username"].as_str().unwrap_or("").to_string(),
         discriminator: user["discriminator"].as_str().unwrap_or("0").to_string(),
@@ -139,6 +135,10 @@ fn ipc_authenticate_with_token(pipe: &mut File, access_token: &str) -> Result<Di
 }
 
 // ── HTTP token exchange ───────────────────────────────────────────────────────
+/// redirect_uri registrado en Discord Developer Portal → OAuth2 → Redirects.
+/// Debe ser exactamente "http://localhost" (sin puerto, sin trailing slash).
+const REDIRECT_URI: &str = "http://localhost";
+
 async fn exchange_token(auth_code: &str) -> Result<String, String> {
     let client = reqwest::Client::new();
     let params = [
@@ -197,9 +197,8 @@ pub async fn discord_authorize(
                 "cmd": "AUTHORIZE",
                 "args": {
                     "client_id": CLIENT_ID,
-                    "scopes": ["rpc", "identify"],
-                    "redirect_uri": REDIRECT_URI,
-                    "rpc_token": null
+                    "scopes": ["identify"],
+                    "redirect_uri": REDIRECT_URI
                 },
                 "nonce": nonce
             })
@@ -237,20 +236,8 @@ pub async fn discord_authorize(
     // Phase 2 — HTTP token exchange (async)
     let access_token = exchange_token(&auth_code).await?;
 
-    // Phase 3 — AUTHENTICATE to get user info (blocking, new pipe connection, 30 s timeout)
-    let token_clone = access_token.clone();
-    let user = tokio::time::timeout(
-        Duration::from_secs(30),
-        tokio::task::spawn_blocking(move || -> Result<DiscordUserInfo, String> {
-            let mut pipe = open_pipe()?;
-            ipc_handshake(&mut pipe)?;
-            ipc_authenticate_with_token(&mut pipe, &token_clone)
-        }),
-    )
-    .await
-    .map_err(|_| "Tiempo de espera agotado esperando respuesta de Discord.".to_string())?
-    .map_err(|e| e.to_string())?
-    ?;
+    // Phase 3 — REST API to get user info (no rpc scope needed)
+    let user = fetch_user_info(&access_token).await?;
 
     // Persist token in backend state
     *state
@@ -266,19 +253,7 @@ pub async fn discord_reauthenticate(
     state: tauri::State<'_, DiscordAuthState>,
     access_token: String,
 ) -> Result<DiscordUserInfo, String> {
-    let token_clone = access_token.clone();
-    let user = tokio::time::timeout(
-        Duration::from_secs(30),
-        tokio::task::spawn_blocking(move || -> Result<DiscordUserInfo, String> {
-            let mut pipe = open_pipe()?;
-            ipc_handshake(&mut pipe)?;
-            ipc_authenticate_with_token(&mut pipe, &token_clone)
-        }),
-    )
-    .await
-    .map_err(|_| "Tiempo de espera agotado esperando respuesta de Discord.".to_string())?
-    .map_err(|e| e.to_string())?
-    ?;
+    let user = fetch_user_info(&access_token).await?;
 
     *state
         .access_token

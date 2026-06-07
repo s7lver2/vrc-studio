@@ -18,6 +18,8 @@ import { vcs, github, GithubUserInfo, GithubRepo } from "@/lib/tauri";
 import type { GitStatus, CommitEntry, BranchInfo, FileDiff, CommitDiffFile } from "@/types/vcs";
 import { GlobalProjectPickerModal } from "@/components/shared/GlobalProjectPickerModal";
 import { FileTypeIcon } from "@/components/vcs/FileTypeIcon";
+import { useAppearanceStore } from "@/store/appearanceStore";
+import { getDemoGitData } from "@/lib/demo";
 import { useVcsStore, } from "@/store/vcsStore";
 import { useProjectsStore } from "@/store/projects";
 
@@ -147,6 +149,7 @@ function CommitHeatmap({ commits }: { commits: CommitEntry[] }) {
 }
 
 function OverviewPage({ project }: { project: Project }) {
+    const expositorMode = useAppearanceStore((s) => s.expositorMode);
     const [commits, setCommits] = useState<CommitEntry[]>([]);
     const [status, setStatus] = useState<GitStatus | null>(null);
     const [loading, setLoading] = useState(true);
@@ -165,19 +168,26 @@ function OverviewPage({ project }: { project: Project }) {
     const [newPattern, setNewPattern] = useState("");
 
     useEffect(() => {
+        if (expositorMode) {
+            const demo = getDemoGitData(project.id) ?? getDemoGitData(project.path);
+            if (demo) { setCommits(demo.commits); setStatus(demo.status); }
+            setLoading(false);
+            return;
+        }
         Promise.all([
             vcs.getLog(project.path, 365),
             vcs.getStatus(project.path),
         ]).then(([c, s]) => { setCommits(c); setStatus(s); })
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, [project.path]);
+    }, [project.path, expositorMode]);
 
     useEffect(() => {
+        if (expositorMode) { setGitignoreContent("# Modo Expositor — gitignore simulado\n*.meta\nLibrary/\nTemp/\nobj/\n.vsconfig\n"); return; }
         vcs.readGitignore(project.path)
             .then(setGitignoreContent)
             .catch(() => setGitignoreContent(""));
-    }, [project.path]);
+    }, [project.path, expositorMode]);
 
     const handleCommitToggle = async (commitId: string) => {
         if (expandedCommitId === commitId) {
@@ -492,6 +502,7 @@ function MiniCommitTree({ commits }: { commits: CommitEntry[] }) {
 }
 
 function ChangesPage({ project }: { project: Project }) {
+    const expositorMode = useAppearanceStore((s) => s.expositorMode);
     const [status, setStatus] = useState<GitStatus | null>(null);
     const [commits, setCommits] = useState<CommitEntry[]>([]);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -502,6 +513,12 @@ function ChangesPage({ project }: { project: Project }) {
     const [loading, setLoading] = useState(true);
 
     const refresh = useCallback(async () => {
+        if (expositorMode) {
+            const demo = getDemoGitData(project.id) ?? getDemoGitData(project.path);
+            if (demo) { setStatus(demo.status); setCommits(demo.commits.slice(0, 10)); }
+            setLoading(false);
+            return;
+        }
         try {
             const [s, log] = await Promise.all([
                 vcs.getStatus(project.path),
@@ -511,7 +528,7 @@ function ChangesPage({ project }: { project: Project }) {
             setCommits(log);
         } catch (e) { console.error(e); }
         finally { setLoading(false); }
-    }, [project.path]);
+    }, [project.path, expositorMode]);
 
     useEffect(() => { refresh(); }, [refresh]);
 
@@ -869,16 +886,29 @@ function BranchesPage({ project }: { project: Project }) {
 
     const handleRename = async (oldName: string, newName: string) => {
         if (!newName.trim() || newName === oldName) { setRenamingBranch(null); return; }
+        setError(null);
         try {
-            // Stub – backend command not yet available
-            setError(`Rename via CLI: git branch -m ${oldName} ${newName}`);
+            await vcs.renameBranch(project.path, oldName, newName.trim());
+            await refresh();
+        } catch (e: any) {
+            setError(String(e));
         } finally {
             setRenamingBranch(null);
         }
     };
 
     const handleMergeIntoCurrent = async (name: string) => {
-        setError(`Merge stub — run: git merge ${name}`);
+        setError(null);
+        try {
+            const result = await vcs.mergeBranch(project.path, name);
+            if (result === "up-to-date") {
+                setError(`Branch '${name}' is already up to date.`);
+            } else {
+                await refresh();
+            }
+        } catch (e: any) {
+            setError(String(e));
+        }
     };
 
     if (loading) return <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-zinc-600" /></div>;

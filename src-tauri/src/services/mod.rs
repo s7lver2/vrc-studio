@@ -16,3 +16,4 @@ pub mod tray;
 pub mod vcc_reader;
 pub mod discord_rpc;
 pub mod discord_auth;
+pub mod discord_assets;
