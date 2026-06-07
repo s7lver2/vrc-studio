@@ -101,7 +101,7 @@ fn registry_url(branch: &str) -> String {
         )
     } else {
         format!(
-            "https://raw.githubusercontent.com/{}/{}/{}/registry.json",
+            "https://raw.githubusercontent.com/{}/{}/refs/heads/{}/registry.json",
             REGISTRY_REPO, branch, REGISTRY_SUBDIR
         )
     }
