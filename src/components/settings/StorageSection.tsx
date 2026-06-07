@@ -74,7 +74,7 @@ function StatBar({
   label: string;
   bytes: number;
   total: number;
-  icon: React.ElementType;
+  icon: React.ComponentType<any>;
   color: string;
 }) {
   const pct = total > 0 ? Math.min(100, (bytes / total) * 100) : 0;

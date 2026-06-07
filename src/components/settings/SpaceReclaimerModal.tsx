@@ -28,7 +28,7 @@ function fmtBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 }
 
-const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+const CATEGORY_META: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
   source_art:    { label: "Source Art (PSD/AI)",    icon: FileImage, color: "text-sky-400"     },
   blender:       { label: "Blender files",           icon: Layers,    color: "text-orange-400"  },
   unity_cache:   { label: "Unity Cache (Library/Temp)", icon: Package, color: "text-violet-400" },

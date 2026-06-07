@@ -270,7 +270,7 @@ function SectionHeader({
   title,
   description,
 }: {
-  icon: React.ElementType;
+  icon: React.ComponentType<any>;
   title: string;
   description: string;
 }) {
@@ -1497,7 +1497,7 @@ type SettingsTab = "general" | "packages" | "connections" |
 
 interface NavGroup {
   groupKey: "settings_group_app" | "settings_group_connect" | "settings_group_system";
-  items: { id: SettingsTab; labelKey: string; icon: React.ElementType }[];
+  items: { id: SettingsTab; labelKey: string; icon: React.ComponentType<any> }[];
 }
 
 const NAV_GROUPS: NavGroup[] = [

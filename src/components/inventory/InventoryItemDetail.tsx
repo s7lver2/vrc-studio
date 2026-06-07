@@ -335,7 +335,7 @@ type Tab = "overview" | "files" | "versions";
 
 // ── Stat pill ────────────────────────────────────────────────────────────────
 
-function StatPill({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+function StatPill({ icon: Icon, label, value }: { icon: React.ComponentType<any>; label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex-1 min-w-0">
       <div className="flex items-center gap-1.5 text-zinc-500">
@@ -604,7 +604,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
             ...(item.is_multi_avatar
               ? [{ id: "versions" as Tab, label: "Variants", icon: Layers, beta: true }]
               : []),
-          ] as { id: Tab; label: string; icon: React.ElementType; beta?: boolean }[]).map(({ id, label, icon: Icon, beta }) => (
+          ] as { id: Tab; label: string; icon: React.ComponentType<any>; beta?: boolean }[]).map(({ id, label, icon: Icon, beta }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -944,7 +944,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
 
 // ── MetaField ─────────────────────────────────────────────────────────────────
 
-function MetaField({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: React.ReactNode }) {
+function MetaField({ icon: Icon, label, value }: { icon: React.ComponentType<any>; label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[10px] text-zinc-600 uppercase tracking-wider flex items-center gap-1">

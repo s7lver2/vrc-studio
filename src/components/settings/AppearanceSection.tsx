@@ -46,7 +46,7 @@ function BetaTag() {
     );
 }
 
-function SectionLabel({ icon: Icon, children }: { icon?: React.ElementType; children: React.ReactNode }) {
+function SectionLabel({ icon: Icon, children }: { icon?: React.ComponentType<any>; children: React.ReactNode }) {
     return (
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
             {Icon && <Icon className="h-3.5 w-3.5" />}
