@@ -10,6 +10,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 
 export interface SdkBridgeHandle {
@@ -29,6 +30,11 @@ interface Props {
   className?: string;
 }
 
+/** Prevents a JSON-stringified value from breaking out of a <script> tag in srcdoc HTML. */
+function escapeScriptTag(jsonStr: string): string {
+  return jsonStr.replace(/<\//gi, "<\\/");
+}
+
 /**
  * Builds the JavaScript preamble injected BEFORE the tool's ui.js runs inside the iframe.
  * Sets up window.vrcstudio with all SDK methods as postMessage bridges.
@@ -38,7 +44,7 @@ function buildSdkPreamble(toolId: string): string {
   return `
 (function() {
   'use strict';
-  const _toolId = ${JSON.stringify(toolId)};
+  const _toolId = ${escapeScriptTag(JSON.stringify(toolId))};
   let _callId = 0;
   const _pending = new Map();
 
@@ -140,10 +146,11 @@ export const SdkBridge = forwardRef<SdkBridgeHandle, Props>(
 
     // Build the srcdoc: inject preamble then load ui.js via asset:// protocol.
     // Tauri's asset protocol serves files from disk: asset://localhost/{absolute_path}
-    const normalizedPath = bundlePath.replace(/\\/g, "/");
-    const assetUrl = `asset://localhost/${normalizedPath}`;
-
-    const srcdoc = `<!DOCTYPE html>
+    // Memoized so React doesn't reload the iframe on unrelated re-renders.
+    const srcdoc = useMemo(() => {
+      const normalizedPath = bundlePath.replace(/\\/g, "/");
+      const assetUrl = `asset://localhost/${normalizedPath}`;
+      return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -160,6 +167,7 @@ export const SdkBridge = forwardRef<SdkBridgeHandle, Props>(
 <script src="${assetUrl}"></script>
 </body>
 </html>`;
+    }, [bundlePath, toolId]);
 
     return (
       <iframe

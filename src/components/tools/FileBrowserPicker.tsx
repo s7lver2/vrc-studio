@@ -50,6 +50,7 @@ export function FileBrowserPicker({ callId, root, title, onResolve, onCancel }: 
     }
   };
 
+  // subPath always uses "/" separators (the Rust tools_list_dir command normalizes them)
   const breadcrumbs = subPath ? subPath.split("/") : [];
 
   const navigateTo = (index: number) => {
@@ -58,7 +59,10 @@ export function FileBrowserPicker({ callId, root, title, onResolve, onCancel }: 
   };
 
   const confirm = () => {
-    if (selected) onResolve(callId, `${root}/${selected}`);
+    if (selected) {
+      const normalizedRoot = root.replace(/\\/g, "/");
+      onResolve(callId, `${normalizedRoot}/${selected}`);
+    }
   };
 
   return (
