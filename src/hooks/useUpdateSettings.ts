@@ -1,11 +1,17 @@
 // src/hooks/useUpdateSettings.ts
 import { useState, useCallback } from "react";
 
-export type UpdateChannel = "stable" | "testing";
+export type UpdateChannel = "stable" | "testing" | (string & {}); // string = beta slug
 
 export interface UpdateSettings {
   channel:      UpdateChannel;
   autoDownload: boolean;
+  /** Build number when on a beta channel; undefined on stable/testing. */
+  betaBuild?:   number;
+}
+
+export function isBetaChannel(channel: UpdateChannel): boolean {
+  return channel !== "stable" && channel !== "testing";
 }
 
 const STORAGE_KEY = "vrc-update-settings";
