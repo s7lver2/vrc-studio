@@ -9,7 +9,15 @@ import type { InstalledTool } from "../lib/tauri";
 
 type View = "installed" | "marketplace";
 
-const RUNNERS: Record<string, React.ComponentType<{ toolId: string; onBack: () => void }>> = {
+const RUNNERS: Record<
+  string,
+  React.ComponentType<{
+    toolId: string;
+    onBack: () => void;
+    onInteractive: (method: string, args: Record<string, unknown>) => Promise<unknown>;
+    bypassSdk?: boolean;
+  }>
+> = {
   "avatar-performance-analyzer": AvatarPerf,
 };
 
@@ -23,7 +31,14 @@ export default function ToolsPage() {
   if (activeTool) {
     const Runner = RUNNERS[activeTool.id];
     if (Runner) {
-      return <Runner toolId={activeTool.id} onBack={() => setActiveTool(null)} />;
+      return (
+        <Runner
+          toolId={activeTool.id}
+          onBack={() => setActiveTool(null)}
+          onInteractive={() => Promise.resolve(null)}
+          bypassSdk
+        />
+      );
     }
     // Tool sin runner implementado
     return (

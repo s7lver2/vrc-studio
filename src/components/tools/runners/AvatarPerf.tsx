@@ -6,6 +6,7 @@ import {
   tauriToolsScanScenes, tauriToolsScanAvatars, tauriToolsRunSidecar,
 } from "../../../lib/tauri";
 import { useProjectsStore } from "../../../store/projects";
+import { useEmbeddedSdk } from "../../../hooks/useEmbeddedSdk";
 import { AvatarPerfMetrics } from "./AvatarPerfMetrics";
 import { AvatarPerfViewport } from "./AvatarPerfViewport";
 import { AvatarPerfRecommendations } from "./AvatarPerfRecommendations";
@@ -15,10 +16,13 @@ type Step = "project" | "scene" | "avatar" | "results";
 interface Props {
   toolId: string;
   onBack: () => void;
+  onInteractive: (method: string, args: Record<string, unknown>) => Promise<unknown>;
+  bypassSdk?: boolean;
 }
 
-export function AvatarPerf({ toolId, onBack }: Props) {
+export function AvatarPerf({ toolId, onBack, onInteractive, bypassSdk }: Props) {
   const projects = useProjectsStore((s) => s.projects);
+  const sdk = useEmbeddedSdk(onInteractive);
 
   const [step, setStep] = useState<Step>("project");
   const [selectedProjectPath, setSelectedProjectPath] = useState("");
@@ -31,7 +35,34 @@ export function AvatarPerf({ toolId, onBack }: Props) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<"metrics" | "recommendations">("metrics");
 
-  const handleSelectProject = async (path: string, name: string) => {
+  // SDK mode: triggered by the "Seleccionar proyecto…" button
+  const handleSelectProject = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      if (bypassSdk) {
+        // bypassSdk: project selection is handled by handleSelectProjectDirect below
+        setLoading(false);
+        return;
+      }
+      const selected = await sdk.selectProject();
+      if (!selected) { setLoading(false); return; }
+      const projectPath = selected.path;
+      const projectName = selected.name;
+      setSelectedProjectPath(projectPath);
+      setSelectedProjectName(projectName);
+      const found = await sdk.getScenes(projectPath);
+      setScenes(found as SceneFile[]);
+      setStep("scene");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // bypassSdk mode: called directly from the project list
+  const handleSelectProjectDirect = async (path: string, name: string) => {
     setSelectedProjectPath(path);
     setSelectedProjectName(name);
     setError(null);
@@ -52,8 +83,10 @@ export function AvatarPerf({ toolId, onBack }: Props) {
     setError(null);
     setLoading(true);
     try {
-      const found = await tauriToolsScanAvatars(selectedProjectPath, scene.path);
-      setAvatars(found);
+      const found = bypassSdk
+        ? await tauriToolsScanAvatars(selectedProjectPath, scene.path)
+        : await sdk.getAvatars(selectedProjectPath, scene.path);
+      setAvatars(found as AvatarDescriptor[]);
       setStep("avatar");
     } catch (e) {
       setError(String(e));
@@ -134,28 +167,37 @@ export function AvatarPerf({ toolId, onBack }: Props) {
         )}
 
         {!loading && !error && step === "project" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <p className="text-xs text-zinc-500 mb-4">Selecciona el proyecto Unity que contiene el avatar</p>
-            <div className="flex flex-col gap-2 max-w-xl">
-              {projects.length === 0 ? (
-                <p className="text-sm text-zinc-600">No hay proyectos registrados. Añade uno en la pestaña Proyectos.</p>
-              ) : (
-                projects.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleSelectProject(p.path, p.name)}
-                    className="flex items-center gap-3 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl text-left transition-colors"
-                  >
-                    <div className="text-lg">📁</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-zinc-100 truncate">{p.name}</p>
-                      <p className="text-xs text-zinc-500 truncate">{p.path}</p>
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-zinc-600 flex-shrink-0" />
-                  </button>
-                ))
-              )}
-            </div>
+          <div className="flex-1 flex items-center justify-center p-6">
+            {bypassSdk ? (
+              <div className="flex flex-col gap-2 max-w-xl w-full">
+                <p className="text-xs text-zinc-500 mb-2">Selecciona el proyecto Unity que contiene el avatar</p>
+                {projects.length === 0 ? (
+                  <p className="text-sm text-zinc-600">No hay proyectos registrados. Añade uno en la pestaña Proyectos.</p>
+                ) : (
+                  projects.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleSelectProjectDirect(p.path, p.name)}
+                      className="flex items-center gap-3 px-4 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-xl text-left transition-colors"
+                    >
+                      <div className="text-lg">📁</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-zinc-100 truncate">{p.name}</p>
+                        <p className="text-xs text-zinc-500 truncate">{p.path}</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-zinc-600 flex-shrink-0" />
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={handleSelectProject}
+                className="px-6 py-3 bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-xl text-sm font-medium text-zinc-200 transition-colors"
+              >
+                Seleccionar proyecto…
+              </button>
+            )}
           </div>
         )}
 
