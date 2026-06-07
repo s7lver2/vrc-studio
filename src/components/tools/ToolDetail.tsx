@@ -1,5 +1,5 @@
 // src/components/tools/ToolDetail.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Download, CheckCircle } from "lucide-react";
 import { ToolRegistryEntry } from "../../lib/tauri";
 import { useToolsStore } from "../../store/toolsStore";
@@ -9,6 +9,43 @@ import { DependencyConfirmModal } from "./DependencyConfirmModal";
 interface Props {
   entry: ToolRegistryEntry;
   onBack: () => void;
+}
+
+function AuthorAvatar({ entry }: { entry: ToolRegistryEntry }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (entry.author_avatar_url) {
+      setSrc(entry.author_avatar_url);
+      return;
+    }
+    if (entry.author_github) {
+      setSrc(`https://github.com/${entry.author_github}.png?size=64`);
+      return;
+    }
+    // Heuristic: if author looks like a GitHub username (no spaces), try it
+    const maybeGh = entry.author.trim().replace(/\s+/g, "");
+    if (maybeGh.length > 0 && maybeGh === entry.author.trim()) {
+      setSrc(`https://github.com/${maybeGh}.png?size=64`);
+    }
+  }, [entry.author_avatar_url, entry.author_github, entry.author]);
+
+  if (!src) {
+    return (
+      <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300 shrink-0">
+        {entry.author.charAt(0).toUpperCase()}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={entry.author}
+      className="w-6 h-6 rounded-full object-cover shrink-0 bg-zinc-700"
+      onError={() => setSrc(null)}
+    />
+  );
 }
 
 export function ToolDetail({ entry, onBack }: Props) {
@@ -77,10 +114,37 @@ export function ToolDetail({ entry, onBack }: Props) {
                 <img src={entry.icon_url} alt="" className="w-10 h-10 object-contain" />
               ) : "🛠"}
             </div>
-            <div className="flex-1 min-w-0 mt-1">
-              <h1 className="text-lg font-bold text-zinc-100">{entry.name}</h1>
-              <p className="text-xs text-zinc-500">v{entry.version} · por {entry.author}</p>
+            {/* Author row */}
+            <div className="flex items-center gap-2 mt-1">
+              <AuthorAvatar entry={entry} />
+              <span className="text-xs text-zinc-400">por <span className="text-zinc-200 font-medium">{entry.author}</span></span>
+              <span className="text-zinc-700">·</span>
+              {/* Version badge with changelog tooltip */}
+              <div className="relative group/version">
+                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 cursor-default">
+                  v{entry.version}
+                </span>
+                {entry.changelog && (
+                  <div className="absolute left-0 top-full mt-1.5 z-20 w-72 p-3 rounded-xl bg-zinc-900 border border-zinc-700 shadow-xl text-[11px] text-zinc-400 leading-relaxed opacity-0 pointer-events-none group-hover/version:opacity-100 transition-opacity">
+                    <p className="text-zinc-300 font-semibold text-xs mb-1">Changelog</p>
+                    <p>{entry.changelog}</p>
+                  </div>
+                )}
+              </div>
             </div>
+            {/* Tags */}
+            {entry.tags && entry.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {entry.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex-shrink-0">
               {isInstalled ? (
                 <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800 text-zinc-400 text-xs font-semibold">
@@ -130,8 +194,33 @@ export function ToolDetail({ entry, onBack }: Props) {
                   <li key={dep} className="text-xs text-zinc-400">{dep}</li>
                 ))}
               </ul>
+              {/* SDK Calls */}
+              {entry.sdk_calls && entry.sdk_calls.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">
+                    Acciones SDK
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {entry.sdk_calls.map((call) => (
+                      <div
+                        key={call.method}
+                        className="flex items-start gap-3 bg-zinc-900 border border-zinc-800 rounded-xl p-3"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0 mt-0.5">
+                          <span className="text-[10px] font-mono font-bold text-zinc-400">fn</span>
+                        </div>
+                        <div>
+                          <p className="text-xs font-mono font-semibold text-zinc-100">{call.method}()</p>
+                          <p className="text-[11px] text-zinc-500 mt-0.5">{call.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
+
 
           {/* Screenshots */}
           {entry.screenshots.length > 0 && (
