@@ -311,6 +311,7 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::tools::tools_scan_avatars,
             commands::tools::tools_run_sidecar,
             commands::tools::tools_clear_registry_cache,
+            commands::tools::tools_list_dir,
             // ── Booth Dependencies ──
             commands::booth_deps::booth_deps_read,
             commands::booth_deps::booth_deps_add,

@@ -473,6 +473,63 @@ fn find_go_name(scene_text: &str, file_id: &str, name_re: &regex::Regex) -> Stri
     format!("Avatar (fileID {})", file_id)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileEntry {
+    pub name: String,
+    /// Path relative to the root passed to the command.
+    pub path: String,
+    pub is_dir: bool,
+    pub extension: Option<String>,
+    pub size_bytes: Option<u64>,
+}
+
+/// Lists the immediate children of `root/sub_path`.
+/// Returns entries sorted: directories first, then files, alphabetically.
+#[tauri::command]
+pub fn tools_list_dir(root: String, sub_path: String) -> Result<Vec<FileEntry>, AppError> {
+    let full_path = if sub_path.is_empty() {
+        std::path::PathBuf::from(&root)
+    } else {
+        std::path::Path::new(&root).join(&sub_path)
+    };
+
+    if !full_path.exists() {
+        return Err(AppError::Io(format!("Path not found: {}", full_path.display())));
+    }
+
+    let mut entries: Vec<FileEntry> = std::fs::read_dir(&full_path)
+        .map_err(|e| AppError::Io(e.to_string()))?
+        .filter_map(|e| e.ok())
+        .map(|e| {
+            let meta = e.metadata().ok();
+            let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+            let size_bytes = if is_dir { None } else { meta.map(|m| m.len()) };
+            let name = e.file_name().to_string_lossy().to_string();
+            let extension = if is_dir {
+                None
+            } else {
+                std::path::Path::new(&name)
+                    .extension()
+                    .map(|x| x.to_string_lossy().to_string())
+            };
+            let rel = if sub_path.is_empty() {
+                name.clone()
+            } else {
+                format!("{}/{}", sub_path, name)
+            };
+            FileEntry { name, path: rel, is_dir, extension, size_bytes }
+        })
+        .collect();
+
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(entries)
+}
+
 /// Spawns the tool's sidecar binary, sends request JSON via stdin,
 /// streams progress events, returns the final JSON result.
 #[tauri::command]
