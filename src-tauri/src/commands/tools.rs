@@ -87,16 +87,24 @@ pub fn tools_list(pool: State<'_, DbPool>) -> Result<Vec<InstalledTool>, AppErro
     Ok(tools)
 }
 
-const REGISTRY_REPO: &str = "s7lver2/vrc-studio";
-const REGISTRY_SUBDIR: &str = "tools-registry";
+// Tools live in a dedicated repo: https://github.com/s7lver2/vrcstudio-tools
+const REGISTRY_REPO: &str = "s7lver2/vrcstudio-tools";
+const REGISTRY_SUBDIR: &str = "";   // registry.json is at repo root
 const DEFAULT_REGISTRY_BRANCH: &str = "main";
 const REGISTRY_TTL_SECS: u64 = 3600; // 1 hour
 
 fn registry_url(branch: &str) -> String {
-    format!(
-        "https://raw.githubusercontent.com/{}/{}/{}/registry.json",
-        REGISTRY_REPO, branch, REGISTRY_SUBDIR
-    )
+    if REGISTRY_SUBDIR.is_empty() {
+        format!(
+            "https://raw.githubusercontent.com/{}/{}/registry.json",
+            REGISTRY_REPO, branch
+        )
+    } else {
+        format!(
+            "https://raw.githubusercontent.com/{}/{}/{}/registry.json",
+            REGISTRY_REPO, branch, REGISTRY_SUBDIR
+        )
+    }
 }
 
 // Registry URL not configured yet — return empty list silently
