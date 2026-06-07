@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>VRC Studio — Picker Designs</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #09090b;
+    color: #e4e4e7;
+    padding: 32px;
+  }
+  h1 { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #52525b; margin-bottom: 32px; }
+
+  .row { display: flex; gap: 32px; flex-wrap: wrap; }
+  .preview-col { display: flex; flex-direction: column; gap: 8px; }
+  .col-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #52525b; margin-bottom: 4px; }
+
+  /* ── Modal shell ── */
+  .modal {
+    background: #1c1c1f;
+    border: 1px solid #2e2e33;
+    border-radius: 16px;
+    overflow: hidden;
+    width: 480px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.7);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 14px;
+  }
+  .modal-header h2 { font-size: 15px; font-weight: 700; color: #fff; }
+  .modal-header .close {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #27272a; border: none; color: #71717a;
+    font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-body { padding: 8px 16px 18px; }
+  .modal-search {
+    width: 100%;
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #a1a1aa;
+    margin-bottom: 12px;
+    outline: none;
+  }
+
+  /* ── Import package style: 3 cards row ── */
+  .import-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 4px;
+  }
+  .import-card {
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 12px;
+    padding: 20px 12px 16px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .import-card:hover { background: #2e2e33; border-color: #52525b; }
+  .import-card:active { background: #3f3f46; }
+  .import-card .icon {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .import-card .card-title { font-size: 12px; font-weight: 700; color: #fff; text-align: center; }
+  .import-card .card-desc { font-size: 10px; color: #71717a; text-align: center; line-height: 1.4; }
+
+  /* ── Project picker: grid with covers ── */
+  .project-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 2px;
+  }
+  .project-grid::-webkit-scrollbar { width: 4px; }
+  .project-grid::-webkit-scrollbar-track { background: transparent; }
+  .project-grid::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+
+  .project-card {
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .12s;
+  }
+  .project-card:hover { border-color: #6366f1; }
+  .project-card .cover {
+    width: 100%; aspect-ratio: 16/9;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover-alya { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); }
+  .cover-dhalya { background: linear-gradient(135deg, #0c1f2c 0%, #0e3a4a 100%); }
+  .cover-star { background: linear-gradient(135deg, #1a0a2e 0%, #2d1065 100%); }
+  .cover-sylvia { background: linear-gradient(135deg, #1a0a10 0%, #3d0f25 100%); }
+  .cover-vrc { background: linear-gradient(135deg, #0a1a0a 0%, #14532d 100%); }
+  .cover-test { background: #18181b; }
+  .cover-label {
+    position: absolute; bottom: 4px; right: 5px;
+    font-size: 9px; font-weight: 700;
+    background: rgba(0,0,0,.5);
+    color: #a1a1aa;
+    border-radius: 3px;
+    padding: 1px 4px;
+  }
+  .project-card .card-info {
+    padding: 8px 9px;
+  }
+  .project-card .card-name { font-size: 11px; font-weight: 600; color: #fff; truncate: ellipsis; white-space: nowrap; overflow: hidden; }
+  .project-card .card-path { font-size: 9px; color: #52525b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+
+  /* ── Scene picker: list with file icons ── */
+  .scene-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+  .scene-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px;
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color .12s;
+  }
+  .scene-item:hover { border-color: #52525b; }
+  .scene-icon {
+    width: 32px; height: 32px; border-radius: 7px;
+    background: #1e1b4b;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .scene-info { flex: 1; min-width: 0; }
+  .scene-name { font-size: 12px; font-weight: 600; color: #fff; }
+  .scene-path { font-size: 10px; color: #52525b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── File browser ── */
+  .file-browser { font-size: 11px; }
+  .fb-breadcrumb {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 10px; background: #27272a; border-radius: 7px;
+    margin-bottom: 8px; font-size: 11px; color: #71717a;
+  }
+  .fb-breadcrumb .crumb { color: #a1a1aa; cursor: pointer; }
+  .fb-breadcrumb .crumb:hover { color: #fff; }
+  .fb-breadcrumb .sep { color: #3f3f46; }
+  .fb-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 6px; max-height: 200px; overflow-y: auto; padding: 2px;
+  }
+  .fb-item {
+    background: #27272a; border: 1px solid #3f3f46;
+    border-radius: 8px; padding: 10px 6px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    cursor: pointer; transition: border-color .12s;
+  }
+  .fb-item:hover { border-color: #52525b; }
+  .fb-item .fb-icon { font-size: 20px; }
+  .fb-item .fb-name {
+    font-size: 9px; color: #a1a1aa; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 80px;
+  }
+  .fb-folder .fb-icon { filter: brightness(1.2); }
+
+  .divider { height: 1px; background: #27272a; margin: 6px 0; }
+</style>
+</head>
+<body>
+  <h1>SDK Picker Modals — Diseño visual</h1>
+  <p class="subtitle">Todos los pickers siguen la estética del modal "Import package" — tarjetas oscuras con icono + info</p>
+
+  <div class="row">
+
+    <!-- importPackage() -->
+    <div class="preview-col">
+      <div class="col-label">importPackage()</div>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Import package</h2>
+          <button class="close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="import-cards">
+            <div class="import-card">
+              <div class="icon">💾</div>
+              <div class="card-title">Scan drive</div>
+              <div class="card-desc">Encuentra e importa paquetes desde una carpeta</div>
+            </div>
+            <div class="import-card">
+              <div class="icon">📤</div>
+              <div class="card-title">Local file</div>
+              <div class="card-desc">Importa un ZIP o UnityPackage desde tu equipo</div>
+            </div>
+            <div class="import-card">
+              <div class="icon">🔗</div>
+              <div class="card-title">From URL</div>
+              <div class="card-desc">Importa desde un enlace de descarga directa</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- selectProject() -->
+    <div class="preview-col">
+      <div class="col-label">selectProject()</div>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Select project</h2>
+          <button class="close">✕</button>
+        </div>
+        <div class="modal-body">
+          <input class="modal-search" placeholder="🔍  Filter by name or path…" readonly>
+          <div class="project-grid">
+            <div class="project-card">
+              <div class="cover cover-alya"><span>🧝</span><span class="cover-label">2022.3.22f1</span></div>
+              <div class="card-info">
+                <div class="card-name">Alya</div>
+                <div class="card-path">D:\VRCAVI\Alya</div>
+              </div>
+            </div>
+            <div class="project-card">
+              <div class="cover cover-dhalya"><span>🐉</span><span class="cover-label">2022.3.22f1</span></div>
+              <div class="card-info">
+                <div class="card-name">Dhalya</div>
+                <div class="card-path">D:\VRCAVI\Dhalya</div>
+              </div>
+            </div>
+            <div class="project-card">
+              <div class="cover cover-star"><span>⭐</span><span class="cover-label">2022.3.22f1</span></div>
+              <div class="card-info">
+                <div class="card-name">Star</div>
+                <div class="card-path">D:\VRCAVI\Star</div>
+              </div>
+            </div>
+            <div class="project-card">
+              <div class="cover cover-sylvia"><span>🌸</span><span class="cover-label">2022.3.22f1</span></div>
+              <div class="card-info">
+                <div class="card-name">Sylvia</div>
+                <div class="card-path">D:\VRCAVI\Sylvia</div>
+              </div>
+            </div>
+            <div class="project-card">
+              <div class="cover cover-vrc"><span>🎮</span><span class="cover-label">2022.3.22f1</span></div>
+              <div class="card-info">
+                <div class="card-name">VRCPCManager</div>
+                <div class="card-path">D:\VRCAVI\VRCPCManager</div>
+              </div>
+            </div>
+            <div class="project-card">
+              <div class="cover cover-test"><span>🧪</span><span class="cover-label">2022.3.22f1</span></div>
+              <div class="card-info">
+                <div class="card-name">test</div>
+                <div class="card-path">D:\VRC\test</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="row" style="margin-top: 24px;">
+
+    <!-- selectScene() -->
+    <div class="preview-col">
+      <div class="col-label">selectScene()</div>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Select scene</h2>
+          <button class="close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="scene-list">
+            <div class="scene-item">
+              <div class="scene-icon">🎬</div>
+              <div class="scene-info">
+                <div class="scene-name">Main</div>
+                <div class="scene-path">Assets/Scenes/Main.unity</div>
+              </div>
+            </div>
+            <div class="scene-item">
+              <div class="scene-icon">🎬</div>
+              <div class="scene-info">
+                <div class="scene-name">Avatar_Alya</div>
+                <div class="scene-path">Assets/Scenes/Avatar_Alya.unity</div>
+              </div>
+            </div>
+            <div class="scene-item">
+              <div class="scene-icon">🎬</div>
+              <div class="scene-info">
+                <div class="scene-name">Test</div>
+                <div class="scene-path">Assets/Scenes/Test.unity</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- browseProjectFiles() -->
+    <div class="preview-col">
+      <div class="col-label">browseProjectFiles()</div>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Project files — Alya</h2>
+          <button class="close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="fb-breadcrumb">
+            <span class="crumb">Alya</span>
+            <span class="sep">›</span>
+            <span class="crumb">Assets</span>
+            <span class="sep">›</span>
+            <span class="crumb" style="color:#fff">Animations</span>
+          </div>
+          <div class="fb-grid">
+            <div class="fb-item fb-folder">
+              <div class="fb-icon">📁</div>
+              <div class="fb-name">FX</div>
+            </div>
+            <div class="fb-item fb-folder">
+              <div class="fb-icon">📁</div>
+              <div class="fb-name">Gestures</div>
+            </div>
+            <div class="fb-item">
+              <div class="fb-icon">🎞️</div>
+              <div class="fb-name">Idle.anim</div>
+            </div>
+            <div class="fb-item">
+              <div class="fb-icon">🎞️</div>
+              <div class="fb-name">Wave.anim</div>
+            </div>
+            <div class="fb-item">
+              <div class="fb-icon">🎞️</div>
+              <div class="fb-name">Dance.anim</div>
+            </div>
+            <div class="fb-item">
+              <div class="fb-icon">📄</div>
+              <div class="fb-name">AvatarMask.mask</div>
+            </div>
+            <div class="fb-item">
+              <div class="fb-icon">⚙️</div>
+              <div class="fb-name">FX.controller</div>
+            </div>
+            <div class="fb-item">
+              <div class="fb-icon">⚙️</div>
+              <div class="fb-name">Gesture.controller</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

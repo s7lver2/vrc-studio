@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>VRC Studio SDK — Surface</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f11;
+    color: #e4e4e7;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #71717a; margin-bottom: 28px; }
+  .columns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .group {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .group-header {
+    display: flex; align-items: center; gap-8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #27272a;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .5px; text-transform: uppercase;
+  }
+  .group-icon { font-size: 14px; margin-right: 8px; }
+  .methods { padding: 10px 10px; display: flex; flex-direction: column; gap: 5px; }
+  .method {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    transition: background .12s;
+  }
+  .method:hover { background: #27272a; }
+  .method-name {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .method-desc { font-size: 10px; color: #71717a; line-height: 1.4; margin-top: 2px; }
+  .badge {
+    display: inline-block;
+    font-size: 9px; font-weight: 700; letter-spacing: .3px;
+    border-radius: 4px; padding: 1px 5px;
+    white-space: nowrap; flex-shrink: 0; margin-top: 1px;
+  }
+  .badge-existing { background: #18181b; color: #52525b; border: 1px solid #3f3f46; }
+  .badge-new { background: #0f2a1a; color: #4ade80; border: 1px solid #166534; }
+  .badge-expanded { background: #1e1b4b; color: #818cf8; border: 1px solid #3730a3; }
+
+  /* group header colors */
+  .gh-project { background: #0c0c1a; color: #818cf8; }
+  .gh-scene { background: #0a1a0a; color: #4ade80; }
+  .gh-avatar { background: #1a0c0c; color: #f87171; }
+  .gh-inventory { background: #0a1220; color: #38bdf8; }
+  .gh-import { background: #1a1000; color: #fbbf24; }
+  .gh-files { background: #150a20; color: #c084fc; }
+  .gh-ui { background: #0a1a1a; color: #2dd4bf; }
+
+  .legend {
+    display: flex; gap: 16px; margin-top: 20px;
+    font-size: 11px; color: #71717a; align-items: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+
+  .note {
+    margin-top: 16px;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-left: 3px solid #fbbf24;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: #a1a1aa;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <h1>VRC Studio SDK — Superficie de llamadas</h1>
+  <p class="subtitle">Verde = nuevo en este sprint · Morado = ampliado · Gris = ya existe</p>
+
+  <div class="columns">
+
+    <!-- PROJECT -->
+    <div class="group">
+      <div class="group-header gh-project">
+        <span class="group-icon">📁</span> Project
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">getProjects()</div>
+            <div class="method-desc">Lista todos los proyectos Unity registrados</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">selectProject()</div>
+            <div class="method-desc">Abre el picker visual (nuevo: grid con iconos)</div>
+          </div>
+          <span class="badge badge-expanded">mejorado</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">openProject(path)</div>
+            <div class="method-desc">Abre un proyecto en Unity</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE -->
+    <div class="group">
+      <div class="group-header gh-scene">
+        <span class="group-icon">🎬</span> Scene
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">getScenes(path)</div>
+            <div class="method-desc">Escanea archivos .unity en el proyecto</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">selectScene(path)</div>
+            <div class="method-desc">Picker de escenas del proyecto</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AVATAR -->
+    <div class="group">
+      <div class="group-header gh-avatar">
+        <span class="group-icon">🧍</span> Avatar
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">getAvatars(proj, scene)</div>
+            <div class="method-desc">Detecta GameObjects con VRC_AvatarDescriptor</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">selectAvatar(proj, scene)</div>
+            <div class="method-desc">Picker de avatares de una escena</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVENTORY -->
+    <div class="group">
+      <div class="group-header gh-inventory">
+        <span class="group-icon">📦</span> Inventory
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">getInventoryItems(filter?)</div>
+            <div class="method-desc">Lista items del inventario con filtros</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">selectInventoryItem(filter?)</div>
+            <div class="method-desc">Picker de inventario (grid de items)</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">importInventoryItem(id)</div>
+            <div class="method-desc">Dispara el flujo de importación del item</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMPORT PACKAGE (NEW) -->
+    <div class="group">
+      <div class="group-header gh-import">
+        <span class="group-icon">⬇️</span> Import Package
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">importPackage(opts?)</div>
+            <div class="method-desc">Abre el modal "Import package" (scan drive / local file / URL) — como la captura 1</div>
+          </div>
+          <span class="badge badge-new">nuevo</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">importPackageFromUrl(url)</div>
+            <div class="method-desc">Importa directamente desde URL sin abrir modal</div>
+          </div>
+          <span class="badge badge-new">nuevo</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">importPackageFromFile(path?)</div>
+            <div class="method-desc">Importa desde archivo local (abre OS picker si no se pasa path)</div>
+          </div>
+          <span class="badge badge-new">nuevo</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILE BROWSER (NEW) -->
+    <div class="group">
+      <div class="group-header gh-files">
+        <span class="group-icon">🗂️</span> File Browser
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">browseProjectFiles(path)</div>
+            <div class="method-desc">Explorador visual de archivos del proyecto Unity. Devuelve la ruta seleccionada.</div>
+          </div>
+          <span class="badge badge-new">nuevo</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">browseInventoryItemFiles(id)</div>
+            <div class="method-desc">Explorador de archivos de un item del inventario</div>
+          </div>
+          <span class="badge badge-new">nuevo</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">getProjectFiles(path, filter?)</div>
+            <div class="method-desc">Devuelve árbol de archivos sin UI (para tools que procesan los archivos programáticamente)</div>
+          </div>
+          <span class="badge badge-new">nuevo</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- UI HELPERS -->
+    <div class="group">
+      <div class="group-header gh-ui">
+        <span class="group-icon">✨</span> UI Helpers
+      </div>
+      <div class="methods">
+        <div class="method">
+          <div>
+            <div class="method-name">notify(msg, opts?)</div>
+            <div class="method-desc">Toast de notificación en la app</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">setProgress(p, label?)</div>
+            <div class="method-desc">Progreso en la tool card (0.0 – 1.0)</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">pickFile(opts?)</div>
+            <div class="method-desc">OS file picker</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+        <div class="method">
+          <div>
+            <div class="method-name">pickFolder(title?)</div>
+            <div class="method-desc">OS folder picker</div>
+          </div>
+          <span class="badge badge-existing">existe</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    ¿Falta alguna llamada? Dime en el terminal qué otras interacciones necesitas que las tools puedan disparar desde la app.
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="badge badge-existing">existe</span> Ya implementado</div>
+    <div class="legend-item"><span class="badge badge-new">nuevo</span> Se añade en este sprint</div>
+    <div class="legend-item"><span class="badge badge-expanded">mejorado</span> UI rediseñada</div>
+  </div>
+</body>
+</html>

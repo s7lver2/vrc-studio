@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>VRC Studio — TSX Tool Architecture</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f11;
+    color: #e4e4e7;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #71717a; margin-bottom: 28px; }
+  .options { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .option {
+    background: #18181b;
+    border: 2px solid #27272a;
+    border-radius: 14px;
+    padding: 24px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    position: relative;
+  }
+  .option:hover { border-color: #52525b; }
+  .option.selected { border-color: #6366f1; background: #1e1e2e; }
+  .option.selected::after {
+    content: '✓ Seleccionado';
+    position: absolute;
+    top: 14px; right: 16px;
+    font-size: 11px; font-weight: 700;
+    color: #818cf8;
+  }
+  .letter {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800;
+    margin-bottom: 14px;
+  }
+  .opt-a .letter { background: #1e1b4b; color: #818cf8; }
+  .opt-b .letter { background: #0c2537; color: #38bdf8; }
+  .option h3 { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .option .lead { font-size: 12px; color: #a1a1aa; line-height: 1.6; margin-bottom: 16px; }
+  .diagram {
+    background: #09090b;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 11px;
+    margin-bottom: 14px;
+  }
+  .diagram-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+    color: #a1a1aa;
+  }
+  .diagram-row:last-child { margin-bottom: 0; }
+  .box {
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .box-app { background: #1e1b4b; color: #818cf8; border: 1px solid #3730a3; }
+  .box-tool { background: #0c2537; color: #38bdf8; border: 1px solid #0369a1; }
+  .box-file { background: #18181b; color: #a1a1aa; border: 1px solid #3f3f46; font-family: monospace; }
+  .box-bundle { background: #1c1917; color: #a16207; border: 1px solid #78350f; font-family: monospace; }
+  .box-frame { background: #1a1a1a; color: #52525b; border: 1px solid #3f3f46; }
+  .arrow { color: #52525b; font-size: 12px; }
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pros, .cons { border-radius: 7px; padding: 8px 10px; }
+  .pros { background: #0a1f0e; border: 1px solid #166534; }
+  .cons { background: #1c0f0f; border: 1px solid #7f1d1d; }
+  .pros h5, .cons h5 { font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 6px; }
+  .pros h5 { color: #4ade80; }
+  .cons h5 { color: #f87171; }
+  .pros li, .cons li { font-size: 11px; color: #a1a1aa; margin-left: 14px; line-height: 1.6; }
+  .rec {
+    background: #1e1b4b;
+    border: 1px solid #3730a3;
+    border-left: 3px solid #6366f1;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: #c7d2fe;
+    line-height: 1.6;
+  }
+  .rec strong { color: #fff; }
+  .tag {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    border-radius: 4px; padding: 1px 6px; margin-right: 4px;
+    letter-spacing: .3px;
+  }
+  .tag-rec { background: #6366f1; color: #fff; }
+</style>
+</head>
+<body>
+  <h1>¿Cómo funcionan los archivos .tsx de las tools?</h1>
+  <p class="subtitle">Dos arquitecturas distintas — elige la que encaje con lo que tienes en mente</p>
+
+  <div class="options">
+
+    <!-- OPTION A -->
+    <div class="option opt-a" onclick="this.classList.toggle('selected')">
+      <div class="letter">A</div>
+      <h3>Compilado — TSX como fuente, bundle como output</h3>
+      <p class="lead">
+        Cada tool tiene archivos <code>.tsx</code> en su repo (<code>vrcstudio-tools</code>). El <code>build.py</code> los compila con Vite/esbuild a un <code>ui.js</code> bundle. La app sigue cargando ese bundle en iframe, igual que ahora — pero el código fuente es TSX moderno con React, Tailwind, etc.
+      </p>
+
+      <div class="diagram">
+        <div class="diagram-row">
+          <span class="box box-file">tool/src/App.tsx</span>
+          <span class="arrow">→ build.py (vite)</span>
+          <span class="box box-bundle">ui.js</span>
+          <span class="arrow">→ registry</span>
+        </div>
+        <div class="diagram-row">
+          <span class="box box-app">App (Tauri)</span>
+          <span class="arrow">descarga</span>
+          <span class="box box-bundle">ui.js</span>
+          <span class="arrow">→</span>
+          <span class="box box-frame">iframe</span>
+          <span class="arrow">+ SDK bridge</span>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros">
+          <h5>Pros</h5>
+          <ul>
+            <li>Tools completamente aisladas</li>
+            <li>Pueden usar cualquier dep npm</li>
+            <li>Sin riesgo de conflictos con la app</li>
+            <li>Funcionan sin recompilar la app</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h5>Contras</h5>
+          <ul>
+            <li>Build step extra por tool</li>
+            <li>No comparten el design system de la app</li>
+            <li>Tamaño de bundle más grande</li>
+            <li>Sandbox de iframe limita APIs</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION B -->
+    <div class="option opt-b" onclick="this.classList.toggle('selected')">
+      <div class="letter">B</div>
+      <h3>Embebido — TSX cargado en el árbol React de la app</h3>
+      <p class="lead">
+        Las tools son archivos <code>.tsx</code> que se registran en la app principal. Se compilan junto con ella o se cargan como módulos dinámicos. Comparten Tailwind, el design system, y el contexto de React de la app. No hay iframe.
+      </p>
+
+      <div class="diagram">
+        <div class="diagram-row">
+          <span class="box box-file">tool/src/App.tsx</span>
+          <span class="arrow">→ vite dynamic import</span>
+          <span class="box box-app">App React tree</span>
+        </div>
+        <div class="diagram-row">
+          <span class="box box-app">App</span>
+          <span class="arrow">monta directamente</span>
+          <span class="box box-tool">&lt;ToolComponent /&gt;</span>
+          <span class="arrow">sin iframe</span>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros">
+          <h5>Pros</h5>
+          <ul>
+            <li>Acceso a Tailwind, iconos, etc.</li>
+            <li>Look & feel idéntico a la app</li>
+            <li>Sin overhead de iframe/bridge</li>
+            <li>TypeScript end-to-end</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h5>Contras</h5>
+          <ul>
+            <li>Tools deben compilarse con la app</li>
+            <li>Deps deben ser compatibles</li>
+            <li>Sin aislamiento — una tool crashea la app</li>
+            <li>Requiere federated modules o similar</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="rec">
+    <strong><span class="tag tag-rec">Recomendación</span>Opción A</strong> — TSX como fuente, bundle compilado como output.
+    Da lo mejor de los dos mundos: escribes con React/TypeScript moderno, pero las tools siguen siendo paquetes descargables independientes.
+    El SDK bridge ya existe y funciona. El cambio es solo en <strong>cómo se construyen</strong> las tools, no en cómo se cargan.
+    Con Vite + <code>library mode</code>, el bundle incluye React minificado y es completamente portable.
+  </div>
+</body>
+</html>

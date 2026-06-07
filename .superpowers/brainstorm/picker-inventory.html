@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>selectInventoryItem() Picker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #09090b;
+    color: #e4e4e7;
+    padding: 32px;
+  }
+  h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #52525b; margin-bottom: 28px; }
+
+  .modal {
+    background: #1c1c1f;
+    border: 1px solid #2e2e33;
+    border-radius: 16px;
+    overflow: hidden;
+    width: 540px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.7);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 14px;
+  }
+  .modal-header h2 { font-size: 15px; font-weight: 700; color: #fff; }
+  .close {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #27272a; border: none; color: #71717a;
+    font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .modal-toolbar {
+    display: flex; gap: 8px; align-items: center;
+    padding: 0 16px 10px;
+  }
+  .search {
+    flex: 1;
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 8px;
+    padding: 7px 11px;
+    font-size: 12px;
+    color: #a1a1aa;
+    outline: none;
+  }
+  .cat-pills {
+    display: flex; gap: 5px; padding: 0 16px 12px; flex-wrap: wrap;
+  }
+  .pill {
+    font-size: 10px; font-weight: 600;
+    border-radius: 20px;
+    padding: 3px 10px;
+    cursor: pointer;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #71717a;
+    transition: all .12s;
+  }
+  .pill.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+  .pill:hover:not(.active) { border-color: #52525b; color: #a1a1aa; }
+
+  .inv-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 0 14px 16px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .inv-grid::-webkit-scrollbar { width: 4px; }
+  .inv-grid::-webkit-scrollbar-track { background: transparent; }
+  .inv-grid::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+
+  .inv-card {
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .12s, transform .1s;
+  }
+  .inv-card:hover { border-color: #6366f1; transform: translateY(-1px); }
+
+  .inv-thumb {
+    width: 100%; aspect-ratio: 1/1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    position: relative;
+  }
+  .thumb-1 { background: linear-gradient(135deg, #1e1b4b, #312e81); }
+  .thumb-2 { background: linear-gradient(135deg, #0c2537, #0e3a4a); }
+  .thumb-3 { background: linear-gradient(135deg, #1a0a2e, #2d1065); }
+  .thumb-4 { background: linear-gradient(135deg, #0a1f0e, #14532d); }
+  .thumb-5 { background: linear-gradient(135deg, #1a0010, #4c0519); }
+  .thumb-6 { background: linear-gradient(135deg, #1a1000, #451a03); }
+  .thumb-7 { background: linear-gradient(135deg, #0a1a1a, #134e4a); }
+  .thumb-8 { background: linear-gradient(135deg, #180a18, #3b0764); }
+
+  .inv-cat-badge {
+    position: absolute; top: 4px; left: 4px;
+    font-size: 8px; font-weight: 700;
+    background: rgba(0,0,0,.6);
+    color: #a1a1aa;
+    border-radius: 4px;
+    padding: 1px 5px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+  }
+  .inv-installed {
+    position: absolute; top: 4px; right: 4px;
+    width: 14px; height: 14px;
+    background: #166534;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px;
+  }
+
+  .inv-info {
+    padding: 7px 8px;
+  }
+  .inv-name {
+    font-size: 10px; font-weight: 600; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .inv-meta {
+    font-size: 9px; color: #52525b; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .col-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #52525b; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+  <h1>selectInventoryItem() — Picker</h1>
+  <p class="subtitle">Grid de items del inventario con thumbnail, nombre, categoría y badge de instalado</p>
+
+  <div class="col-label">selectInventoryItem({ category: "avatar", title: "Selecciona un avatar base" })</div>
+
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Selecciona un avatar base</h2>
+      <button class="close">✕</button>
+    </div>
+    <div class="modal-toolbar">
+      <input class="search" placeholder="🔍  Buscar en inventario…" readonly>
+    </div>
+    <div class="cat-pills">
+      <div class="pill active">Todos</div>
+      <div class="pill">Avatar</div>
+      <div class="pill">Clothing</div>
+      <div class="pill">Accessory</div>
+      <div class="pill">Shader</div>
+      <div class="pill">Tool</div>
+    </div>
+    <div class="inv-grid">
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-1">
+          <span>🧝</span>
+          <span class="inv-cat-badge">Avatar</span>
+          <span class="inv-installed">✓</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Alya v2.1</div>
+          <div class="inv-meta">Booth · avatar</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-2">
+          <span>🐉</span>
+          <span class="inv-cat-badge">Avatar</span>
+          <span class="inv-installed">✓</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Dhalya</div>
+          <div class="inv-meta">Booth · avatar</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-3">
+          <span>⭐</span>
+          <span class="inv-cat-badge">Avatar</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Star 1.0</div>
+          <div class="inv-meta">Booth · avatar</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-4">
+          <span>🌸</span>
+          <span class="inv-cat-badge">Clothing</span>
+          <span class="inv-installed">✓</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Sakura Outfit</div>
+          <div class="inv-meta">Booth · clothing</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-5">
+          <span>👗</span>
+          <span class="inv-cat-badge">Clothing</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Maid Set</div>
+          <div class="inv-meta">Booth · clothing</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-6">
+          <span>✨</span>
+          <span class="inv-cat-badge">Shader</span>
+          <span class="inv-installed">✓</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Poiyomi 9.0</div>
+          <div class="inv-meta">manual · shader</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-7">
+          <span>💎</span>
+          <span class="inv-cat-badge">Accessory</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Crystal Wings</div>
+          <div class="inv-meta">Booth · accessory</div>
+        </div>
+      </div>
+
+      <div class="inv-card">
+        <div class="inv-thumb thumb-8">
+          <span>🎀</span>
+          <span class="inv-cat-badge">Accessory</span>
+          <span class="inv-installed">✓</span>
+        </div>
+        <div class="inv-info">
+          <div class="inv-name">Ribbon Set</div>
+          <div class="inv-meta">Booth · accessory</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>VRC Studio — Alcance del trabajo</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f11;
+    color: #e4e4e7;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #71717a; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  .group {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    position: relative;
+  }
+  .group:hover { border-color: #6366f1; }
+  .group.selected { border-color: #6366f1; background: #1e1e2e; }
+  .group.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    color: #6366f1;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .group-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    color: #a1a1aa;
+    margin-bottom: 12px;
+  }
+  .group-badge span {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .badge-a span { background: #6366f1; }
+  .badge-b span { background: #0ea5e9; }
+  .badge-c span { background: #10b981; }
+  .badge-d span { background: #f59e0b; }
+  .badge-e span { background: #ef4444; }
+  .badge-f span { background: #8b5cf6; }
+  .group h3 { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+  .group p { font-size: 12px; color: #71717a; line-height: 1.5; }
+  .items { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .item {
+    font-size: 11px;
+    color: #a1a1aa;
+    background: #09090b;
+    border: 1px solid #27272a;
+    border-radius: 6px;
+    padding: 4px 8px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-right: 4px;
+    font-weight: 600;
+  }
+  .tag-standalone { background: #1a2a1a; color: #4ade80; border: 1px solid #166534; }
+  .tag-coupled { background: #1a1a2a; color: #818cf8; border: 1px solid #3730a3; }
+  .tag-bug { background: #2a1a1a; color: #f87171; border: 1px solid #7f1d1d; }
+  .note {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-left: 3px solid #6366f1;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 12px;
+    color: #a1a1aa;
+    line-height: 1.6;
+  }
+  .note strong { color: #e4e4e7; }
+</style>
+</head>
+<body>
+  <h1>VRC Studio · Tools System — Alcance</h1>
+  <p class="subtitle">7 peticiones agrupadas en bloques de trabajo independientes</p>
+
+  <div class="grid">
+    <div class="group">
+      <div class="group-badge badge-a"><span>A</span> SDK Expansion</div>
+      <h3>Nuevas rutas del SDK</h3>
+      <p>Expandir la superficie del SDK con llamadas que hoy no existen.</p>
+      <div class="items">
+        <div class="item"><span class="tag tag-coupled">Acoplado B</span>Modal "Import package" invocable por SDK</div>
+        <div class="item"><span class="tag tag-standalone">Nuevo</span>Explorador visual de archivos de proyecto/item</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-badge badge-b"><span>B</span> Project Picker UI</div>
+      <h3>Selector de proyectos en grid</h3>
+      <p>Rediseñar el picker de <code>selectProject()</code> como grid visual con iconos de proyecto (como la captura 2).</p>
+      <div class="items">
+        <div class="item"><span class="tag tag-coupled">Acoplado A,C</span>Nuevo diseño de ProjectPicker en SdkPickerModals</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-badge badge-c"><span>C</span> App self-SDK</div>
+      <h3>App usa su propio SDK interno</h3>
+      <p>AvatarPerf embedded deja de llamar a Tauri directamente — pasa por el SDK. Con debug toggle para revertir.</p>
+      <div class="items">
+        <div class="item"><span class="tag tag-coupled">Requiere B</span>Embedded runner → useEmbeddedSdk</div>
+        <div class="item"><span class="tag tag-standalone">Debug</span>Toggle en Settings para bypass</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-badge badge-d"><span>D</span> Tool Packaging</div>
+      <h3>Tools con frontend propio + deps</h3>
+      <p>Las tools pueden incluir su propio <code>ui.js</code> y declarar dependencias npm adicionales, instaladas en su carpeta.</p>
+      <div class="items">
+        <div class="item"><span class="tag tag-standalone">Nuevo</span>Schema de tool.json con <code>frontend</code> + <code>npm_deps</code></div>
+        <div class="item"><span class="tag tag-standalone">Build</span>build.py actualizado para empaquetar UI</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-badge badge-e"><span>E</span> Tool Rewrite</div>
+      <h3>avatar-perf-core usa SDK</h3>
+      <p>Reescribir el tool para que use <code>sdk.selectProject()</code>, etc., en lugar de que la app gestione los pasos del wizard.</p>
+      <div class="items">
+        <div class="item"><span class="tag tag-coupled">Requiere D</span>Tool con bundle UI propio</div>
+        <div class="item"><span class="tag tag-coupled">Requiere A,B,C</span>Picker modals disponibles vía SDK</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-badge badge-f"><span>F</span> Bug Fix</div>
+      <h3>Avatares no detectados</h3>
+      <p>El parser YAML de Rust no encuentra avatares con <code>VRC_AvatarDescriptor</code> en la escena.</p>
+      <div class="items">
+        <div class="item"><span class="tag tag-bug">Bug</span>Standalone — no depende de nada</div>
+        <div class="item"><span class="tag tag-bug">Bloqueante</span>La tool actual no funciona sin esto</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Orden de dependencias:</strong> F (bug fix) es standalone y debería ir primero. Luego B → A → C en paralelo. D → E al final (el rewrite del tool depende de que el sistema de packaging esté listo). Cada bloque puede ser un spec+plan independiente.
+  </div>
+</body>
+</html>
