@@ -3,26 +3,17 @@
 build.py — VRC Studio Build System
 =====================================
 Ubicación: tools/build.py
-Ejecutar desde la raíz del proyecto:  python tools/build.py
+Ejecutar desde la raíz del proyecto:  python tools/build.py [comando] [flags]
 
-Modos:
-  python tools/build.py              Abre la app en modo dev con HMR (tauri dev)
-  python tools/build.py --quick      Build debug compilado + copia directa (sin wizard)
-  python tools/build.py clean        Limpia dist/ y releases/
-  python tools/build.py clean --deep También limpia target/ y node_modules/
-  python tools/build.py release                        Build todas las plataformas
-  python tools/build.py release --version 1.2.3        Fuerza versión explícita
-  python tools/build.py release --version 1.2.3 --no-publish  Solo compilar y firmar
-  python tools/build.py release --version 1.2.3 --channel testing
-  python tools/build.py gen-keys     Genera par de claves Ed25519
-  python tools/build.py show-keys    Muestra las claves públicas actuales
-
-Cross-compilation sin Docker:
-  cargo install cargo-zigbuild
-  pip install ziglang
+Usa  python tools/build.py --help  para ver la ayuda completa.
 """
 
-import argparse, datetime, json, os, platform, re, shutil, subprocess, sys, textwrap, time
+import argparse, datetime, json, os, platform, random, re, shutil, string, subprocess, sys, textwrap, time, urllib.request
+
+# Force UTF-8 output on Windows
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # ─────────────────────────────────────────────
 #  CONFIGURACIÓN CENTRAL — NADA MÁS QUE EDITAR
@@ -41,8 +32,14 @@ KEYS_DIR       = os.path.join(PROJECT_ROOT, "tools", "keys")
 UPDATE_MANIFEST_STABLE  = os.path.join(RELEASE_DIR, "update-stable.json")
 UPDATE_MANIFEST_TESTING = os.path.join(RELEASE_DIR, "update-testing.json")
 GITHUB_RELEASES_BASE    = "https://github.com/s7lver2/vrc-studio/releases/download"
+GITHUB_REPO             = "s7lver2/vrc-studio"
+BETA_REGISTRY_FILE      = os.path.join(PROJECT_ROOT, "beta-registry.json")
 PUBLISHER               = "Tu Nombre / Equipo"
 PUBLISHER_URL           = "https://github.com/s7lver2/vrc-studio"
+
+# Tools plugin registry lives in a separate repo
+TOOLS_REPO              = "s7lver2/vrcstudio-tools"
+TOOLS_REGISTRY_URL      = f"https://raw.githubusercontent.com/{TOOLS_REPO}/main/registry.json"
 
 # Solo Windows como target principal; macOS y Linux como secundarios.
 PLATFORMS = {
@@ -67,12 +64,14 @@ GREEN = "\033[32m" if _HAS_COLOR else ""
 CYAN  = "\033[36m" if _HAS_COLOR else ""
 YELLOW= "\033[33m" if _HAS_COLOR else ""
 RED   = "\033[31m" if _HAS_COLOR else ""
+PURPLE= "\033[35m" if _HAS_COLOR else ""
 
 def ok(msg):    print(f"{GREEN}✓{RESET} {msg}")
 def info(msg):  print(f"{CYAN}▶{RESET} {msg}")
 def warn(msg):  print(f"{YELLOW}⚠{RESET}  {msg}")
 def error(msg): print(f"{RED}✗{RESET} {msg}", file=sys.stderr)
 def step(msg):  print(f"\n{BOLD}→ {msg}{RESET}")
+def beta(msg):  print(f"{PURPLE}β{RESET} {msg}")
 
 _BUILD_START = time.monotonic()
 def elapsed():
@@ -103,7 +102,7 @@ def _sanitize_version(v):
     v = v.lstrip("v")
     m = re.match(r"(\d+(?:\.\d+)*)", v)
     if not m:
-        return f"0.0.0"
+        return "0.0.0"
     parts = m.group(1).split(".")
     while len(parts) < 3:
         parts.append("0")
@@ -161,7 +160,6 @@ def _patch_tauri_version(version):
             continue
         content = open(path, encoding="utf-8").read()
         if path.endswith(".toml"):
-            # Solo la primera aparición de version = "..." (la del [package])
             new_content = re.sub(
                 r'^(version\s*=\s*")[^"]+(")',
                 f'\\g<1>{version}\\g<2>',
@@ -194,6 +192,185 @@ def clean(deep=False):
     os.makedirs(BUILD_DIR,   exist_ok=True)
     os.makedirs(RELEASE_DIR, exist_ok=True)
     ok("Directorios limpios")
+
+# ─────────────────────────────────────────────
+#  BETA UTILITIES
+# ─────────────────────────────────────────────
+
+def _branch_to_slug(branch: str) -> str:
+    """
+    Converts a branch name to a beta slug.
+    feature/tools-system → tools-system
+    experimental/new-ui  → new-ui
+    my-feature           → my-feature
+    """
+    # Strip known prefixes
+    for prefix in ("feature/", "feat/", "experimental/", "wip/", "dev/"):
+        if branch.startswith(prefix):
+            branch = branch[len(prefix):]
+            break
+    # Replace remaining slashes and underscores with dashes, lowercase
+    slug = re.sub(r"[/_\s]+", "-", branch).lower()
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = slug.strip("-")
+    return slug or "unknown"
+
+def _slug_to_name(slug: str) -> str:
+    """tools-system → Tools System"""
+    return " ".join(word.capitalize() for word in slug.split("-"))
+
+def _load_beta_registry() -> dict:
+    if os.path.exists(BETA_REGISTRY_FILE):
+        try:
+            return json.loads(open(BETA_REGISTRY_FILE, encoding="utf-8").read())
+        except Exception:
+            pass
+    return {"codes": {}}
+
+def _save_beta_registry(registry: dict):
+    with open(BETA_REGISTRY_FILE, "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+def _generate_beta_code(slug: str) -> str:
+    """
+    Generates a stable, unique beta access code for a slug.
+    First call creates it; subsequent calls for the same slug reuse it.
+    Format: TOOLS-SYSTEM-XXXX (slug uppercased + 4-char random suffix).
+    """
+    registry = _load_beta_registry()
+    # Check if this slug already has a code
+    for code, entry in registry["codes"].items():
+        if entry.get("slug") == slug:
+            return code
+    # Generate a new code
+    prefix = slug.upper().replace("-", "-")[:20]
+    suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    code = f"{prefix}-{suffix}"
+    return code
+
+def _ensure_beta_registry_entry(slug: str, name: str, description: str = "") -> str:
+    """
+    Ensures slug has an entry in beta-registry.json.
+    Returns the access code for this slug.
+    """
+    registry = _load_beta_registry()
+
+    # Find existing code for this slug
+    existing_code = None
+    for code, entry in registry["codes"].items():
+        if entry.get("slug") == slug:
+            existing_code = code
+            # Update name/description if provided
+            if name:
+                entry["name"] = name
+            if description:
+                entry["description"] = description
+            break
+
+    if existing_code is None:
+        # Create new entry
+        code = _generate_beta_code(slug)
+        registry["codes"][code] = {
+            "slug":        slug,
+            "name":        name or _slug_to_name(slug),
+            "description": description,
+        }
+        _save_beta_registry(registry)
+        return code
+    else:
+        _save_beta_registry(registry)
+        return existing_code
+
+def _git_short_hash() -> str:
+    """Returns the 5-char short git commit hash of HEAD, or 'xxxxx' if unavailable."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short=5", "HEAD"],
+            cwd=PROJECT_ROOT, stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
+
+def _format_beta_version(n: int, git_hash: str) -> str:
+    """Returns the human-readable beta build ID: '<n>-<hash>' e.g. '3-a4f2b'."""
+    return f"{n}-{git_hash}"
+
+def _next_beta_build_number(slug: str) -> tuple[int, str]:
+    """
+    Queries GitHub API to find the highest existing build number for this beta slug.
+    Returns (next_n, git_hash). The full version ID is '<next_n>-<hash>'.
+    Tags on GitHub use only the numeric part for ordering: beta-<slug>-<n>.
+    Falls back to (1, hash) if GitHub is unavailable.
+    """
+    step(f"Consultando GitHub para determinar el próximo build number (slug={slug})")
+    git_hash = _git_short_hash()
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases?per_page=100"
+        req = urllib.request.Request(
+            api_url,
+            headers={"User-Agent": "vrc-studio-build", "Accept": "application/vnd.github+json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            releases = json.loads(resp.read().decode())
+        prefix = f"beta-{slug}-"
+        max_build = 0
+        for rel in releases:
+            tag = rel.get("tag_name", "")
+            if tag.startswith(prefix):
+                # Tag format: beta-<slug>-<N>  (numeric only for ordering)
+                tail = tag[len(prefix):]
+                numeric = tail.split("-")[0]   # strip hash suffix if present
+                try:
+                    n = int(numeric)
+                    max_build = max(max_build, n)
+                except ValueError:
+                    pass
+        next_build = max_build + 1
+        info(f"  Último build: {max_build} → próximo: {_format_beta_version(next_build, git_hash)}")
+        return next_build, git_hash
+    except Exception as e:
+        warn(f"  No se pudo consultar GitHub ({e}) — usando build 1-{git_hash}")
+        return 1, git_hash
+
+def _commit_beta_registry(slug: str, build_id: str):
+    """Commits the updated beta-registry.json to the current branch."""
+    try:
+        subprocess.run(
+            ["git", "add", "beta-registry.json"],
+            cwd=PROJECT_ROOT, check=True, stdout=subprocess.DEVNULL
+        )
+        # Only commit if there are staged changes
+        status = subprocess.check_output(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=PROJECT_ROOT, stderr=subprocess.DEVNULL
+        ).decode().strip()
+        if status:
+            subprocess.run(
+                ["git", "commit", "-m",
+                 f"chore(beta): register {slug} build {build_id} in beta-registry.json"],
+                cwd=PROJECT_ROOT, check=True,
+                stdout=subprocess.DEVNULL
+            )
+            ok("beta-registry.json commiteado")
+    except Exception as e:
+        warn(f"  No se pudo commitear beta-registry.json: {e}")
+
+def _push_beta_registry():
+    """Pushes the current branch to origin so beta-registry.json is live."""
+    try:
+        current_branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=PROJECT_ROOT, stderr=subprocess.DEVNULL
+        ).decode().strip()
+        subprocess.run(
+            ["git", "push", "origin", current_branch],
+            cwd=PROJECT_ROOT, check=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        ok(f"Rama {current_branch} pusheada → beta-registry.json visible en GitHub raw")
+    except Exception as e:
+        warn(f"  Push falló: {e}. Haz push manualmente para que el código sea válido.")
 
 # ─────────────────────────────────────────────
 #  BUILD: TAURI
@@ -310,7 +487,6 @@ def build_tauri(platform_key, version, debug=False):
         return None, None
 
     # ── Copiar a BUILD_DIR ────────────────────────────────────────────────────
-    # Copia todo el directorio release (incluye WebView2Loader.dll en Windows)
     _SKIP_DIRS = {"bundle", "incremental", ".fingerprint", "deps", "build", "examples"}
     _SKIP_EXTS = {".pdb", ".d", ".rlib", ".rmeta", ".exp", ".lib"}
 
@@ -822,6 +998,75 @@ def publish_github_release(version, channel, notes, manifest_path):
     except subprocess.CalledProcessError as e:
         warn(f"gh release create falló (exit={e.returncode}). Publícalo manualmente.")
 
+def publish_github_beta_release(slug, build_num, build_id, notes, installer_files):
+    """
+    Creates a GitHub prerelease tagged beta-<slug>-<N>.
+    build_id is the human-readable '<N>-<hash>' version string.
+    Asset names use the beta tag format so the Rust updater can find them.
+    """
+    # Git tag uses only the numeric part for clean ordering; build_id goes in title/body
+    tag   = f"beta-{slug}-{build_num}"
+    step(f"Publicando GitHub Beta Release → {tag}  ({build_id})")
+
+    if not _has_gh():
+        warn("`gh` CLI no instalada. Instala: https://cli.github.com/")
+        _print_beta_manual_steps(slug, build_num, build_id, installer_files)
+        return
+
+    title = f"[Beta] {_slug_to_name(slug)}  {build_id}"
+    body  = notes or f"Private beta build `{build_id}` for {_slug_to_name(slug)}."
+    body += f"\n\n| | |\n|---|---|\n| **Slug** | `{slug}` |\n| **Build** | `{build_id}` |\n"
+    body += "\n_Install via **Settings → Updates → Private Betas**._"
+
+    # Rename installer files to include platform key for the Rust asset matcher
+    renamed = []
+    for fpath in installer_files:
+        fname  = os.path.basename(fpath)
+        has_pk = any(pk in fname for pk in PLATFORMS)
+        if not has_pk:
+            pk      = HOST_PLATFORM
+            base, _ = os.path.splitext(fname)
+            ext     = "".join(re.findall(r"\.[a-zA-Z0-9]+", fname)[-1:])
+            newname = f"{base}-{pk}{ext}"
+            newpath = os.path.join(os.path.dirname(fpath), newname)
+            shutil.copy2(fpath, newpath)
+            renamed.append(newpath)
+        else:
+            renamed.append(fpath)
+
+    # Tag and push
+    subprocess.run(["git", "tag", "-f", tag], cwd=PROJECT_ROOT,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["git", "push", "origin", tag, "--force"],
+                   cwd=PROJECT_ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    cmd = [
+        "gh", "release", "create", tag,
+        "--title", title,
+        "--notes", body,
+        "--prerelease",
+        "--latest=false",
+        "--verify-tag",
+    ] + renamed
+
+    try:
+        run(cmd, cwd=PROJECT_ROOT)
+        ok(f"GitHub Beta Release → {tag}")
+        ok(f"  URL: https://github.com/{GITHUB_REPO}/releases/tag/{tag}")
+    except subprocess.CalledProcessError as e:
+        warn(f"gh release create falló (exit={e.returncode}).")
+        _print_beta_manual_steps(slug, build_num, build_id, renamed)
+
+def _print_beta_manual_steps(slug, build_num, build_id, files):
+    tag = f"beta-{slug}-{build_num}"
+    print(f"\n{BOLD}Pasos manuales para publicar la beta:{RESET}")
+    print(f"  1. git tag -f {tag} && git push origin {tag} --force")
+    print(f"  2. En GitHub → New Release → tag: {tag}  (title: [{_slug_to_name(slug)}] {build_id})")
+    print(f"     Marcar como: Pre-release | Latest: false")
+    print(f"  3. Subir estos archivos:")
+    for f in files:
+        print(f"     • {os.path.basename(f)}")
+
 # ─────────────────────────────────────────────
 #  COMANDOS PRINCIPALES
 # ─────────────────────────────────────────────
@@ -832,74 +1077,6 @@ def cmd_dev(forced_version=None, quick=False):
     npm = shutil.which("npm") or "npm"
 
     if quick:
-        # build --debug rápido + copia directa
-        version, _, _ = get_version(forced_version)
-        _patch_tauri_version(version)
-
-        # Limpiar .next-equivalent (dist/) para forzar rebuild
-        for d in [os.path.join(PROJECT_ROOT, "dist")]:
-            if os.path.exists(d):
-                shutil.rmtree(d, ignore_errors=True)
-                info(f"  {d} eliminado")
-
-        run([npm, "run", "tauri", "build", "--", "--debug",
-             "--target", PLATFORMS[HOST_PLATFORM]["rust_target"]],
-            cwd=PROJECT_ROOT)
-        ok("Build dev completado.")
-        return
-
-    # Modo dev: lanza tauri dev con HMR completo
-    step("→ Iniciando VRC Studio en modo desarrollo (HMR)")
-    npm = shutil.which("npm") or "npm"
-
-    # npm install si hace falta
-    if not os.path.isdir(os.path.join(PROJECT_ROOT, "node_modules")):
-        info("  Instalando dependencias npm…")
-        run([npm, "install"], cwd=PROJECT_ROOT)
-
-    info("  Lanzando: npm run tauri dev")
-    info("  (Ctrl+C para salir · los cambios en src/ se recargan en tiempo real)")
-    print()
-
-    # Lanzar tauri dev — esto bloquea hasta que el usuario hace Ctrl+C
-    try:
-        subprocess.run(
-            [npm, "run", "tauri", "dev"],
-            cwd=PROJECT_ROOT
-        )
-    except KeyboardInterrupt:
-        print()
-        ok("Modo desarrollo cerrado.")
-    return
-
-    if not app_bundle:
-        error("Build falló.")
-        sys.exit(1)
-
-    if "windows" in HOST_PLATFORM:
-        create_windows_installer(app_bundle, version, HOST_PLATFORM)
-        # Lanzar el wizard
-        candidates = [
-            f for f in os.listdir(RELEASE_DIR)
-            if f.endswith(".exe") and "setup" in f.lower()
-        ]
-        if candidates:
-            installer = os.path.join(RELEASE_DIR, sorted(candidates)[-1])
-            info(f"Lanzando instalador → {os.path.basename(installer)}")
-            subprocess.run([installer])
-    else:
-        create_unix_installer(HOST_PLATFORM, app_bundle, version)
-
-    print(f"\n{BOLD}Build completado en {elapsed()}{RESET}")
-
-def cmd_dev(forced_version=None, quick=False):
-    step("→ dev" + (" [--quick]" if quick else ""))
-    info(f"Host: {HOST_PLATFORM}")
-
-    npm = shutil.which("npm") or "npm"
-
-    if quick:
-        # build --debug rápido + copia directa (comportamiento anterior)
         version, _, _ = get_version(forced_version)
         _patch_tauri_version(version)
 
@@ -914,7 +1091,6 @@ def cmd_dev(forced_version=None, quick=False):
         ok("Build dev completado.")
         return
 
-    # Modo dev: lanza tauri dev con HMR completo
     step("→ Iniciando VRC Studio en modo desarrollo (HMR)")
 
     if not os.path.isdir(os.path.join(PROJECT_ROOT, "node_modules")):
@@ -926,10 +1102,7 @@ def cmd_dev(forced_version=None, quick=False):
     print()
 
     try:
-        subprocess.run(
-            [npm, "run", "tauri", "dev"],
-            cwd=PROJECT_ROOT
-        )
+        subprocess.run([npm, "run", "tauri", "dev"], cwd=PROJECT_ROOT)
     except KeyboardInterrupt:
         print()
         ok("Modo desarrollo cerrado.")
@@ -965,347 +1138,151 @@ def cmd_release(forced_version=None, channel="stable", notes="", no_publish=Fals
 
     print(f"\n{BOLD}Release {version} ({channel}) completada en {elapsed()}{RESET}")
 
-
-# ─────────────────────────────────────────────
-#  TOOLS REGISTRY GENERATOR
-# ─────────────────────────────────────────────
-#
-#  Estructura de cada tool en tools/<tool-id>/tool.json:
-#
-#  {
-#    "id":               "avatar-performance-analyzer",
-#    "name":             "Avatar Performance Analyzer",
-#    "version":          "1.0.0",          ← se sobreescribe con Cargo.toml si existe
-#    "description":      "...",
-#    "author":           "s7lver",
-#    "icon_url":         "https://raw.githubusercontent.com/.../icon.png",
-#    "banner_url":       "https://raw.githubusercontent.com/.../banner.png",
-#    "screenshots":      [],
-#    "category":         "performance",    ← performance | workflow | visuals | util
-#    "requires_unity":   true,
-#    "min_unity_version": "2022.3",
-#    "featured":         false,
-#    "downloads": {
-#      "sidecar_windows": "",              ← se rellena automáticamente si hay release
-#      "sidecar_macos":   "",
-#      "sidecar_linux":   "",
-#      "ui_bundle":       ""
-#    }
-#  }
-#
-#  Uso:
-#    python tools/build.py registry              Genera registry.json localmente
-#    python tools/build.py registry --push       Genera + sube al repo GitHub
-#    python tools/build.py registry --release v1.0.0  Inyecta URLs de release
-
-TOOLS_REGISTRY_VERSION = 1
-TOOLS_DIR = os.path.join(PROJECT_ROOT, "tools")
-
-# Repo donde vive el registry (formato "owner/repo")
-REGISTRY_REPO   = "s7lver2/vrc-studio"
-# Rama por defecto donde se sube el registry.json (puede sobreescribirse con --branch)
-REGISTRY_BRANCH = "main"
-# Subcarpeta dentro del repo donde vive el registry (evita colisión con código)
-REGISTRY_SUBDIR = "tools-registry"
-# URL base de raw.githubusercontent.com para assets
-REGISTRY_RAW_BASE = f"https://raw.githubusercontent.com/{REGISTRY_REPO}/{REGISTRY_BRANCH}/{REGISTRY_SUBDIR}"
-# URL que apunta al registry.json generado (pegar en REGISTRY_URL de tools.rs)
-REGISTRY_JSON_URL = f"{REGISTRY_RAW_BASE}/registry.json"
-
-# GitHub releases base del mismo repo
-TOOLS_RELEASES_BASE = f"https://github.com/{REGISTRY_REPO}/releases/download"
-
-
-def _read_cargo_tool_version(tool_dir):
-    """Lee la versión del Cargo.toml del sidecar si existe."""
-    cargo_path = os.path.join(tool_dir, "Cargo.toml")
-    if not os.path.exists(cargo_path):
-        return None
-    try:
-        for line in open(cargo_path, encoding="utf-8"):
-            m = re.match(r'version\s*=\s*"([^"]+)"', line.strip())
-            if m:
-                return m.group(1)
-    except Exception:
-        pass
-    return None
-
-
-def _discover_tools():
+def cmd_beta_release(branch, notes="", no_publish=False, name="", description=""):
     """
-    Escanea tools/<name>/ buscando directorios con tool.json.
-    Devuelve lista de (tool_dir, tool_meta_dict).
+    Builds and publishes a private beta release for a feature branch.
+
+    Flow:
+      1. Derive slug from branch name
+      2. Auto-increment build number from GitHub releases
+      3. Build the app (host platform only — beta releases target current dev machine)
+      4. Create installer
+      5. Ensure beta-registry.json has an entry (generate code if needed)
+      6. Commit & push beta-registry.json
+      7. Create GitHub prerelease tagged beta-<slug>-<N>
     """
-    found = []
-    if not os.path.isdir(TOOLS_DIR):
-        return found
+    slug      = _branch_to_slug(branch)
+    beta_name = name or _slug_to_name(slug)
 
-    for entry in sorted(os.listdir(TOOLS_DIR)):
-        tool_dir = os.path.join(TOOLS_DIR, entry)
-        if not os.path.isdir(tool_dir):
-            continue
-        meta_path = os.path.join(tool_dir, "tool.json")
-        if not os.path.exists(meta_path):
-            # Sin tool.json → ignorar
-            continue
-        try:
-            meta = json.load(open(meta_path, encoding="utf-8"))
-        except Exception as e:
-            warn(f"  tool.json inválido en {entry}: {e}")
-            continue
-        found.append((tool_dir, meta))
-    return found
+    print(f"\n{PURPLE}{'─'*60}{RESET}")
+    beta(f"Beta Release  branch={branch}")
+    beta(f"Slug:         {BOLD}{slug}{RESET}")
+    beta(f"Name:         {beta_name}")
+    print(f"{PURPLE}{'─'*60}{RESET}\n")
 
+    # 1. Determine build number + git hash
+    build_num, git_hash = _next_beta_build_number(slug)
+    build_id   = _format_beta_version(build_num, git_hash)  # e.g. "3-a4f2b"
 
-def _build_registry_entry(tool_dir, meta, release_tag=None):
-    """
-    Construye un ToolRegistryEntry a partir de tool.json.
-    Si release_tag se provee, inyecta las URLs de descarga de ese release.
-    """
-    tool_id = meta.get("id", os.path.basename(tool_dir))
+    # Use a pseudo semver for Tauri (Tauri requires semver, but beta uses build num)
+    base_version = _read_cargo_version() or "0.1.0"
+    major, minor, _ = (_sanitize_version(base_version) + ".0.0").split(".")[:3]
+    fake_version = f"{major}.{minor}.{build_num}"
 
-    # La versión puede venir del Cargo.toml del sidecar (fuente de verdad)
-    cargo_version = _read_cargo_tool_version(tool_dir)
-    version = cargo_version or meta.get("version", "0.1.0")
+    info(f"Build ID: {BOLD}{build_id}{RESET}  (tag: beta-{slug}-{build_num}  |  Tauri semver: {fake_version})")
 
-    tag = release_tag or f"v{version}"
+    if input(f"  ¿Publicar {build_id}? [s/N] ").strip().lower() not in ("s","si","y","yes"):
+        sys.exit(0)
 
-    # URLs de release del sidecar — se rellenan solo si el release existe
-    def sidecar_url(suffix):
-        if release_tag:
-            return f"{TOOLS_RELEASES_BASE}/{tag}/{tool_id}-{suffix}"
-        return meta.get("downloads", {}).get(
-            f"sidecar_{suffix.split('-')[0]}", ""
-        )
+    clean(deep=False)
 
-    downloads = {
-        "ui_bundle":       meta.get("downloads", {}).get("ui_bundle", ""),
-        "sidecar_windows": sidecar_url("windows-x64.exe"),
-        "sidecar_macos":   sidecar_url("macos-arm64"),
-        "sidecar_linux":   sidecar_url("linux-x64"),
-    }
-
-    entry = {
-        "id":                tool_id,
-        "name":              meta.get("name", tool_id),
-        "version":           version,
-        "description":       meta.get("description", ""),
-        "author":            meta.get("author", ""),
-        "icon_url":          meta.get("icon_url", ""),
-        "banner_url":        meta.get("banner_url", ""),
-        "screenshots":       meta.get("screenshots", []),
-        "category":          meta.get("category", "util"),
-        "downloads":         downloads,
-        "dependencies":      meta.get("dependencies", []),
-        "requires_unity":    meta.get("requires_unity", False),
-        "min_unity_version": meta.get("min_unity_version", ""),
-        "featured":          meta.get("featured", False),
-    }
-    return entry
-
-
-def _generate_registry_json(release_tag=None):
-    """Genera el objeto registry.json completo y lo devuelve como dict."""
-    tools_found = _discover_tools()
-    if not tools_found:
-        warn("  No se encontraron tool.json en tools/*/. Crea uno primero.")
-        warn("  Ejemplo: tools/avatar-perf-core/tool.json")
-        return None
-
-    entries = []
-    for tool_dir, meta in tools_found:
-        entry = _build_registry_entry(tool_dir, meta, release_tag)
-        entries.append(entry)
-        ok(f"  ✓ {entry['id']} v{entry['version']}")
-
-    registry = {
-        "version": TOOLS_REGISTRY_VERSION,
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ),
-        "tools": entries,
-    }
-    return registry
-
-
-def _write_registry(registry, out_path):
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(registry, f, indent=2, ensure_ascii=False)
-    ok(f"  registry.json → {out_path}")
-
-
-def _push_registry_to_github(registry_path, branch=None):
-    """
-    Hace push de registry.json al repo REGISTRY_REPO usando 'gh' CLI.
-    Estrategia: crea/actualiza el archivo directamente vía gh api
-    (no necesita clonar el repo de tools).
-    """
-    target_branch = branch or REGISTRY_BRANCH
-    if not shutil.which("gh"):
-        warn("  gh CLI no encontrada. Instala: https://cli.github.com/")
-        warn(f"  Sube manualmente {registry_path} a {REGISTRY_REPO}:{target_branch}/{REGISTRY_SUBDIR}/registry.json")
-        return False
-
-    content_bytes = open(registry_path, "rb").read()
-    import base64
-    content_b64 = base64.b64encode(content_bytes).decode()
-
-    # Obtener el SHA actual del archivo (necesario para actualizar, no para crear)
-    sha = ""
-    try:
-        result = subprocess.run(
-            ["gh", "api", f"repos/{REGISTRY_REPO}/contents/{REGISTRY_SUBDIR}/registry.json",
-             "--jq", ".sha",
-             "-H", f"X-GitHub-Ref: {target_branch}"],
-            capture_output=True, text=True
-        )
-        if not result.stdout.strip():
-            # Try with ?ref= query parameter via env var or direct flag
-            result2 = subprocess.run(
-                ["gh", "api", f"repos/{REGISTRY_REPO}/contents/{REGISTRY_SUBDIR}/registry.json?ref={target_branch}",
-                 "--jq", ".sha"],
-                capture_output=True, text=True
-            )
-            sha = result2.stdout.strip().strip('"')
-        else:
-            sha = result.stdout.strip().strip('"')
-    except Exception:
-        pass
-
-    # Construir el payload para la API
-    payload = {
-        "message": f"chore: update tools registry [{target_branch}]",
-        "content": content_b64,
-        "branch":  target_branch,
-    }
-    if sha:
-        payload["sha"] = sha
-
-    payload_json = json.dumps(payload)
-    tmp_payload = os.path.join(PROJECT_ROOT, ".registry_payload_tmp.json")
-    with open(tmp_payload, "w", encoding="utf-8") as f:
-        f.write(payload_json)
-
-    result = subprocess.run(
-        ["gh", "api", "--method", "PUT",
-         f"repos/{REGISTRY_REPO}/contents/{REGISTRY_SUBDIR}/registry.json",
-         "--input", tmp_payload],
-        capture_output=True, text=True, cwd=PROJECT_ROOT
-    )
-    os.remove(tmp_payload)
-
-    raw_base = f"https://raw.githubusercontent.com/{REGISTRY_REPO}/{target_branch}/{REGISTRY_SUBDIR}"
-    registry_json_url = f"{raw_base}/registry.json"
-
-    if result.returncode == 0:
-        ok(f"  registry.json subido a {REGISTRY_REPO}:{target_branch}/{REGISTRY_SUBDIR}/registry.json")
-        ok(f"  URL: {registry_json_url}")
-        return True
-    else:
-        error(f"  gh api falló: {result.stderr.strip()}")
-        warn(f"  Sube manualmente {registry_path} a {REGISTRY_REPO}:{target_branch}/registry.json")
-        return False
-
-
-def _create_tool_json_template(tool_id):
-    """Crea un tool.json de ejemplo en tools/<tool_id>/tool.json."""
-    tool_dir = os.path.join(TOOLS_DIR, tool_id)
-    os.makedirs(tool_dir, exist_ok=True)
-    meta_path = os.path.join(tool_dir, "tool.json")
-    if os.path.exists(meta_path):
-        warn(f"  {meta_path} ya existe. No sobreescribiendo.")
-        return
-
-    template = {
-        "id":                tool_id,
-        "name":              tool_id.replace("-", " ").title(),
-        "version":           "1.0.0",
-        "description":       "Descripción de la tool.",
-        "author":            "s7lver",
-        "icon_url":          f"{REGISTRY_RAW_BASE}/assets/{tool_id}/icon.png",
-        "banner_url":        f"{REGISTRY_RAW_BASE}/assets/{tool_id}/banner.png",
-        "screenshots":       [],
-        "category":          "util",
-        "requires_unity":    False,
-        "min_unity_version": "",
-        "featured":          False,
-        "downloads":         {
-            "ui_bundle":       "",
-            "sidecar_windows": "",
-            "sidecar_macos":   "",
-            "sidecar_linux":   "",
-        },
-    }
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(template, f, indent=2, ensure_ascii=False)
-    ok(f"  Creado template → {meta_path}")
-    info(f"  Edítalo y luego ejecuta: python tools/build.py registry --push")
-
-
-def cmd_registry(push=False, release_tag=None, init_tool=None, branch=None):
-    """
-    Genera registry.json a partir de tools/*/tool.json.
-    --push          Sube el JSON al repo GitHub via gh API
-    --release v1.x  Inyecta URLs de release en los downloads
-    --init <id>     Crea un tool.json de ejemplo para una nueva tool
-    --branch <name> Rama donde subir el registry (por defecto: main)
-                    Ejemplo: --branch feature/tools-system
-    """
-    step("→ registry")
-
-    if init_tool:
-        info(f"Inicializando tool.json para: {init_tool}")
-        _create_tool_json_template(init_tool)
-        return
-
-    target_branch = branch or REGISTRY_BRANCH
-
-    # Actualizar constantes derivadas de la rama elegida
-    raw_base = f"https://raw.githubusercontent.com/{REGISTRY_REPO}/{target_branch}/{REGISTRY_SUBDIR}"
-    registry_json_url = f"{raw_base}/registry.json"
-
-    info("Escaneando tools/*/tool.json…")
-    registry = _generate_registry_json(release_tag=release_tag)
-    if registry is None:
+    # 2. Build for host platform only
+    step(f"Platform: {HOST_PLATFORM}")
+    app_bundle, exe_name = build_tauri(HOST_PLATFORM, fake_version)
+    if not app_bundle:
+        error("Build falló.")
         sys.exit(1)
 
-    # Guardar localmente en tools/
-    registry_path = os.path.join(TOOLS_DIR, "registry.json")
-    _write_registry(registry, registry_path)
-
-    # Resumen
-    n = len(registry["tools"])
-    print()
-    info(f"  {n} tool{'s' if n != 1 else ''} en el registry")
-    info(f"  Rama de destino: {BOLD}{target_branch}{RESET}")
-    info(f"  Pon esta URL en REGISTRY_REPO de src-tauri/src/commands/tools.rs")
-    info(f"  (la rama se lee dinámicamente desde app-settings.json)")
-    print(f"  {BOLD}{registry_json_url}{RESET}")
-    print()
-
-    if push:
-        step(f"Subiendo registry.json a GitHub (rama: {target_branch})…")
-        _push_registry_to_github(registry_path, branch=target_branch)
+    # 3. Create installer
+    installer_files = []
+    if "windows" in HOST_PLATFORM:
+        create_windows_installer(app_bundle, fake_version, HOST_PLATFORM)
+        for f in os.listdir(RELEASE_DIR):
+            if f.endswith(".exe") and "setup" in f.lower():
+                installer_files.append(os.path.join(RELEASE_DIR, f))
     else:
-        info(f"  Para subir a main:                  python tools/build.py registry --push")
-        info(f"  Para subir a feature/tools-system:  python tools/build.py registry --push --branch feature/tools-system")
+        tar = create_unix_installer(HOST_PLATFORM, app_bundle, fake_version)
+        installer_files.append(tar)
 
+    if not installer_files:
+        warn("No se encontraron archivos de instalador — la release se publicará sin assets.")
+
+    # 4. Ensure beta-registry.json entry
+    step("Actualizando beta-registry.json")
+    code = _ensure_beta_registry_entry(slug, beta_name, description)
+    ok(f"Código de acceso: {BOLD}{code}{RESET}")
+    ok(f"Slug:             {slug}")
+    ok(f"Build ID:         {build_id}")
+
+    if not no_publish:
+        # 5. Commit and push beta-registry.json so the code is live
+        _commit_beta_registry(slug, build_id)
+        _push_beta_registry()
+
+        # 6. Create GitHub Release
+        publish_github_beta_release(slug, build_num, build_id, notes, installer_files)
+    else:
+        warn("--no-publish: artefactos generados localmente.")
+        _print_beta_manual_steps(slug, build_num, build_id, installer_files)
+
+    # 7. Summary
+    print(f"\n{PURPLE}{'═'*60}{RESET}")
+    print(f"{BOLD}Beta publicada: {build_id}{RESET}")
+    print(f"  Git tag:  beta-{slug}-{build_num}")
+    print(f"  Build ID: {BOLD}{build_id}{RESET}  (mostrado en la app como 'Build {build_id}')")
+    print(f"  Código:   {BOLD}{code}{RESET}  ← comparte con testers")
+    print(f"  Los testers: Settings → Updates → Betas privadas → introducen {code}")
+    print(f"{PURPLE}{'═'*60}{RESET}\n")
+    print(f"Completado en {elapsed()}")
+
+def cmd_beta_codes(set_slug=None, set_code=None, remove_slug=None):
+    """Lists, adds, or removes beta codes from beta-registry.json."""
+    step("Beta Codes — beta-registry.json")
+
+    if remove_slug:
+        registry = _load_beta_registry()
+        to_remove = [c for c, e in registry["codes"].items() if e.get("slug") == remove_slug]
+        if not to_remove:
+            warn(f"  No hay entrada para slug '{remove_slug}'")
+            return
+        for c in to_remove:
+            del registry["codes"][c]
+        _save_beta_registry(registry)
+        ok(f"  Eliminado slug '{remove_slug}' ({', '.join(to_remove)})")
+        return
+
+    if set_slug and set_code:
+        registry = _load_beta_registry()
+        # Remove existing entries for this slug
+        for c in [c for c, e in registry["codes"].items() if e.get("slug") == set_slug]:
+            del registry["codes"][c]
+        registry["codes"][set_code.upper()] = {
+            "slug":        set_slug,
+            "name":        _slug_to_name(set_slug),
+            "description": "",
+        }
+        _save_beta_registry(registry)
+        ok(f"  {set_code.upper()} → {set_slug}")
+        return
+
+    # List all
+    registry = _load_beta_registry()
+    if not registry["codes"]:
+        print("  (sin betas registradas)")
+        return
+    print(f"\n  {'CÓDIGO':<28}  {'SLUG':<24}  NOMBRE")
+    print(f"  {'─'*28}  {'─'*24}  {'─'*30}")
+    for code, entry in sorted(registry["codes"].items()):
+        print(f"  {BOLD}{code:<28}{RESET}  {entry.get('slug',''):<24}  {entry.get('name','')}")
+    print()
 
 # ─────────────────────────────────────────────
 #  ENTRY POINT
 # ─────────────────────────────────────────────
 def parse_args():
-    raw = sys.argv[1:]
+    raw            = sys.argv[1:]
     forced_version = None
     deep_clean     = False
     quick          = False
     channel        = "stable"
     notes          = ""
     no_publish     = False
-    push           = False
-    release_tag    = None
-    init_tool      = None
-    registry_branch = None
+    branch         = None
+    beta_name      = ""
+    beta_desc      = ""
+    set_slug       = None
+    set_code       = None
+    remove_slug    = None
     filtered       = []
     i = 0
     while i < len(raw):
@@ -1321,36 +1298,142 @@ def parse_args():
             notes = raw[i + 1]; i += 2
         elif raw[i] == "--no-publish":
             no_publish = True; i += 1
-        elif raw[i] == "--push":
-            push = True; i += 1
-        elif raw[i] == "--release" and i + 1 < len(raw):
-            release_tag = raw[i + 1]; i += 2
-        elif raw[i] == "--init" and i + 1 < len(raw):
-            init_tool = raw[i + 1]; i += 2
         elif raw[i] == "--branch" and i + 1 < len(raw):
-            registry_branch = raw[i + 1]; i += 2
+            branch = raw[i + 1]; i += 2
+        elif raw[i] == "--name" and i + 1 < len(raw):
+            beta_name = raw[i + 1]; i += 2
+        elif raw[i] == "--description" and i + 1 < len(raw):
+            beta_desc = raw[i + 1]; i += 2
+        elif raw[i] == "--set" and i + 2 < len(raw):
+            set_slug = raw[i + 1]; set_code = raw[i + 2]; i += 3
+        elif raw[i] == "--remove" and i + 1 < len(raw):
+            remove_slug = raw[i + 1]; i += 2
+        elif raw[i] in ("--help", "-h"):
+            filtered.insert(0, "help"); i += 1
         elif raw[i].startswith("--"):
             error(f"Flag desconocido: {raw[i]}")
             sys.exit(1)
         else:
             filtered.append(raw[i]); i += 1
     command = filtered[0].lower() if filtered else "dev"
-    return command, forced_version, deep_clean, quick, channel, notes, no_publish, push, release_tag, init_tool, registry_branch
+    return (command, forced_version, deep_clean, quick, channel, notes,
+            no_publish, branch, beta_name, beta_desc, set_slug, set_code, remove_slug)
+
+# ─────────────────────────────────────────────
+#  HELP
+# ─────────────────────────────────────────────
+_HELP = f"""
+{BOLD}build.py — VRC Studio Build System{RESET}
+Ubicación: tools/build.py   ·   Ejecutar desde la raíz del proyecto
+
+{BOLD}USO{RESET}
+  python tools/build.py [comando] [flags]
+
+{BOLD}COMANDOS{RESET}
+
+  {CYAN}(ninguno){RESET}
+      Abre la app en modo dev con HMR (tauri dev).
+
+  {CYAN}--quick{RESET}
+      Build debug rápido compilado + copia directa (sin wizard de instalador).
+
+  {CYAN}clean{RESET}
+      Limpia dist/ y releases/.
+    --deep          También elimina target/ y node_modules/
+
+  {CYAN}release{RESET}
+      Build de producción para todas las plataformas configuradas.
+    --version 1.2.3   Fuerza versión explícita (por defecto: git describe)
+    --channel stable  Canal: stable (default) | testing
+    --notes "texto"   Notas de la release (aparecen en GitHub)
+    --no-publish      Solo compilar y firmar, sin subir a GitHub
+
+  {CYAN}release --branch <branch>{RESET}   {PURPLE}← BETA PRIVADA{RESET}
+      Build de beta para una feature branch.
+      Ejemplo: python tools/build.py release --branch feature/tools-system
+    --notes "texto"   Notas de la beta
+    --name "Nombre"   Nombre visible de la beta (por defecto: derivado del slug)
+    --description ""  Descripción (aparece en la app al redimir el código)
+    --no-publish      Solo compilar, sin subir a GitHub ni commitear registry
+
+      El build ID tiene formato  {BOLD}N-hash{RESET}  (ej: {BOLD}3-a4f2b{RESET}):
+        N     = número incremental para ordenar versiones
+        hash  = 5 chars del commit git para identificación exacta
+      El git tag usa solo N:  beta-{YELLOW}<slug>{RESET}-{YELLOW}<N>{RESET}
+      La app muestra:          Build {YELLOW}3-a4f2b{RESET}
+
+  {CYAN}beta-codes{RESET}
+      Lista los códigos de acceso a betas privadas (beta-registry.json).
+    --set <slug> <código>   Fuerza un código concreto para un slug
+    --remove <slug>         Elimina una beta del registry
+
+  {CYAN}gen-keys{RESET}
+      Genera par de claves Ed25519 para firmar updates (stable + testing).
+      Las claves privadas van a tools/keys/ (gitignoreado).
+
+  {CYAN}show-keys{RESET}
+      Muestra las claves públicas actuales (para pegar en updates.rs).
+
+{BOLD}EJEMPLOS{RESET}
+
+  python tools/build.py                               # dev con HMR
+  python tools/build.py release --version 1.2.0      # release stable
+  python tools/build.py release --channel testing    # release testing
+  python tools/build.py release --branch feature/my-feature  # beta
+  python tools/build.py release --branch feature/my-feature --no-publish
+  python tools/build.py beta-codes
+  python tools/build.py beta-codes --set my-feature  MY-CODE-1234
+  python tools/build.py clean --deep
+
+{BOLD}VARIABLES DE ENTORNO{RESET}
+
+  VRCSTUDIO_RELEASE_DIR     Directorio de salida de artefactos (default: releases/)
+  VRCSTUDIO_UPDATE_BASE_URL URL base para el manifiesto de updates
+  VRCSTUDIO_DISCORD_BOT_TOKEN  Token del bot de Discord (no hardcodear)
+
+{BOLD}REPOS{RESET}
+
+  App:    https://github.com/{GITHUB_REPO}
+  Tools:  https://github.com/{TOOLS_REPO}
+
+{BOLD}CROSS-COMPILATION{RESET}
+
+  cargo install cargo-zigbuild
+  pip install ziglang
+"""
+
+def cmd_help():
+    print(_HELP)
 
 def main():
-    command, forced_version, deep_clean, quick, channel, notes, no_publish, push, release_tag, init_tool, registry_branch = parse_args()
-    if command == "clean":
+    (command, forced_version, deep_clean, quick, channel, notes,
+     no_publish, branch, beta_name, beta_desc, set_slug, set_code, remove_slug) = parse_args()
+
+    if command == "help":
+        cmd_help()
+
+    elif command == "clean":
         warn("Esto eliminará dist/ y releases/." + (" Y target/." if deep_clean else ""))
         if input("  ¿Continuar? [s/N] ").strip().lower() in ("s","si","y","yes"):
             clean(deep=deep_clean)
+
     elif command == "release":
-        cmd_release(forced_version, channel=channel, notes=notes, no_publish=no_publish)
-    elif command == "registry":
-        cmd_registry(push=push, release_tag=release_tag, init_tool=init_tool, branch=registry_branch)
+        if branch:
+            # Beta mode — branch overrides channel
+            cmd_beta_release(branch, notes=notes, no_publish=no_publish,
+                             name=beta_name, description=beta_desc)
+        else:
+            cmd_release(forced_version, channel=channel, notes=notes, no_publish=no_publish)
+
+    elif command == "beta-codes":
+        cmd_beta_codes(set_slug=set_slug, set_code=set_code, remove_slug=remove_slug)
+
     elif command == "gen-keys":
         cmd_gen_keys()
+
     elif command == "show-keys":
         cmd_show_keys()
+
     else:
         cmd_dev(forced_version, quick=quick)
 
