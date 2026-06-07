@@ -18,6 +18,7 @@ export interface UpdateCheckResult {
 interface UseUpdateCheckerOptions {
   channel?:      string;
   autoDownload?: boolean;
+  betaBuild?:    number;
 }
 
 interface UseUpdateCheckerReturn {
@@ -32,7 +33,7 @@ interface UseUpdateCheckerReturn {
 }
 
 export function useUpdateChecker(
-  { channel = "stable", autoDownload = false }: UseUpdateCheckerOptions = {}
+  { channel = "stable", autoDownload = false, betaBuild }: UseUpdateCheckerOptions = {}
 ): UseUpdateCheckerReturn {
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const [checking,   setChecking]   = useState(false);
@@ -46,7 +47,8 @@ export function useUpdateChecker(
     setError(null);
     try {
       const result = await invoke<UpdateCheckResult>("check_for_update", {
-        channel: overrideChannel ?? channel,
+        channel:   overrideChannel ?? channel,
+        betaBuild: betaBuild ?? null,
       });
       setUpdateInfo(result.has_update ? result : null);
     } catch (e) {
@@ -54,7 +56,7 @@ export function useUpdateChecker(
     } finally {
       setChecking(false);
     }
-  }, [channel]);
+  }, [channel, betaBuild]);
 
   // Comprobar una vez por sesión (y por canal) al montar
   useEffect(() => {

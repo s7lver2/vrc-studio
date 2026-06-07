@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use semver::Version;
+use crate::db::DbPool;
+use tauri::State;
+use chrono;
 
 // ──────────────────────────────────────────────────────────────────────────────
 //  Tipos públicos (también usados por los tests de integración)
@@ -149,9 +152,13 @@ fn no_update(current: &str) -> UpdateCheckResult {
 }
 
 /// Checks GitHub Releases API for a newer version on the given channel.
+/// For private beta channels, pass beta_build = current installed build number.
 /// Falls back gracefully on network errors or when no releases exist.
 #[tauri::command]
-pub async fn check_for_update(channel: Option<String>) -> Result<UpdateCheckResult, String> {
+pub async fn check_for_update(
+    channel:    Option<String>,
+    beta_build: Option<u64>,
+) -> Result<UpdateCheckResult, String> {
     let channel  = channel.as_deref().unwrap_or("stable");
     let current  = env!("CARGO_PKG_VERSION");
     let platform = host_platform_key();
@@ -177,8 +184,41 @@ pub async fn check_for_update(channel: Option<String>) -> Result<UpdateCheckResu
     let releases: Vec<GhRelease> = serde_json::from_str(&body)
         .map_err(|e| format!("parse: {e} — body was: {}", &body[..body.len().min(200)]))?;
 
+    // ── Private beta channel ─────────────────────────────────────────────
+    if is_beta_channel(channel) {
+        let slug           = channel;
+        let current_build  = beta_build.unwrap_or(0);
+        let latest = releases.into_iter()
+            .filter_map(|r| {
+                let build = beta_build_number(&r.tag_name, slug)?;
+                let asset = r.assets.iter()
+                    .find(|a| asset_matches_platform(&a.name, platform))?;
+                Some((build, r.body.unwrap_or_default(),
+                      asset.browser_download_url.clone(), asset.size))
+            })
+            .max_by_key(|(build, ..)| *build);
+
+        let Some((build_num, notes, download_url, size)) = latest else {
+            return Ok(no_update(current));
+        };
+        return Ok(UpdateCheckResult {
+            has_update:                  build_num > current_build,
+            current_version:             current_build.to_string(),
+            remote_version:              build_num.to_string(),
+            notes,
+            download_url,
+            signature:                   String::new(),
+            download_size:               size,
+            forced_onboarding_version:   None,
+            whats_new_version:           None,
+            whats_new_changelog:         None,
+        });
+    }
+
+    // ── Stable / Testing ─────────────────────────────────────────────────
     // Find the newest release for this channel that has a platform-specific installer asset
     let latest = releases.into_iter()
+        .filter(|r| !is_private_beta_tag(&r.tag_name)) // exclude private betas
         .filter(|r| channel_from_tag(&r.tag_name, r.prerelease) == channel)
         .filter_map(|r| {
             let asset = r.assets.iter()
@@ -205,7 +245,7 @@ pub async fn check_for_update(channel: Option<String>) -> Result<UpdateCheckResu
         remote_version,
         notes,
         download_url,
-        signature:                   String::new(), // GitHub releases don't need Ed25519
+        signature:                   String::new(),
         download_size:               size,
         forced_onboarding_version:   None,
         whats_new_version:           None,
@@ -304,6 +344,10 @@ fn github_api_releases_url() -> &'static str {
 /// Detecta el canal a partir del tag y el flag prerelease de GitHub.
 /// Público para que los tests de integración puedan usarlo.
 pub fn channel_from_tag(tag: &str, prerelease: bool) -> &'static str {
+    // Private beta tags (beta-<slug>-<N>) must NOT be treated as testing
+    if is_private_beta_tag(tag) {
+        return "beta-private";
+    }
     if prerelease
         || tag.contains("testing")
         || tag.contains("beta")
@@ -313,6 +357,32 @@ pub fn channel_from_tag(tag: &str, prerelease: bool) -> &'static str {
     } else {
         "stable"
     }
+}
+
+/// Returns true for private beta tags of the form beta-<slug>-<number>.
+/// These are distinct from the public "testing" channel.
+pub fn is_private_beta_tag(tag: &str) -> bool {
+    if !tag.starts_with("beta-") { return false; }
+    // Must end with a numeric build number: beta-<slug>-<N>
+    tag.rsplitn(2, '-').next()
+        .and_then(|tail| tail.parse::<u64>().ok())
+        .is_some()
+}
+
+/// Returns true if the channel is a private beta slug (not "stable" or "testing").
+pub fn is_beta_channel(channel: &str) -> bool {
+    channel != "stable" && channel != "testing"
+}
+
+/// Extracts build number from a beta tag: "beta-<slug>-<N>" → Some(N)
+pub fn beta_build_number(tag: &str, slug: &str) -> Option<u64> {
+    let prefix = format!("beta-{slug}-");
+    tag.strip_prefix(&prefix)?.parse::<u64>().ok()
+}
+
+/// Compare beta build numbers: remote > current_build
+pub fn compare_beta_versions(remote: &str, current_build: u64) -> bool {
+    remote.parse::<u64>().map(|r| r > current_build).unwrap_or(false)
 }
 
 /// Comprueba si el nombre de un asset de GitHub corresponde a la plataforma indicada.
@@ -385,15 +455,42 @@ pub async fn list_available_versions(
     let releases: Vec<GhRelease> = serde_json::from_str(&body)
         .map_err(|e| format!("parse: {e} — body was: {}", &body[..body.len().min(200)]))?;
 
+    // ── Private beta channel ─────────────────────────────────────────────
+    if is_beta_channel(channel) {
+        let slug = channel;
+        let mut versions: Vec<AvailableVersion> = releases
+            .into_iter()
+            .filter_map(|r| {
+                let build = beta_build_number(&r.tag_name, slug)?;
+                let asset = r.assets.iter()
+                    .find(|a| asset_matches_platform(&a.name, platform))?;
+                Some(AvailableVersion {
+                    is_current:    false,
+                    channel:       slug.to_string(),
+                    pub_date:      r.published_at,
+                    notes:         r.body.unwrap_or_default(),
+                    download_url:  asset.browser_download_url.clone(),
+                    download_size: asset.size,
+                    version:       build.to_string(),
+                })
+            })
+            .collect();
+        versions.sort_by(|a, b| {
+            b.version.parse::<u64>().unwrap_or(0)
+                .cmp(&a.version.parse::<u64>().unwrap_or(0))
+        });
+        return Ok(versions);
+    }
+
+    // ── Stable / Testing ─────────────────────────────────────────────────
     let mut versions: Vec<AvailableVersion> = releases
         .into_iter()
+        .filter(|r| !is_private_beta_tag(&r.tag_name)) // never leak beta tags here
         .filter(|r| channel_from_tag(&r.tag_name, r.prerelease) == channel)
         .filter_map(|r| {
-            // Solo incluir si existe un asset para la plataforma actual
             let asset = r.assets.iter()
                 .find(|a| asset_matches_platform(&a.name, platform))?;
 
-            // Normalizar version: quitar "v" inicial y sufijos de canal
             let version = r.tag_name
                 .trim_start_matches('v')
                 .trim_end_matches("-testing")
@@ -416,4 +513,111 @@ pub async fn list_available_versions(
     // Más reciente primero (pub_date es ISO 8601 — orden lexicográfico funciona)
     versions.sort_by(|a, b| b.pub_date.cmp(&a.pub_date));
     Ok(versions)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Beta private channels
+// ──────────────────────────────────────────────────────────────────────────────
+
+const BETA_REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/s7lver2/vrc-studio/main/beta-registry.json";
+
+#[derive(Debug, Deserialize)]
+struct BetaRegistryEntry {
+    slug:        String,
+    name:        String,
+    #[serde(default)]
+    description: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BetaRegistry {
+    codes: HashMap<String, BetaRegistryEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BetaSubscription {
+    pub slug:          String,
+    pub name:          String,
+    pub description:   String,
+    pub code:          String,
+    pub subscribed_at: String,
+}
+
+/// Validates a beta code against the remote registry and stores the subscription.
+#[tauri::command]
+pub async fn redeem_beta_code(
+    code: String,
+    pool: State<'_, DbPool>,
+) -> Result<BetaSubscription, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(format!("vrc-studio/{}", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let body = client
+        .get(BETA_REGISTRY_URL)
+        .send().await
+        .map_err(|e| format!("network: {e}"))?
+        .text().await
+        .map_err(|e| format!("read: {e}"))?;
+
+    let registry: BetaRegistry = serde_json::from_str(&body)
+        .map_err(|e| format!("parse beta registry: {e}"))?;
+
+    let upper = code.trim().to_uppercase();
+    let entry = registry.codes.get(&upper)
+        .ok_or_else(|| "Código de beta no válido".to_string())?;
+
+    let sub = BetaSubscription {
+        slug:          entry.slug.clone(),
+        name:          entry.name.clone(),
+        description:   entry.description.clone(),
+        code:          upper,
+        subscribed_at: chrono::Utc::now().to_rfc3339(),
+    };
+
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO beta_subscriptions (slug, name, description, code, subscribed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![sub.slug, sub.name, sub.description, sub.code, sub.subscribed_at],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(sub)
+}
+
+/// Returns all subscribed beta channels.
+#[tauri::command]
+pub fn list_beta_subscriptions(pool: State<'_, DbPool>) -> Result<Vec<BetaSubscription>, String> {
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT slug, name, description, code, subscribed_at FROM beta_subscriptions ORDER BY subscribed_at DESC"
+    ).map_err(|e| e.to_string())?;
+
+    let subs = stmt.query_map([], |row| {
+        Ok(BetaSubscription {
+            slug:          row.get(0)?,
+            name:          row.get(1)?,
+            description:   row.get(2)?,
+            code:          row.get(3)?,
+            subscribed_at: row.get(4)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+
+    Ok(subs)
+}
+
+/// Removes a beta subscription by slug.
+#[tauri::command]
+pub fn remove_beta_subscription(slug: String, pool: State<'_, DbPool>) -> Result<(), String> {
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM beta_subscriptions WHERE slug = ?1",
+        rusqlite::params![slug],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }

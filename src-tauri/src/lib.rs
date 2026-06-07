@@ -202,6 +202,9 @@ pub fn app() -> tauri::Builder<tauri::Wry> {
             commands::updates::check_for_update,
             commands::updates::download_and_install_update,
             commands::updates::list_available_versions,
+            commands::updates::redeem_beta_code,
+            commands::updates::list_beta_subscriptions,
+            commands::updates::remove_beta_subscription,
             // tracker
             commands::tracker::tracker_list,
             commands::tracker::tracker_create,
