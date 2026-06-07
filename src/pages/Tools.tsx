@@ -4,22 +4,10 @@ import { Wrench, Store } from "lucide-react";
 import { useToolsStore } from "../store/toolsStore";
 import { ToolCard } from "../components/tools/ToolCard";
 import { Marketplace } from "../components/tools/Marketplace";
-import { AvatarPerf } from "../components/tools/runners/AvatarPerf";
+import { ToolRunner } from "../components/tools/ToolRunner";
 import type { InstalledTool } from "../lib/tauri";
 
 type View = "installed" | "marketplace";
-
-const RUNNERS: Record<
-  string,
-  React.ComponentType<{
-    toolId: string;
-    onBack: () => void;
-    onInteractive: (method: string, args: Record<string, unknown>) => Promise<unknown>;
-    bypassSdk?: boolean;
-  }>
-> = {
-  "avatar-performance-analyzer": AvatarPerf,
-};
 
 export default function ToolsPage() {
   const { installed, load, uninstall } = useToolsStore();
@@ -29,33 +17,8 @@ export default function ToolsPage() {
   useEffect(() => { load(); }, [load]);
 
   if (activeTool) {
-    const Runner = RUNNERS[activeTool.id];
-    if (Runner) {
-      return (
-        <Runner
-          toolId={activeTool.id}
-          onBack={() => setActiveTool(null)}
-          onInteractive={(_method: string, _args: Record<string, unknown>) => {
-            throw new Error(`onInteractive not available in direct render mode (method: ${_method})`);
-          }}
-          bypassSdk
-        />
-      );
-    }
-    // Tool sin runner implementado
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center gap-2 px-6 py-3 border-b border-zinc-800">
-          <button
-            onClick={() => setActiveTool(null)}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-          >← Volver</button>
-          <span className="text-sm font-semibold text-zinc-100">{activeTool.name}</span>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
-          Runner no implementado para "{activeTool.id}"
-        </div>
-      </div>
+      <ToolRunner tool={activeTool} onBack={() => setActiveTool(null)} />
     );
   }
 

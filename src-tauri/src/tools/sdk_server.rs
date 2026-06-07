@@ -158,6 +158,17 @@ async fn handle_list_dir(
     if !check_token(&headers, &state.token) {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    // Validate root is within a registered project path
+    let normalized_root = body.root.replace('\\', "/");
+    let allowed = state.projects.iter().any(|p| {
+        let proj_path = p.path.replace('\\', "/");
+        normalized_root.starts_with(&proj_path)
+    });
+    if !allowed {
+        return Ok(Json(serde_json::json!({
+            "error": "root path is not within a registered project"
+        })));
+    }
     match crate::commands::tools::tools_list_dir(body.root, body.sub_path) {
         Ok(entries) => Ok(Json(serde_json::json!({ "entries": entries }))),
         Err(e) => Ok(Json(serde_json::json!({ "error": e.to_string() }))),
