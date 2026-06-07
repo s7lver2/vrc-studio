@@ -87,9 +87,22 @@ pub fn tools_list(pool: State<'_, DbPool>) -> Result<Vec<InstalledTool>, AppErro
     Ok(tools)
 }
 
-const REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/YOUR_ORG/vrc-studio-tools/main/registry.json";
+const REGISTRY_REPO: &str = "s7lver2/vrc-studio";
+const REGISTRY_SUBDIR: &str = "tools-registry";
+const DEFAULT_REGISTRY_BRANCH: &str = "main";
 const REGISTRY_TTL_SECS: u64 = 3600; // 1 hour
+
+fn registry_url(branch: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com/{}/{}/{}/registry.json",
+        REGISTRY_REPO, branch, REGISTRY_SUBDIR
+    )
+}
+
+// Registry URL not configured yet — return empty list silently
+fn is_placeholder_url(url: &str) -> bool {
+    url.contains("YOUR_ORG")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsRegistry {
@@ -103,11 +116,28 @@ pub struct ToolsRegistry {
 pub async fn tools_fetch_registry(
     app: tauri::AppHandle,
 ) -> Result<Vec<ToolRegistryEntry>, AppError> {
+    use crate::commands::app_settings::load_settings;
+
+    let settings = load_settings(&app);
+    let branch = if settings.tools_registry_branch.is_empty() {
+        DEFAULT_REGISTRY_BRANCH.to_string()
+    } else {
+        settings.tools_registry_branch.clone()
+    };
+    let url = registry_url(&branch);
+
     let cache_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| AppError::Io(e.to_string()))?;
-    let cache_path = cache_dir.join("tools_registry_cache.json");
+    // Include branch in cache filename so switching branches busts the cache
+    let safe_branch = branch.replace(['/', '\\', ':'], "_");
+    let cache_path = cache_dir.join(format!("tools_registry_cache_{}.json", safe_branch));
+    // Legacy cache cleanup (single-file cache from before branch support)
+    let legacy_cache = cache_dir.join("tools_registry_cache.json");
+    if legacy_cache.exists() {
+        let _ = std::fs::remove_file(&legacy_cache);
+    }
 
     // Return cached version if fresh enough
     if let Ok(meta) = std::fs::metadata(&cache_path) {
@@ -126,14 +156,30 @@ pub async fn tools_fetch_registry(
         }
     }
 
+    // Registry URL not configured yet — return empty list silently
+    if is_placeholder_url(&url) {
+        return Ok(vec![]);
+    }
+
     // Fetch fresh copy
-    let response = reqwest::get(REGISTRY_URL)
+    let response = reqwest::get(&url)
         .await
         .map_err(|e| AppError::Network(e.to_string()))?;
+
+    let status = response.status();
     let text = response
         .text()
         .await
         .map_err(|e| AppError::Network(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(AppError::Network(format!(
+            "Registry returned HTTP {} (branch: {}): {}",
+            status.as_u16(),
+            branch,
+            text.chars().take(120).collect::<String>()
+        )));
+    }
 
     let registry: ToolsRegistry = serde_json::from_str(&text)
         .map_err(|e| AppError::Parse(e.to_string()))?;
@@ -144,7 +190,25 @@ pub async fn tools_fetch_registry(
     Ok(registry.tools)
 }
 
-/// Downloads and installs a tool from the registry.
+/// Clears the local registry cache for all branches.
+/// Call this after changing the registry branch in settings.
+#[tauri::command]
+pub fn tools_clear_registry_cache(app: tauri::AppHandle) -> Result<(), AppError> {
+    let cache_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::Io(e.to_string()))?;
+    if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("tools_registry_cache") && name_str.ends_with(".json") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    Ok(())
+}
 /// Emits `tools://install-progress` events: `{ id, progress: 0.0..1.0, step: String }`.
 #[tauri::command]
 pub async fn tools_install(

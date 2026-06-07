@@ -64,7 +64,14 @@ export const useToolsStore = create<ToolsState>((set, get) => {
         const registry = await tauriToolsFetchRegistry();
         set({ registry });
       } catch (e) {
-        console.error("tools registry fetch error:", e);
+        const msg = String(e);
+        // Only warn for expected network failures (unconfigured registry, offline)
+        if (msg.includes("Network") || msg.includes("404") || msg.includes("YOUR_ORG")) {
+          console.warn("tools registry unavailable:", msg);
+        } else {
+          console.error("tools registry fetch error:", e);
+        }
+        set({ registry: [] });
       } finally {
         set({ registryLoading: false });
       }

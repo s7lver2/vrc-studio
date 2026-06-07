@@ -23,6 +23,12 @@ export interface AppSettings {
 
   /** Número máximo de entradas en la caché. Rango 50–1000. Por defecto 300. */
   image_cache_max_count: number;
+
+  /**
+   * Rama de GitHub desde la que se obtiene el registry de tools.
+   * Por defecto "main". Cambiar a "feature/tools-system" para usar el registry en desarrollo.
+   */
+  tools_registry_branch: string;
 }
 
 export interface Project {
@@ -1235,6 +1241,10 @@ export async function tauriToolsInstall(
 
 export async function tauriToolsUninstall(id: string): Promise<void> {
   return invoke<void>("tools_uninstall", { id });
+}
+
+export async function tauriToolsClearRegistryCache(): Promise<void> {
+  return invoke<void>("tools_clear_registry_cache");
 }
 
 // ── Tools — Scene/Avatar scanning + Sidecar ───────────────────────────────
