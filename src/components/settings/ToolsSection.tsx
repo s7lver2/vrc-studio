@@ -9,20 +9,14 @@ import { GitBranch, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Wrench } fr
 import { tauriGetAppSettings, tauriSetAppSettings, tauriToolsClearRegistryCache } from "@/lib/tauri";
 import { useToolsStore } from "@/store/toolsStore";
 
+// Branches in the vrcstudio-tools repo (https://github.com/s7lver2/vrcstudio-tools)
 const KNOWN_BRANCHES = [
   {
     value: "main",
     label: "main",
-    description: "Stable production registry. Only fully tested tools.",
+    description: "Stable production registry. Only fully released tools.",
     badge: "stable",
     badgeColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  },
-  {
-    value: "feature/tools-system",
-    label: "feature/tools-system",
-    description: "Development branch. Includes tools in progress and experimental registry entries.",
-    badge: "dev",
-    badgeColor: "text-amber-400 bg-amber-500/10 border-amber-500/20",
   },
 ] as const;
 
@@ -46,12 +40,18 @@ export function ToolsSection() {
       if (isKnown) {
         setBranch(b);
         setUseCustom(false);
+      } else if (b === "feature/tools-system") {
+        // Migrated: this branch no longer exists in vrcstudio-tools — reset to main
+        setBranch("main");
+        setUseCustom(false);
+        saveBranch("main");
       } else {
         setBranch(KNOWN_BRANCHES[0].value);
         setCustomBranch(b);
         setUseCustom(true);
       }
     }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Persist branch ──────────────────────────────────────────────────────
