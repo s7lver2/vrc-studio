@@ -1,8 +1,8 @@
 {
   "codes": {
-    "TOOLS-ALPHA": {
+    "TOOLS-SYSTEM-C2XG": {
       "slug": "tools-system",
-      "name": "Tools System",
+      "name": "Tools System Alpha",
       "description": "Plugin system in development. Includes the VRChat Avatar Performance Analyzer."
     }
   }
