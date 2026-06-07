@@ -138,13 +138,17 @@ pub async fn tools_fetch_registry(
         .path()
         .app_data_dir()
         .map_err(|e| AppError::Io(e.to_string()))?;
-    // Include branch in cache filename so switching branches busts the cache
+    // Include repo+branch in cache filename — any URL change busts the cache
+    let safe_repo   = REGISTRY_REPO.replace(['/', '\\', ':'], "_");
     let safe_branch = branch.replace(['/', '\\', ':'], "_");
-    let cache_path = cache_dir.join(format!("tools_registry_cache_{}.json", safe_branch));
-    // Legacy cache cleanup (single-file cache from before branch support)
-    let legacy_cache = cache_dir.join("tools_registry_cache.json");
-    if legacy_cache.exists() {
-        let _ = std::fs::remove_file(&legacy_cache);
+    let cache_path  = cache_dir.join(format!("tools_registry_cache_{}_{}.json", safe_repo, safe_branch));
+    // Legacy cache cleanup
+    for pattern in &[
+        "tools_registry_cache.json",
+        &format!("tools_registry_cache_{}.json", safe_branch),
+    ] {
+        let old = cache_dir.join(pattern);
+        if old.exists() { let _ = std::fs::remove_file(&old); }
     }
 
     // Return cached version if fresh enough
