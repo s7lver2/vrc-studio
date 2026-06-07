@@ -51,6 +51,15 @@ export interface SdkFilePickerOptions {
   multiple?: boolean;
 }
 
+export interface SdkFileEntry {
+  name: string;
+  /** Path relative to the browser root */
+  path: string;
+  is_dir: boolean;
+  extension: string | null;
+  size_bytes: number | null;
+}
+
 // ── SDK surface ───────────────────────────────────────────────────────────
 
 /**
@@ -122,6 +131,30 @@ export interface VrcStudioSdk {
 
   /** Open the OS folder picker. Returns selected path or null. */
   pickFolder(title?: string): Promise<string | null>;
+
+  // ── Import ────────────────────────────────────────────────────────────────
+  /**
+   * Open the "Import package" picker (Scan drive / Local file / From URL).
+   * Resolves when the user dismisses the modal.
+   */
+  importPackage(opts?: { title?: string }): Promise<void>;
+
+  // ── File browser ──────────────────────────────────────────────────────
+  /** Open a visual file browser rooted at a Unity project. Returns selected absolute path or null. */
+  browseProjectFiles(projectPath: string): Promise<string | null>;
+
+  /** Open a visual file browser rooted at an inventory item's installed path. Returns selected absolute path or null. */
+  browseInventoryItemFiles(itemId: number): Promise<string | null>;
+
+  /** Return the file tree of a project directory without opening any UI. */
+  getProjectFiles(projectPath: string, filter?: { extensions?: string[] }): Promise<SdkFileEntry[]>;
+
+  // ── Sidecar ───────────────────────────────────────────────────────────────
+  /**
+   * Run this tool's own sidecar binary with the given args.
+   * The parent app calls tools_run_sidecar(toolId, args) and resolves with the result.
+   */
+  runSidecar(args: Record<string, unknown>): Promise<unknown>;
 
   // ── UI helpers ────────────────────────────────────────────────────────
   /** Show a toast notification in the VRC Studio window */

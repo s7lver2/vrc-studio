@@ -29,6 +29,18 @@ export interface AppSettings {
    * Por defecto "main". Cambiar a "feature/tools-system" para usar el registry en desarrollo.
    */
   tools_registry_branch: string;
+
+  /** Si true los tools embebidos usan el SDK interno. Por defecto true. */
+  use_sdk_internally: boolean;
+}
+
+export interface FileEntry {
+  name: string;
+  /** Path relative to the root passed to tools_list_dir */
+  path: string;
+  is_dir: boolean;
+  extension: string | null;
+  size_bytes: number | null;
 }
 
 export interface Project {
@@ -1334,3 +1346,6 @@ export async function tauriToolsRunSidecar(
 ): Promise<AnalysisResult> {
   return invoke<AnalysisResult>("tools_run_sidecar", { toolId, request });
 }
+
+export const tauriListDir = (root: string, subPath: string): Promise<FileEntry[]> =>
+  invoke("tools_list_dir", { root, subPath });
