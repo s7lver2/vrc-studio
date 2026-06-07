@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { GitBranch, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Wrench } from "lucide-react";
 import { tauriGetAppSettings, tauriSetAppSettings, tauriToolsClearRegistryCache } from "@/lib/tauri";
 import { useToolsStore } from "@/store/toolsStore";
+import { DebugSection } from "./DebugSection";
 
 // Branches in the vrcstudio-tools repo (https://github.com/s7lver2/vrcstudio-tools)
 const KNOWN_BRANCHES = [
@@ -284,6 +285,9 @@ export function ToolsSection() {
             )}
           </div>
         </div>
+
+        {/* ── Debug section ──────────────────────────────────────────────────── */}
+        <DebugSection />
 
       </div>
     </>
