@@ -184,6 +184,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   lastSelectedId: null,
 
   fetchAll: async () => {
+    // En modo expositor los datos ya están inyectados; no tocar el backend
+    try {
+      const { useAppearanceStore } = await import("./appearanceStore");
+      if (useAppearanceStore.getState().expositorMode) { set({ loading: false }); return; }
+    } catch { /* ignorar */ }
+
     set({ loading: true, error: null });
     const errors: string[] = [];
 

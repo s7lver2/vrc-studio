@@ -10,7 +10,7 @@ import { useBoothDebug } from "./hooks/useBoothDebug";
 import { useDiscordRpc } from "@/hooks/useDiscordRpc";
 import { useCollectionsStore } from "./store/collectionsStore";
 import { SplashScreenCarousel } from "@/components/SplashScreenCarousel";
-import { tauriScanVRChatPhotos, tauriDiscordReauthenticate, tauriDiscordRpcSetEnabled } from "@/lib/tauri";
+import { tauriScanVRChatPhotos, tauriDiscordReauthenticate, tauriDiscordRpcSetEnabled, tauriIsExpositorMode } from "@/lib/tauri";
 import { open as tauriOpenDialog } from "@tauri-apps/plugin-dialog";
 import { UpdateDialog } from "@/components/updates/UpdateDialog";
 import { MigrationPopup } from "@/components/inventory/MigrationPopup";
@@ -20,9 +20,9 @@ import { WallpaperBackground } from "@/components/shared/WallpaperBackground";
 import { useTour } from "@/hooks/useTour";
 import { TourOverlay } from "@/components/onboarding/TourOverlay";
 import { EarlyImportToast } from "@/components/projects/EarlyImportToast";
+import { activateDemoMode } from "@/lib/demo";
 
 
-const PackagesPage  = lazy(() => import("@/pages/Packages"));
 const Shop          = lazy(() => import("@/pages/Shop"));
 const Inventory     = lazy(() => import("@/pages/Inventory"));
 const Settings      = lazy(() => import("@/pages/Settings"));
@@ -30,11 +30,9 @@ const Logs          = lazy(() => import("@/pages/Logs"));
 const TrackerPage   = lazy(() => import("@/pages/Tracker"));
 const Creators      = lazy(() => import("@/pages/Creators"));
 const GitPage       = lazy(() => import("@/pages/Git"));
+const ToolsPage     = lazy(() => import("@/pages/Tools"));
 
-// Imperative preload functions — same chunks as the lazy() calls above,
-// so the browser caches them and React.lazy reuses the already-loaded module.
 const PAGE_PRELOADERS = [
-  () => import("@/pages/Packages"),
   () => import("@/pages/Shop"),
   () => import("@/pages/Inventory"),
   () => import("@/pages/Settings"),
@@ -42,6 +40,7 @@ const PAGE_PRELOADERS = [
   () => import("@/pages/Tracker"),
   () => import("@/pages/Creators"),
   () => import("@/pages/Git"),
+  () => import("@/pages/Tools"),
 ];
 
 function PageLoadingFallback() {
@@ -62,7 +61,6 @@ function PageContent() {
       {(() => {
         switch (activeSection) {
           case "projects":  return <Projects />;
-          case "packages":  return <PackagesPage />;
           case "shop":      return <Shop />;
           case "inventory": return <Inventory />;
           case "settings":  return <Settings />;
@@ -70,6 +68,7 @@ function PageContent() {
           case "tracker":   return <TrackerPage />;
           case "creators":  return <Creators />;
           case "git":       return <GitPage />;
+          case "tools":     return <ToolsPage />;
           default:          return null;
         }
       })()}
@@ -91,13 +90,18 @@ export default function App() {
     if (rpcEnabled) {
       tauriDiscordRpcSetEnabled(true).catch(() => {});
     }
-    if (!discordAccessToken) return;
+    const persistConnections = (() => {
+      try { return localStorage.getItem("persist_connections") !== "false"; }
+      catch { return true; }
+    })();
+    if (!persistConnections || !discordAccessToken) return;
     tauriDiscordReauthenticate(discordAccessToken)
       .then((user) => setDiscordUser(user))
       .catch(() => {
-        // Token expired or Discord not open — clear so UI shows disconnected
+        // Reauth failed (Discord not running, network issue, expired token).
+        // Keep the token so the user can reconnect manually from Connections settings
+        // without having to go through the full OAuth flow again.
         setDiscordUser(null);
-        setDiscordAccessToken(null);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -115,24 +119,24 @@ export default function App() {
   const betaFeaturesEnabled = useAppearanceStore((s) => s.betaFeaturesEnabled);
   const vrchatGallery = useAppearanceStore((s) => s.vrchatGallery);
 
-  // Page preload progress (0–PAGE_PRELOADERS.length)
-  const [pagesLoaded, setPagesLoaded] = useState(0);
-  const splashProgress = Math.round((pagesLoaded / PAGE_PRELOADERS.length) * 100);
-
-  useEffect(() => {
-    PAGE_PRELOADERS.forEach((load) =>
-      load()
-        .then(() => setPagesLoaded((n) => n + 1))
-        .catch(() => setPagesLoaded((n) => n + 1))
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Pre-scan VRChat photos before the carousel mounts so they're ready on frame 1.
   // Reads store state via getState() — bypasses React subscription timing so values
   // are always current regardless of when zustand-persist hydrates.
   const [preloadedVrchatPhotos, setPreloadedVrchatPhotos] = useState<string[]>([]);
   const [vrcScanReady, setVrcScanReady] = useState(false);
+
+  // Page preload progress (0–PAGE_PRELOADERS.length)
+  const [pagesLoaded, setPagesLoaded] = useState(0);
+  const splashProgress = Math.round((pagesLoaded / PAGE_PRELOADERS.length) * 100);
+
+  useEffect(() => {
+    if (!vrcScanReady) return;
+    PAGE_PRELOADERS.forEach((load) =>
+      load()
+        .then(() => setPagesLoaded((n) => n + 1))
+        .catch(() => setPagesLoaded((n) => n + 1))
+    );
+  }, [vrcScanReady]);
 
   useEffect(() => {
     // Use getState() to read the real current store values — not the React-subscribed
@@ -171,6 +175,23 @@ export default function App() {
     useCartStore.getState().load();
     useCollectionsStore.getState().load();
   }, []);
+
+  // Si el modo expositor estaba activo al cerrar, o fue lanzado con --expositor, activar datos falsos
+  useEffect(() => {
+    const alreadyActive = useAppearanceStore.getState().expositorMode;
+    if (alreadyActive) {
+      activateDemoMode();
+      return;
+    }
+    // Comprobar si el .exe fue lanzado con --expositor
+    tauriIsExpositorMode().then((cliFlag) => {
+      if (cliFlag) {
+        useAppearanceStore.getState().setExpositorMode(true);
+        activateDemoMode();
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const wallpaperActive = useAppearanceStore((s) => s.wallpaper.enabled && !!s.wallpaper.path);
 
@@ -195,10 +216,8 @@ export default function App() {
     <>
       <WallpaperBackground />
       {!splashDone && (
-        loadingScreen === "carousel" && betaFeaturesEnabled
-          ? (vrcScanReady
-              ? <SplashScreenCarousel onDone={handleSplashDone} preloadedVrchatPhotos={preloadedVrchatPhotos} progress={splashProgress} />
-              : null /* brief black screen while VRChat photos scan (<1.5s) */)
+        (loadingScreen === "carousel" && vrcScanReady)
+          ? <SplashScreenCarousel onDone={handleSplashDone} preloadedVrchatPhotos={preloadedVrchatPhotos} progress={splashProgress} />
           : <SplashScreen onDone={handleSplashDone} progress={splashProgress} />
       )}
       <div

@@ -602,7 +602,7 @@ export function InventoryItemDetail({ item, onClose }: { item: InventoryItem; on
             { id: "overview",  label: t("inventory_detail_tab_overview"), icon: Info },
             { id: "files",     label: t("inventory_detail_tab_files"),    icon: FileArchive },
             ...(item.is_multi_avatar
-              ? [{ id: "versions" as Tab, label: "Versions", icon: Layers, beta: true }]
+              ? [{ id: "versions" as Tab, label: "Variants", icon: Layers, beta: true }]
               : []),
           ] as { id: Tab; label: string; icon: React.ElementType; beta?: boolean }[]).map(({ id, label, icon: Icon, beta }) => (
             <button

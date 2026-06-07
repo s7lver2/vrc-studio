@@ -41,10 +41,16 @@ pub struct AppSettings {
     /// Rango razonable: 50–1000. Por defecto 300.
     #[serde(default = "default_image_cache_max_count")]
     pub image_cache_max_count: u32,
+
+    /// Rama de GitHub desde la que se obtiene el registry de tools.
+    /// Por defecto "main". Útil para apuntar a "feature/tools-system" durante desarrollo.
+    #[serde(default = "default_tools_registry_branch")]
+    pub tools_registry_branch: String,
 }
 
 fn default_image_cache_enabled() -> bool { true }
 fn default_image_cache_max_count() -> u32 { 300 }
+fn default_tools_registry_branch() -> String { "main".to_string() }
 
 fn default_unity_boot_wait_secs() -> u32 { 180 }
 

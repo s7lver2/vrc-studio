@@ -15,8 +15,8 @@ export default function Install() {
             <div className="step-number">1</div>
             <h3>Download</h3>
             <p>
-              Grab the latest installer from GitHub Releases.
-              Look for <code>VRC.Studio_x.x.x_x64-setup.exe</code>.
+              Click <strong>Download for Windows</strong> above — the installer downloads automatically.
+              Or grab it manually from <a href="https://github.com/s7lver/vrc-studio/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a>.
             </p>
           </div>
 
@@ -46,7 +46,7 @@ export default function Install() {
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
           <span>
-            VRC Studio is currently in early development (v0.0.13). Some features are marked as Work in Progress.
+            VRC Studio is currently in early development (v0.0.21). Some features are marked as Work in Progress.
             Contributions and feedback are welcome on{' '}
             <a href="https://github.com/s7lver/vrc-studio" target="_blank" rel="noopener noreferrer">
               GitHub

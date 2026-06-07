@@ -67,12 +67,12 @@ export function ProjectCard({ project, onOpen, onDelete, onDetail, onSelect, isS
       )}
       onClick={() => onDetail?.(project)}
     >
-      {/* Screenshot thumbnail */}
-      {project.last_screenshot ? (
+      {/* Screenshot/cover thumbnail */}
+      {(project.cover_image_path || project.last_screenshot) ? (
         <div className="w-full aspect-video rounded-md overflow-hidden bg-zinc-950 relative">
           <img
-            src={toAssetUrl(project.last_screenshot) ?? ""}
-            alt="Last session"
+            src={toAssetUrl(project.cover_image_path ?? project.last_screenshot) ?? ""}
+            alt="Cover"
             className="w-full h-full object-cover transition-all duration-300"
             style={isOpen ? undefined : { filter: "grayscale(1) brightness(0.6)" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}

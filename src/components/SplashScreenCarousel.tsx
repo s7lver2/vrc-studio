@@ -1,6 +1,6 @@
 // src/components/SplashScreenCarousel.tsx
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useAppearanceStore, CarouselImageEntry } from "@/store/appearanceStore";
 import { BUILT_IN_SPLASH_IMAGES, getSplashImageById } from "@/lib/splashImages";
 import { toAssetUrl } from "@/lib/utils";
@@ -56,13 +56,13 @@ function resolveImageUrl(entry: CarouselImageEntry): string | null {
 export function SplashScreenCarousel({ onDone, preloadedVrchatPhotos = [], progress }: Props) {
   const { carouselImages, vrchatGallery } = useAppearanceStore();
   const [phase, setPhase] = useState<"enter" | "show" | "exit">("enter");
-  const canExitRef = useRef(false);
+  const [canExit, setCanExit] = useState(false);
   const exitStartedRef = useRef(false);
 
   const vrchatPhotoPaths = preloadedVrchatPhotos;
 
-  // Build the pool of available images
-  const imageList: CarouselImageEntry[] = (() => {
+  // Build the pool of available images — memoized so re-renders don't restart the interval
+  const imageList = useMemo<CarouselImageEntry[]>(() => {
     if (vrchatGallery.consented && vrchatGallery.enabled) {
       if (vrchatPhotoPaths.length > 0) {
         return vrchatPhotoPaths.map((p) => ({ id: `vrchat:${p}`, path: p, builtInId: null }));
@@ -73,26 +73,53 @@ export function SplashScreenCarousel({ onDone, preloadedVrchatPhotos = [], progr
     return custom.length > 0
       ? custom
       : BUILT_IN_SPLASH_IMAGES.map((img) => ({ id: img.id, path: null, builtInId: img.id }));
-  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vrchatGallery.consented, vrchatGallery.enabled, vrchatPhotoPaths.length, carouselImages.length]);
 
-  const [activeIdx, setActiveIdx] = useState(() => Math.floor(Math.random() * imageList.length));
-  const [imgVisible, setImgVisible] = useState(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initIdx = useRef(Math.floor(Math.random() * imageList.length)).current;
+  // Two-slot crossfade: "front" is visible, "back" is pre-rendered (invisible) for instant swap
+  const [frontIdx, setFrontIdx] = useState(initIdx);
+  const [backIdx, setBackIdx] = useState((initIdx + 1) % Math.max(imageList.length, 1));
+  const [swapped, setSwapped] = useState(false); // true = back is on top during crossfade
+  const crossfadingRef = useRef(false);
+  // Ref keeps the interval callback reading the latest frontIdx without re-registering
+  const frontIdxRef = useRef(frontIdx);
+  frontIdxRef.current = frontIdx;
 
-  // Slideshow fade every 4s
+  // Advance slides every 4s using a crossfade so the next image is already loaded
   useEffect(() => {
     if (imageList.length <= 1) return;
+    const len = imageList.length;
     const interval = setInterval(() => {
-      setImgVisible(false);
+      if (crossfadingRef.current) return;
+      crossfadingRef.current = true;
+      setSwapped(true); // back layer rises to top (it was already rendering = loaded)
       setTimeout(() => {
-        setActiveIdx((prev) => (prev + 1) % imageList.length);
-        setImgVisible(true);
-      }, 500);
+        // Crossfade complete: promote back→front, start fading the back out.
+        // We do NOT change backIdx here — the back still shows the same image as the
+        // new front, both rendering the same src. Changing backIdx simultaneously with
+        // swapped=false would make the back layer (still near opacity-1) flash a new
+        // image for one frame before it begins fading. Instead we wait for the back
+        // to fully fade out before swapping its source.
+        const next = (frontIdxRef.current + 1) % len;
+        setFrontIdx(next);
+        setSwapped(false);
+        // Only update the back source once the back layer is fully invisible (≥ 0.6s fade).
+        setTimeout(() => {
+          setBackIdx((next + 1) % len);
+          crossfadingRef.current = false;
+        }, 700);
+      }, 650); // slightly > 0.6s CSS transition so the transition is truly done
     }, 4000);
     return () => clearInterval(interval);
   }, [imageList.length]);
 
-  const activeEntry = imageList[activeIdx];
+  const activeIdx = frontIdx;
+  const activeEntry = imageList[frontIdx];
+  const backEntry = imageList[backIdx];
   const imageUrl = resolveImageUrl(activeEntry);
+  const backImageUrl = resolveImageUrl(backEntry);
   const displayMeta = resolveDisplayMeta(activeEntry);
 
   const triggerExit = () => {
@@ -105,7 +132,7 @@ export function SplashScreenCarousel({ onDone, preloadedVrchatPhotos = [], progr
   useEffect(() => {
     const t = setTimeout(() => {
       setPhase("show");
-      setTimeout(() => { canExitRef.current = true; }, 500);
+      setTimeout(() => setCanExit(true), 500);
     }, 80);
     const fallback = setTimeout(() => triggerExit(), 30_000);
     return () => { clearTimeout(t); clearTimeout(fallback); };
@@ -113,11 +140,11 @@ export function SplashScreenCarousel({ onDone, preloadedVrchatPhotos = [], progr
   }, []);
 
   useEffect(() => {
-    if (progress >= 100 && canExitRef.current) {
+    if (progress >= 100 && canExit) {
       triggerExit();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress]);
+  }, [progress, canExit]);
 
   const visible = phase !== "enter";
   const exiting = phase === "exit";
@@ -132,24 +159,31 @@ export function SplashScreenCarousel({ onDone, preloadedVrchatPhotos = [], progr
         background: "#09090b",
       }}
     >
-      {/* Background image */}
+      {/* Background image — two layers crossfade so the next image is pre-loaded */}
+      {/* Back layer: next image, rendered invisible for preloading, rises during swap */}
+      {backImageUrl && (
+        <div
+          className="absolute inset-0"
+          style={{
+            opacity: visible && swapped ? 1 : 0,
+            transition: "opacity 0.6s ease-in-out",
+          }}
+        >
+          <img src={backImageUrl} alt="" className="w-full h-full object-cover" draggable={false} />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,.65) 0%, rgba(0,0,0,.1) 55%, rgba(0,0,0,.05) 100%),linear-gradient(to bottom, transparent 35%, rgba(0,0,0,.92) 100%)" }} />
+        </div>
+      )}
+      {/* Front layer: current image, fades out during swap */}
       {imageUrl && (
         <div
           className="absolute inset-0"
           style={{
-            opacity: visible && imgVisible ? 1 : 0,
-            transition: imgVisible ? "opacity 0.5s ease-in" : "opacity 0.5s ease-out",
+            opacity: visible && !swapped ? 1 : 0,
+            transition: "opacity 0.6s ease-in-out",
           }}
         >
           <img src={imageUrl} alt="" className="w-full h-full object-cover" draggable={false} />
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(to right, rgba(0,0,0,.65) 0%, rgba(0,0,0,.1) 55%, rgba(0,0,0,.05) 100%)," +
-                "linear-gradient(to bottom, transparent 35%, rgba(0,0,0,.92) 100%)",
-            }}
-          />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,.65) 0%, rgba(0,0,0,.1) 55%, rgba(0,0,0,.05) 100%),linear-gradient(to bottom, transparent 35%, rgba(0,0,0,.92) 100%)" }} />
         </div>
       )}
 

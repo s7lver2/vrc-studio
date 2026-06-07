@@ -1,10 +1,11 @@
-import { Trash2, Archive, X, CheckSquare } from "lucide-react";
+import { Trash2, Archive, X, CheckSquare, ExternalLink, Zap } from "lucide-react";
 import { useInventoryStore } from "@/store/inventoryStore";
 import { tauriDeleteInventoryItem, tauriCompressItem } from "@/lib/tauri";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { CompressionPopup } from "./CompressionPopup";
 import { OpenInUnityModal } from "./OpenInUnityModal";
-import { ExternalLink } from "lucide-react";
+import { EarlyImportToProjectModal } from "./EarlyImportToProjectModal";
+import { useAppStore } from "@/store/app";
 import { useT } from "../../i18n";
 
 interface QueueState {
@@ -23,6 +24,11 @@ export function MultiSelectToolbar() {
   const compressionFiredRef = useRef<string | null>(null);
 
   const count = selectedItemIds.size;
+  const workspaceProject = useAppStore((s) => s.workspaceProject);
+  const [showEarlyImport, setShowEarlyImport] = useState(false);
+
+  // Use Early Import when: multiple items selected OR no project is open in workspace
+  const useEarlyImport = count > 1 || !workspaceProject;
 
   const handleDelete = useCallback(async () => {
     if (!confirm(t("multiselect_delete_confirm", { count: count }))) return;
@@ -107,10 +113,17 @@ export function MultiSelectToolbar() {
           <button disabled={busy} onClick={handleCompress} className="flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors disabled:opacity-50">
             <Archive className="h-3.5 w-3.5" /> {t("multiselect_compress")}
           </button>
-          <button disabled={busy} onClick={() => setShowOpenInUnity(true)}
-            className="flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 px-2.5 py-1.5 rounded-lg hover:bg-violet-950/40 transition-colors disabled:opacity-50">
-            <ExternalLink className="h-3.5 w-3.5" /> {t("multiselect_open_in_unity")}
-          </button>
+          {useEarlyImport ? (
+            <button disabled={busy} onClick={() => setShowEarlyImport(true)}
+              className="flex items-center gap-1.5 text-xs text-amber-300 hover:text-amber-200 px-2.5 py-1.5 rounded-lg hover:bg-amber-950/40 transition-colors disabled:opacity-50">
+              <Zap className="h-3.5 w-3.5" /> Early Import
+            </button>
+          ) : (
+            <button disabled={busy} onClick={() => setShowOpenInUnity(true)}
+              className="flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 px-2.5 py-1.5 rounded-lg hover:bg-violet-950/40 transition-colors disabled:opacity-50">
+              <ExternalLink className="h-3.5 w-3.5" /> {t("multiselect_open_in_unity")}
+            </button>
+          )}
           <button disabled={busy} onClick={handleDelete} className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 px-2.5 py-1.5 rounded-lg hover:bg-red-950/40 transition-colors disabled:opacity-50">
             <Trash2 className="h-3.5 w-3.5" /> {t("multiselect_delete")}
           </button>
@@ -136,6 +149,12 @@ export function MultiSelectToolbar() {
         <OpenInUnityModal
           items={selectedItems}
           onClose={() => setShowOpenInUnity(false)}
+        />
+      )}
+      {showEarlyImport && (
+        <EarlyImportToProjectModal
+          items={selectedItems}
+          onClose={() => { setShowEarlyImport(false); clearSelection(); }}
         />
       )}
     </>

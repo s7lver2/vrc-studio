@@ -3,6 +3,7 @@ import Nav from './components/Nav'
 import Hero from './components/Hero'
 import FeatureGrid from './components/FeatureGrid'
 import InventorySection from './components/InventorySection'
+import ShopSection from './components/ShopSection'
 import GitSection from './components/GitSection'
 import PrivacySection from './components/PrivacySection'
 import Gallery from './components/Gallery'
@@ -18,7 +19,7 @@ export default function App() {
           if (entry.isIntersecting) entry.target.classList.add('visible')
         })
       },
-      { threshold: 0.1, rootMargin: '0px 0px -60px 0px' },
+      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' },
     )
     document.querySelectorAll('.fade-up').forEach((el) => observer.observe(el))
     return () => observer.disconnect()
@@ -30,8 +31,13 @@ export default function App() {
       <Hero />
       <FeatureGrid />
       <div className="section-divider" />
+      {/* 1st big feature: Asset Library */}
       <InventorySection />
       <div className="section-divider" />
+      {/* 2nd big feature: Booth Shop */}
+      <ShopSection />
+      <div className="section-divider" />
+      {/* 3rd big feature: Version Control */}
       <GitSection />
       <div className="section-divider" />
       <PrivacySection />

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VRC Studio — Diseño Completo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #09090b; color: #e4e4e7;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 2rem; min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; gap: 0.75rem;
+    margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #27272a;
+  }
+  header .logo {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  header h1 { font-size: 0.9rem; font-weight: 600; color: #f4f4f5; }
+  header p { font-size: 0.7rem; color: #52525b; margin-top: 1px; }
+
+  h2 { font-size: 1.25rem; font-weight: 700; color: #f4f4f5; margin-bottom: 0.3rem; }
+  h3 { font-size: 0.95rem; font-weight: 700; color: #f4f4f5; margin-bottom: 0.5rem; }
+  .subtitle { font-size: 0.82rem; color: #71717a; margin-bottom: 2rem; }
+
+  .section { max-width: 960px; margin-bottom: 2.5rem; }
+  .section-label {
+    font-size: 0.6rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #ef4444; margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: #27272a; }
+
+  .divider { border: none; border-top: 1px solid #27272a; margin: 2rem 0; max-width: 960px; }
+
+  /* ─── DECISIONS SUMMARY ─── */
+  .decisions-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
+  }
+  .decision-card {
+    background: #18181b; border: 1px solid #27272a; border-radius: 12px;
+    padding: 0.85rem 1rem;
+  }
+  .dc-q { font-size: 0.6rem; color: #52525b; margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .dc-a { font-size: 0.8rem; font-weight: 700; color: #f4f4f5; margin-bottom: 0.15rem; }
+  .dc-sub { font-size: 0.65rem; color: #71717a; }
+
+  /* ─── ARCHITECTURE ─── */
+  .arch-layers {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .arch-layer {
+    display: grid; grid-template-columns: 140px 1fr;
+    background: #18181b; border: 1px solid #27272a; border-radius: 10px; overflow: hidden;
+  }
+  .layer-name {
+    background: #111113; border-right: 1px solid #27272a;
+    padding: 0.6rem 0.75rem; display: flex; align-items: center;
+    font-size: 0.68rem; font-weight: 700; color: #a1a1aa; gap: 0.4rem;
+  }
+  .layer-content {
+    padding: 0.6rem 0.9rem; font-size: 0.68rem; color: #71717a; line-height: 1.5;
+  }
+  .layer-content strong { color: #e4e4e7; }
+
+  /* ─── FLOW ─── */
+  .flow-grid {
+    display: flex; gap: 0; align-items: stretch;
+  }
+  .flow-node {
+    flex: 1; background: #18181b; border: 1px solid #27272a; border-radius: 0;
+    padding: 0.85rem 0.75rem; text-align: center; position: relative;
+  }
+  .flow-node:first-child { border-radius: 10px 0 0 10px; }
+  .flow-node:last-child { border-radius: 0 10px 10px 0; }
+  .flow-node + .flow-node { border-left: none; }
+  .flow-node::after {
+    content: '▶'; position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+    color: #3f3f46; font-size: 0.7rem; z-index: 1;
+  }
+  .flow-node:last-child::after { display: none; }
+  .fn-icon { font-size: 1.3rem; margin-bottom: 0.35rem; }
+  .fn-title { font-size: 0.7rem; font-weight: 700; color: #f4f4f5; margin-bottom: 0.2rem; }
+  .fn-sub { font-size: 0.58rem; color: #52525b; line-height: 1.4; }
+
+  /* ─── SCREENS WIREFRAMES ─── */
+  .screens-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
+  }
+  .screen-card {
+    background: #111113; border: 1px solid #27272a; border-radius: 12px; overflow: hidden;
+  }
+  .screen-label {
+    padding: 0.4rem 0.6rem; background: #18181b; border-bottom: 1px solid #27272a;
+    font-size: 0.62rem; font-weight: 700; color: #71717a;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .screen-body { padding: 0.5rem; height: 170px; display: flex; flex-direction: column; gap: 0.3rem; overflow: hidden; }
+
+  /* mini UI elements */
+  .mini-nav { display: flex; flex-direction: column; gap: 0.2rem; }
+  .mini-nav-item {
+    padding: 0.25rem 0.4rem; border-radius: 5px; font-size: 0.58rem;
+    color: #71717a; background: transparent;
+  }
+  .mini-nav-item.active { background: #1a0606; color: #fca5a5; font-weight: 700; }
+
+  .mini-card {
+    background: #18181b; border: 1px solid #27272a; border-radius: 6px;
+    padding: 0.35rem 0.45rem; font-size: 0.58rem;
+  }
+  .mini-card-header { display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.2rem; }
+  .mini-thumb { width: 20px; height: 20px; border-radius: 4px; background: #27272a; font-size: 0.7rem; display:flex;align-items:center;justify-content:center; flex-shrink:0; }
+  .mini-name { font-size: 0.6rem; font-weight: 700; color: #e4e4e7; }
+  .mini-sub { font-size: 0.55rem; color: #52525b; }
+  .mini-btn {
+    margin-top: 0.25rem; padding: 0.18rem 0.4rem; border-radius: 4px;
+    background: #ef4444; color: white; font-size: 0.55rem; font-weight: 700;
+    width: fit-content;
+  }
+
+  .mini-carousel {
+    background: linear-gradient(135deg, #1a0606, #0e0618);
+    border: 1px solid #3f1a1a; border-radius: 6px;
+    padding: 0.4rem 0.5rem; font-size: 0.6rem; color: #fca5a5; font-weight: 700;
+    margin-bottom: 0.2rem;
+  }
+  .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem; }
+  .mini-tile {
+    background: #18181b; border: 1px solid #27272a; border-radius: 5px;
+    padding: 0.25rem; font-size: 0.52rem;
+  }
+  .mini-tile .t-name { color: #e4e4e7; font-weight: 600; font-size: 0.55rem; }
+  .mini-tile .t-auth { color: #52525b; }
+
+  .mini-banner {
+    background: linear-gradient(135deg, #1e3a5f, #1a0a30);
+    border: 1px solid #1e3a5f; border-radius: 6px;
+    padding: 0.35rem 0.5rem; font-size: 0.6rem; color: #93c5fd; font-weight: 700;
+    margin-bottom: 0.25rem; min-height: 36px; display:flex; align-items: center;
+  }
+  .mini-tool-info { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
+  .mini-tool-icon { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg,#7c3aed,#5b21b6); display:flex;align-items:center;justify-content:center;font-size:0.8rem; }
+  .mini-install { padding: 0.2rem 0.5rem; border-radius: 5px; background: #22c55e; color: #052e16; font-size: 0.6rem; font-weight: 800; }
+  .mini-metric { display: flex; align-items: center; gap: 0.3rem; background: #18181b; border-radius: 4px; padding: 0.2rem 0.35rem; border-left: 2px solid; font-size: 0.55rem; }
+  .red-b { border-color: #ef4444; }
+  .yel-b { border-color: #eab308; }
+  .grn-b { border-color: #22c55e; }
+
+  /* ─── METRICS TABLE ─── */
+  .metrics-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+  .metrics-table th {
+    text-align: left; padding: 0.4rem 0.75rem;
+    background: #111113; color: #52525b;
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    border-bottom: 1px solid #27272a;
+  }
+  .metrics-table td {
+    padding: 0.45rem 0.75rem; border-bottom: 1px solid #1f1f23;
+    color: #a1a1aa;
+  }
+  .metrics-table tr:last-child td { border-bottom: none; }
+  .metrics-table tr:hover td { background: #111113; }
+  .rank { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.6rem; font-weight: 800; }
+  .r-exc { background: #1e3a5f; color: #93c5fd; }
+  .r-good { background: #14532d; color: #86efac; }
+  .r-med { background: #713f12; color: #fde68a; }
+  .r-poor { background: #7c2d12; color: #fed7aa; }
+  .r-vpoor { background: #450a0a; color: #fca5a5; }
+
+  /* ─── 3D STRATEGY ─── */
+  .strategy-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .strat-card {
+    background: #18181b; border: 1px solid #27272a; border-radius: 12px;
+    padding: 0.9rem 1rem;
+  }
+  .strat-title { font-size: 0.8rem; font-weight: 700; color: #f4f4f5; margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem; }
+  .strat-badge { padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.58rem; font-weight: 700; }
+  .primary-b { background: #14532d; color: #86efac; }
+  .fallback-b { background: #1e3a5f; color: #93c5fd; }
+  .strat-p { font-size: 0.72rem; color: #71717a; line-height: 1.5; }
+
+  /* ─── APPROVAL ─── */
+  .approval-box {
+    background: #111113; border: 2px solid #27272a; border-radius: 16px;
+    padding: 1.5rem; max-width: 960px; text-align: center;
+  }
+  .approval-box h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+  .approval-box p { font-size: 0.8rem; color: #71717a; }
+  .approve-btns { display: flex; gap: 0.75rem; justify-content: center; margin-top: 1rem; }
+  .btn-approve {
+    padding: 0.5rem 1.5rem; border-radius: 10px;
+    background: #ef4444; color: white; font-size: 0.82rem; font-weight: 700;
+    cursor: default;
+  }
+  .btn-change {
+    padding: 0.5rem 1.5rem; border-radius: 10px;
+    background: #27272a; color: #a1a1aa; font-size: 0.82rem; font-weight: 700;
+    cursor: default;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🛠</div>
+  <div>
+    <h1>VRC Studio — Tools System · Diseño Completo</h1>
+    <p>Resumen de decisiones + arquitectura + screens + métricas VRChat</p>
+  </div>
+</header>
+
+<!-- 1. DECISIONES -->
+<div class="section">
+  <div class="section-label">Decisiones tomadas</div>
+  <div class="decisions-grid">
+    <div class="decision-card">
+      <div class="dc-q">Arquitectura</div>
+      <div class="dc-a">JS Bundle + Rust Sidecar</div>
+      <div class="dc-sub">UI descargable · Lógica nativa</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-q">Marketplace</div>
+      <div class="dc-a">Curado → extensible</div>
+      <div class="dc-sub">registry.json en GitHub, abierto a futuro</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-q">Selección de avatar</div>
+      <div class="dc-a">Proyecto → Escena → Descriptor</div>
+      <div class="dc-sub">VRC_AvatarDescriptor en escena Unity</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-q">Layout de resultados</div>
+      <div class="dc-a">Panel A — 3D + Métricas</div>
+      <div class="dc-sub">Modelo rotando izq · métricas der</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-q">Modelo 3D viewport</div>
+      <div class="dc-a">Unity headless + GLTF fallback</div>
+      <div class="dc-sub">Render fiel → extracción Rust si falla</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-q">Rama git</div>
+      <div class="dc-a">feature/tools-system</div>
+      <div class="dc-sub">Todo el trabajo en branch separado</div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. ARCHITECTURE LAYERS -->
+<div class="section">
+  <div class="section-label">Arquitectura del sistema</div>
+  <div class="arch-layers">
+    <div class="arch-layer">
+      <div class="layer-name">🎨 UI Layer</div>
+      <div class="layer-content"><strong>React + TypeScript</strong> — Tools page, Marketplace view, Tool detail page, instalación/progreso. El componente de cada tool (JS bundle) se carga dinámicamente en un webview sandboxed.</div>
+    </div>
+    <div class="arch-layer">
+      <div class="layer-name">🗄 Store Layer</div>
+      <div class="layer-content"><strong>toolsStore (Zustand)</strong> — Lista de tools instaladas, estado de descarga, herramienta activa. Persiste en SQLite (tabla <code>tools_installed</code>).</div>
+    </div>
+    <div class="arch-layer">
+      <div class="layer-name">⚙️ Tauri Commands</div>
+      <div class="layer-content"><strong>Rust commands</strong> — <code>tools_fetch_registry</code>, <code>tools_install</code>, <code>tools_uninstall</code>, <code>tools_launch_sidecar</code>. El sidecar de cada tool corre como proceso hijo de Tauri.</div>
+    </div>
+    <div class="arch-layer">
+      <div class="layer-name">🔧 Sidecar Layer</div>
+      <div class="layer-content"><strong>avatar-perf-core</strong> — Binario Rust independiente. Parsea escenas Unity (YAML), cuenta meshes/materiales/PhysBones, estima VRAM. Comunica por stdin/stdout JSON. Descargado desde GitHub Releases.</div>
+    </div>
+    <div class="arch-layer">
+      <div class="layer-name">☁️ Registry</div>
+      <div class="layer-content"><strong>tools-registry.json</strong> en GitHub — Lista de tools disponibles con metadata, versiones, URLs de descarga del JS bundle y sidecar. Cacheado localmente con TTL de 1h.</div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. SCREENS -->
+<div class="section">
+  <div class="section-label">4 pantallas del sistema</div>
+  <div class="screens-row">
+
+    <!-- Screen 1: Tools tab -->
+    <div class="screen-card">
+      <div class="screen-label">① Tools tab (instaladas)</div>
+      <div class="screen-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+          <span style="font-size:0.62rem;font-weight:700;color:#f4f4f5;">🛠 Tools</span>
+          <span style="font-size:0.55rem;background:#27272a;padding:0.15rem 0.4rem;border-radius:4px;color:#71717a;">Market →</span>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-header">
+            <div class="mini-thumb">📊</div>
+            <div><div class="mini-name">Avatar Perf Analyzer</div><div class="mini-sub">v1.0 · by VRC Studio</div></div>
+          </div>
+          <div class="mini-btn">▶ Run</div>
+        </div>
+        <div class="mini-card" style="opacity:0.4">
+          <div class="mini-card-header">
+            <div class="mini-thumb">🔮</div>
+            <div><div class="mini-name">UV Inspector</div><div class="mini-sub">Coming soon</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 2: Marketplace -->
+    <div class="screen-card">
+      <div class="screen-label">② Marketplace</div>
+      <div class="screen-body">
+        <div class="mini-carousel">⭐ Avatar Performance Analyzer</div>
+        <div class="mini-grid">
+          <div class="mini-tile"><div class="t-name">📊 Avatar Perf</div><div class="t-auth">VRC Studio</div></div>
+          <div class="mini-tile"><div class="t-name">🔮 UV Inspector</div><div class="t-auth">VRC Studio</div></div>
+          <div class="mini-tile"><div class="t-name">🗜 Texture Optimizer</div><div class="t-auth">Coming</div></div>
+          <div class="mini-tile"><div class="t-name">🦴 PhysBone Utils</div><div class="t-auth">Coming</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 3: Tool detail -->
+    <div class="screen-card">
+      <div class="screen-label">③ Detalle de tool</div>
+      <div class="screen-body">
+        <div class="mini-banner">Avatar Performance Analyzer</div>
+        <div class="mini-tool-info">
+          <div class="mini-tool-icon">📊</div>
+          <div>
+            <div style="font-size:0.65rem;font-weight:700;color:#f4f4f5;">Perf Analyzer</div>
+            <div style="font-size:0.55rem;color:#52525b;">VRC Studio · v1.0.0</div>
+          </div>
+          <div class="mini-install" style="margin-left:auto;">Install</div>
+        </div>
+        <div style="font-size:0.58rem;color:#71717a;line-height:1.4;">Analiza tu avatar VRChat y obtén el rank de performance con recomendaciones.</div>
+        <div style="font-size:0.55rem;color:#52525b;margin-top:0.3rem;">Requiere: Unity 2022+</div>
+      </div>
+    </div>
+
+    <!-- Screen 4: Running tool -->
+    <div class="screen-card">
+      <div class="screen-label">④ Tool ejecutándose</div>
+      <div class="screen-body">
+        <div style="display:flex;gap:0.3rem;height:100%;">
+          <div style="flex:1;background:#0a0a0c;border-radius:6px;border:1px solid #27272a;display:flex;align-items:center;justify-content:center;font-size:1.6rem;position:relative;">
+            🧙
+            <div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:0.45rem;color:#52525b;white-space:nowrap;">T-Pose · Rotando</div>
+          </div>
+          <div style="flex:1.2;display:flex;flex-direction:column;gap:0.2rem;overflow:hidden;">
+            <div style="font-size:0.55rem;font-weight:800;color:#fed7aa;background:#7c2d12;padding:0.15rem 0.35rem;border-radius:4px;width:fit-content;">POOR</div>
+            <div class="mini-metric red-b">🔺 87k tris ❌</div>
+            <div class="mini-metric yel-b">🎨 12 mats ⚠️</div>
+            <div class="mini-metric red-b">🦴 24 PBones ❌</div>
+            <div class="mini-metric red-b">🖼 62MB VRAM ❌</div>
+            <div class="mini-metric grn-b">✨ 0 particles ✅</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 4. VRCHAT METRICS -->
+<div class="section">
+  <div class="section-label">Métricas VRChat que analizará el sidecar (PC)</div>
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;overflow:hidden;">
+    <table class="metrics-table">
+      <thead>
+        <tr>
+          <th>Métrica</th>
+          <th><span class="rank r-exc">Excellent</span></th>
+          <th><span class="rank r-good">Good</span></th>
+          <th><span class="rank r-med">Medium</span></th>
+          <th><span class="rank r-poor">Poor</span></th>
+          <th>Fuente en Unity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Triángulos</td><td>≤ 32k</td><td>≤ 70k</td><td>≤ 70k</td><td>≤ 70k</td><td>MeshFilter / SkinnedMeshRenderer</td></tr>
+        <tr><td>Skinned Mesh Renderers</td><td>≤ 1</td><td>≤ 2</td><td>≤ 2</td><td>≤ 8</td><td>SkinnedMeshRenderer components</td></tr>
+        <tr><td>Mesh Renderers</td><td>≤ 1</td><td>≤ 2</td><td>≤ 4</td><td>≤ 8</td><td>MeshRenderer components</td></tr>
+        <tr><td>Material slots</td><td>≤ 4</td><td>≤ 8</td><td>≤ 16</td><td>≤ 32</td><td>sharedMaterials en Renderers</td></tr>
+        <tr><td>Bones (transform hierarchy)</td><td>≤ 75</td><td>≤ 150</td><td>≤ 256</td><td>≤ 400</td><td>Armature + children transforms</td></tr>
+        <tr><td>PhysBone Components</td><td>≤ 4</td><td>≤ 8</td><td>≤ 16</td><td>≤ 32</td><td>VRC_PhysBone MonoBehaviour</td></tr>
+        <tr><td>PhysBone Affected Transforms</td><td>≤ 16</td><td>≤ 64</td><td>≤ 128</td><td>≤ 256</td><td>Bone chains del PhysBone</td></tr>
+        <tr><td>PhysBone Colliders</td><td>≤ 0</td><td>≤ 8</td><td>≤ 16</td><td>≤ 32</td><td>VRC_PhysBoneCollider</td></tr>
+        <tr><td>Particle Systems</td><td>≤ 0</td><td>≤ 8</td><td>≤ 16</td><td>≤ 32</td><td>ParticleSystem components</td></tr>
+        <tr><td>Trail / Line Renderers</td><td>≤ 1</td><td>≤ 2</td><td>≤ 4</td><td>≤ 8</td><td>TrailRenderer, LineRenderer</td></tr>
+        <tr><td>Lights (realtime)</td><td>0</td><td>0</td><td>0</td><td>≤ 8</td><td>Light components</td></tr>
+        <tr><td>Audio Sources</td><td>≤ 1</td><td>≤ 4</td><td>≤ 8</td><td>≤ 8</td><td>AudioSource components</td></tr>
+        <tr><td>VRAM estimada</td><td>≤ 40 MB</td><td>≤ 75 MB</td><td>≤ 110 MB</td><td>≤ 150 MB</td><td>Texturas × tamaño × formato</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:0.65rem;color:#52525b;margin-top:0.5rem;">Quest tiene límites mucho más estrictos. El sidecar calculará ambos rangos en paralelo.</p>
+</div>
+
+<!-- 5. 3D STRATEGY -->
+<div class="section">
+  <div class="section-label">Estrategia del viewport 3D</div>
+  <div class="strategy-cards">
+    <div class="strat-card">
+      <div class="strat-title">🎬 Unity Headless <span class="strat-badge primary-b">Principal</span></div>
+      <p class="strat-p">El sidecar detecta la versión de Unity del proyecto, lanza <code>Unity.exe -batchmode -executeMethod</code> con un script C# mínimo que posiciona el avatar en T-pose, hace screenshot y cierra. Resultado: imagen PNG fiel con todos los shaders Unity. ~15–30s.</p>
+    </div>
+    <div class="strat-card">
+      <div class="strat-title">🔧 GLTF + Three.js <span class="strat-badge fallback-b">Fallback</span></div>
+      <p class="strat-p">Si Unity no está disponible o falla, el sidecar extrae los meshes FBX/OBJ desde los Assets del proyecto y las texturas PNG/JPG, los convierte a GLTF con <code>gltf-rs</code> o <code>fbx2gltf</code>, y Three.js los renderiza con rotación en tiempo real.</p>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="approval-box">
+  <h3>¿Apruebas este diseño?</h3>
+  <p>Si el diseño se ve bien, dime "aprobado" en el chat y paso a escribir la spec y el plan de implementación detallado.<br>Si quieres cambiar algo, dímelo y lo ajusto.</p>
+  <div class="approve-btns">
+    <div class="btn-approve">✓ Aprobado — Crear spec</div>
+    <div class="btn-change">↩ Cambiar algo</div>
+  </div>
+</div>
+
+</body>
+</html>

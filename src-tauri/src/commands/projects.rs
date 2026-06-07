@@ -46,12 +46,166 @@ fn sanitize_dir_name(name: &str) -> String {
         .to_string()
 }
 
+/// Removes a directory tree, stripping read-only attributes on Windows first.
+/// Unity projects typically contain many read-only `.meta` files and Library assets
+/// that would cause `remove_dir_all` to fail with "Access denied" on Windows.
+/// Returns Ok(()) silently if the path doesn't exist.
+fn force_remove_dir_all(path: &std::path::Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    #[cfg(windows)]
+    fn strip_readonly(p: &std::path::Path) {
+        if let Ok(meta) = std::fs::metadata(p) {
+            let mut perms = meta.permissions();
+            if perms.readonly() {
+                perms.set_readonly(false);
+                let _ = std::fs::set_permissions(p, perms);
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn strip_readonly_recursive(dir: &std::path::Path) {
+        strip_readonly(dir);
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let child = entry.path();
+                if child.is_dir() {
+                    strip_readonly_recursive(&child);
+                } else {
+                    strip_readonly(&child);
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    strip_readonly_recursive(path);
+
+    std::fs::remove_dir_all(path)
+}
+
+/// Recursively copies all contents of `src` dir into `dst` dir.
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ty = entry.file_type().map_err(|e| e.to_string())?;
+        let dst_path = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst_path)?;
+        } else {
+            std::fs::copy(entry.path(), &dst_path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Searches recursively for a file named `file_name` inside `dir`, returns its path if found.
+fn find_file_in_dir(dir: &std::path::Path, file_name: &str) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file_in_dir(&path, file_name) {
+                return Some(found);
+            }
+        } else if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case(file_name))
+            .unwrap_or(false)
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+// ── NDMF asmdef isolation ─────────────────────────────────────────────────────
+
+/// Walks `dir` recursively and returns true if any .cs file uses the `nadena.dev` namespace.
+fn cs_uses_ndmf(dir: &std::path::Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else { return false; };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if cs_uses_ndmf(&path) { return true; }
+        } else if path.extension().map_or(false, |e| e == "cs") {
+            if let Ok(src) = std::fs::read_to_string(&path) {
+                if src.contains("nadena.dev") || src.contains("nadena.") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Checks if `dir` already has a .asmdef at its root level.
+fn has_root_asmdef(dir: &std::path::Path) -> bool {
+    std::fs::read_dir(dir).ok()
+        .map(|e| e.flatten().any(|f| f.path().extension().map_or(false, |x| x == "asmdef")))
+        .unwrap_or(false)
+}
+
+/// Sanitizes `name` to a valid Unity assembly name (alphanumeric + dots/underscores).
+fn sanitize_asmdef_name(name: &str) -> String {
+    let cleaned: String = name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '_' { c } else { '_' })
+        .collect();
+    // Prefix to avoid collisions with VPM package assembly names
+    format!("VRCStudio.EarlyImport.{cleaned}")
+}
+
+/// After extracting an early import item, if the folder contains scripts that use
+/// the NDMF namespace, generate an .asmdef at the item root so those scripts are
+/// compiled in an isolated assembly instead of Assembly-CSharp.
+/// When NDMF is not installed Unity will only fail to compile THIS assembly —
+/// all other assemblies (including Assembly-CSharp) compile normally.
+fn inject_ndmf_asmdef_if_needed(dest: &std::path::Path, item_name: &str) {
+    if has_root_asmdef(dest) { return; } // package already manages its own assembly layout
+    if !cs_uses_ndmf(dest) { return; }
+
+    let asmdef_name = sanitize_asmdef_name(item_name);
+    let content = serde_json::json!({
+        "name": asmdef_name,
+        "references": [
+            "nadena.dev.ndmf.runtime",
+            "nadena.dev.ndmf.editor"
+        ],
+        "includePlatforms": [],
+        "excludePlatforms": [],
+        "allowUnsafeCode": false,
+        "overrideReferences": false,
+        "precompiledReferences": [],
+        "autoReferenced": true,
+        "defineConstraints": [],
+        "versionDefines": [],
+        "noEngineReferences": false
+    });
+
+    let path = dest.join(format!("{asmdef_name}.asmdef"));
+    if let Ok(json) = serde_json::to_string_pretty(&content) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
 /// Extracts a named sub-zip from inside a main archive, then extracts that sub-zip to dest.
 fn extract_sub_zip_for_early_import(
     archive: &std::path::Path,
     sub_zip_name: &str,
     dest: &std::path::Path,
 ) -> Result<(), String> {
+    // If local_path is already an extracted directory, look for the sub-zip file inside it.
+    if archive.is_dir() {
+        let sub_zip_path = find_file_in_dir(archive, sub_zip_name)
+            .ok_or_else(|| format!("Sub-zip '{sub_zip_name}' not found in extracted directory"))?;
+        return extract_archive_for_early_import(&sub_zip_path, dest);
+    }
+
     let file = std::fs::File::open(archive).map_err(|e| e.to_string())?;
     let mut main_zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
 
@@ -72,9 +226,9 @@ fn extract_sub_zip_for_early_import(
         })
         .ok_or_else(|| format!("Sub-zip '{sub_zip_name}' not found inside archive"))?;
 
-    // Write sub-zip to a temp file, then extract it
+    // Write sub-zip to a temp file with .zip extension so format detection works
     let mut entry = main_zip.by_index(idx).map_err(|e| e.to_string())?;
-    let tmp_path = std::env::temp_dir().join(format!("vrcstudio_early_{}", uuid::Uuid::new_v4()));
+    let tmp_path = std::env::temp_dir().join(format!("vrcstudio_early_{}.zip", uuid::Uuid::new_v4()));
     {
         let mut tmp = std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?;
         std::io::copy(&mut entry, &mut tmp).map_err(|e| e.to_string())?;
@@ -113,6 +267,8 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> Result<Project, rusqlite::Error> {
     let shader_str: Option<String> = row.get("shader").ok();
     let vcs_enabled_i64: i64 = row.get("vcs_enabled")?;
     let last_screenshot: Option<String> = row.get("last_screenshot").ok();
+    let cover_image_path: Option<String> = row.get("cover_image_path").ok();
+    let folder_id: Option<String> = row.get("folder_id").ok();
 
     let unity_type = match unity_type_str.as_str() {
         "standard" => UnityType::Standard,
@@ -134,6 +290,8 @@ fn row_to_project(row: &rusqlite::Row<'_>) -> Result<Project, rusqlite::Error> {
         shader,
         vcs_enabled: vcs_enabled_i64 != 0,
         last_screenshot,
+        cover_image_path,
+        folder_id,
     })
 }
 
@@ -141,7 +299,7 @@ async fn fetch_project_by_id(id: &str, pool: &DbPool) -> Result<Project, AppErro
     let conn = pool.get()?;
     let project = conn
         .query_row(
-            "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot
+            "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot, cover_image_path, folder_id
              FROM projects WHERE id = ?1",
             params![id],
             |row| row_to_project(row),
@@ -157,8 +315,8 @@ async fn fetch_project_by_id(id: &str, pool: &DbPool) -> Result<Project, AppErro
 pub async fn list_projects(pool: State<'_, DbPool>) -> Result<Vec<Project>, AppError> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot
-         FROM projects ORDER BY updated_at DESC",
+        "SELECT id, name, path, unity_version, unity_type, avatar_base_id, shader, vcs_enabled, last_screenshot, cover_image_path, folder_id
+         FROM projects ORDER BY COALESCE(sort_order, 999999999), updated_at DESC",
     )?;
     let projects = stmt
         .query_map([], |row| row_to_project(row))?
@@ -197,9 +355,12 @@ pub async fn delete_project(
     }
 
     if let Some(p) = path {
-        tokio::fs::remove_dir_all(&p)
-            .await
-            .map_err(|e| AppError::Io(e.to_string()))?;
+        tokio::task::spawn_blocking(move || {
+            force_remove_dir_all(std::path::Path::new(&p))
+        })
+        .await
+        .map_err(|e| AppError::External(e.to_string()))?
+        .map_err(|e| AppError::Io(e.to_string()))?;
     }
 
     Ok(())
@@ -501,13 +662,25 @@ pub async fn open_project_in_unity(
                 continue;
             }
 
-            let extract_result = if let Some(ref sub_zip) = sub_zip_name {
+            // When local_path is a directory (downloader already extracted the archive),
+            // copy its contents directly instead of trying to re-extract it as an archive.
+            let extract_result = if archive.is_dir() {
+                if let Some(ref sub_zip) = sub_zip_name {
+                    extract_sub_zip_for_early_import(archive, sub_zip, &dest)
+                } else {
+                    copy_dir_all(archive, &dest)
+                }
+            } else if let Some(ref sub_zip) = sub_zip_name {
                 extract_sub_zip_for_early_import(archive, sub_zip, &dest)
             } else {
                 extract_archive_for_early_import(archive, &dest)
             };
             match extract_result {
                 Ok(_) => {
+                    // Isolate NDMF-dependent scripts from Assembly-CSharp so missing
+                    // NDMF doesn't block the entire project from compiling.
+                    inject_ndmf_asmdef_if_needed(&dest, &safe_name);
+
                     let conn = pool.get()?;
                     conn.execute(
                         "UPDATE project_early_imports SET status='done', imported_at=datetime('now') WHERE id=?1",
@@ -775,6 +948,21 @@ pub async fn save_project_screenshot(
     conn.execute(
         "UPDATE projects SET last_screenshot = ?1, updated_at = datetime('now') WHERE id = ?2",
         params![screenshot_path, id],
+    )?;
+    fetch_project_by_id(&id, &pool).await
+}
+
+/// Update the cover image path for a project.
+#[tauri::command]
+pub async fn set_project_cover_image(
+    id: String,
+    cover_image_path: Option<String>,
+    pool: State<'_, DbPool>,
+) -> Result<Project, AppError> {
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE projects SET cover_image_path = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![cover_image_path, id],
     )?;
     fetch_project_by_id(&id, &pool).await
 }
@@ -1310,4 +1498,245 @@ pub async fn get_project_early_imports(
     let mut entries = Vec::new();
     for row in rows { entries.push(row?); }
     Ok(entries)
+}
+
+// ── Project Folders ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ProjectFolder {
+    pub id: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: Option<i64>,
+    pub emoji: Option<String>,
+    pub image: Option<String>,
+}
+
+#[tauri::command]
+pub async fn create_project_folder(
+    pool: State<'_, DbPool>,
+    name: String,
+    parent_id: Option<String>,
+) -> Result<String, AppError> {
+    let conn = pool.get()?;
+    let id = Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO project_folders (id, name, parent_id) VALUES (?1, ?2, ?3)",
+        params![id, name, parent_id],
+    )?;
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn list_project_folders(
+    pool: State<'_, DbPool>,
+) -> Result<Vec<ProjectFolder>, AppError> {
+    let conn = pool.get()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, parent_id, color, sort_order, emoji, image
+         FROM project_folders
+         ORDER BY COALESCE(sort_order, 999999999), name",
+    )?;
+    let folders = stmt
+        .query_map([], |row| {
+            Ok(ProjectFolder {
+                id:         row.get("id").unwrap_or_default(),
+                name:       row.get("name").unwrap_or_default(),
+                parent_id:  row.get("parent_id").ok(),
+                color:      row.get("color").ok(),
+                sort_order: row.get("sort_order").ok(),
+                emoji:      row.get("emoji").ok(),
+                image:      row.get("image").ok(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(folders)
+}
+
+#[tauri::command]
+pub async fn move_project_to_folder(
+    pool: State<'_, DbPool>,
+    project_id: String,
+    folder_id: Option<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE projects SET folder_id = ?1 WHERE id = ?2",
+        params![folder_id, project_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn move_project_folder_to_parent(
+    pool: State<'_, DbPool>,
+    folder_id: String,
+    parent_id: Option<String>,
+) -> Result<(), AppError> {
+    if parent_id.as_deref() == Some(folder_id.as_str()) {
+        return Err(AppError::InvalidInput("A folder cannot contain itself".into()));
+    }
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE project_folders SET parent_id = ?1 WHERE id = ?2",
+        params![parent_id, folder_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_project_folder(
+    pool: State<'_, DbPool>,
+    folder_id: String,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute(
+        "DELETE FROM project_folders WHERE id = ?1",
+        params![folder_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rename_project_folder(
+    pool: State<'_, DbPool>,
+    folder_id: String,
+    name: String,
+    color: Option<String>,
+    emoji: Option<String>,
+    image: Option<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    conn.execute(
+        "UPDATE project_folders SET name = ?1, color = ?2, emoji = ?3, image = ?4 WHERE id = ?5",
+        params![name, color, emoji, image, folder_id],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reorder_project_folders(
+    pool: State<'_, DbPool>,
+    ordered_ids: Vec<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    for (i, id) in ordered_ids.iter().enumerate() {
+        conn.execute(
+            "UPDATE project_folders SET sort_order = ?1 WHERE id = ?2",
+            params![i as i64, id],
+        )?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reorder_projects(
+    pool: State<'_, DbPool>,
+    ordered_ids: Vec<String>,
+) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    for (i, id) in ordered_ids.iter().enumerate() {
+        conn.execute(
+            "UPDATE projects SET sort_order = ?1 WHERE id = ?2",
+            params![i as i64, id],
+        )?;
+    }
+    Ok(())
+}
+// ── Import inventory items early into an existing project ─────────────────────
+
+#[tauri::command]
+pub async fn import_inventory_items_early(
+    project_id: String,
+    item_ids: Vec<String>,
+    app: AppHandle,
+    pool: State<'_, DbPool>,
+) -> Result<(), AppError> {
+    let project_path: String = {
+        let conn = pool.get()?;
+        conn.query_row("SELECT path FROM projects WHERE id = ?1", params![project_id], |r| r.get(0))?
+    };
+    let project_dir = std::path::PathBuf::from(&project_path);
+
+    let items: Vec<(String, String, String)> = {
+        let conn = pool.get()?;
+        let mut result = Vec::new();
+        for item_id in &item_ids {
+            if let Ok(row) = conn.query_row(
+                "SELECT id, COALESCE(display_name, name), local_path FROM inventory_items WHERE id = ?1",
+                params![item_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            ) {
+                result.push(row);
+            }
+        }
+        result
+    };
+
+    let total = items.len();
+    for (idx, (item_id, item_name, local_path)) in items.iter().enumerate() {
+        let current = idx + 1;
+        let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+            project_id: project_id.clone(), item_id: item_id.clone(),
+            item_name: item_name.clone(), current, total,
+            status: "extracting".to_string(), error: None,
+        });
+
+        let archive = std::path::Path::new(local_path);
+        let safe_name = sanitize_dir_name(item_name);
+        let dest = project_dir.join("Assets").join("EarlyImports").join(&safe_name);
+        if !dest.starts_with(&project_dir) { continue; }
+
+        if dest.exists() {
+            let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                project_id: project_id.clone(), item_id: item_id.clone(),
+                item_name: item_name.clone(), current, total,
+                status: "done".to_string(), error: None,
+            });
+            continue;
+        }
+
+        if let Err(e) = std::fs::create_dir_all(&dest) {
+            let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                project_id: project_id.clone(), item_id: item_id.clone(),
+                item_name: item_name.clone(), current, total,
+                status: "error".to_string(), error: Some(e.to_string()),
+            });
+            continue;
+        }
+
+        let extract_result = if archive.is_dir() {
+            copy_dir_all(archive, &dest).map_err(|e| e.to_string())
+        } else {
+            extract_archive_for_early_import(archive, &dest)
+        };
+
+        match extract_result {
+            Ok(_) => {
+                inject_ndmf_asmdef_if_needed(&dest, &safe_name);
+                let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                    project_id: project_id.clone(), item_id: item_id.clone(),
+                    item_name: item_name.clone(), current, total,
+                    status: "done".to_string(), error: None,
+                });
+            }
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&dest);
+                let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+                    project_id: project_id.clone(), item_id: item_id.clone(),
+                    item_name: item_name.clone(), current, total,
+                    status: "error".to_string(), error: Some(e),
+                });
+            }
+        }
+    }
+
+    let _ = app.emit("early_import_progress", crate::models::EarlyImportProgressEvent {
+        project_id: project_id.clone(), item_id: String::new(),
+        item_name: String::new(), current: total, total,
+        status: "complete".to_string(), error: None,
+    });
+
+    Ok(())
 }

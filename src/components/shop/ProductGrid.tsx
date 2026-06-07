@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { useShopStore } from "../../store/shopStore";
 import { ProductCard } from "./ProductCard";
@@ -22,8 +23,9 @@ function ProductCardSkeleton() {
 
 export function ProductGrid() {
   const { results, loading, error, loadNextPage, page } = useShopStore();
-  const hasMore = page < 8; // allow up to 8 pages (~192 results)
+  const hasMore = page < 8;
   const shopItemSize = useAppearanceStore((s) => s.shopItemSize);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const cardSizes = {
     compact: { min: 120, max: 148 },
@@ -33,6 +35,23 @@ export function ProductGrid() {
   const gridStyle = {
     gridTemplateColumns: `repeat(auto-fill, minmax(${cardSizes.min}px, ${cardSizes.max}px))`,
   };
+
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  const hasMoreRef = useRef(hasMore);
+  hasMoreRef.current = hasMore;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !loadingRef.current && hasMoreRef.current) {
+        loadNextPage();
+      }
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadNextPage]);
 
   if (loading && results.length === 0) {
     return (
@@ -68,18 +87,12 @@ export function ProductGrid() {
         ))}
       </div>
 
-      {hasMore && (
-        <div className="flex justify-center pb-4">
-          <button
-            className="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50 flex items-center gap-2"
-            onClick={loadNextPage}
-            disabled={loading}
-          >
-            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Load more
-          </button>
-        </div>
-      )}
+      <div ref={sentinelRef} className="flex justify-center py-8">
+        {loading && <Loader2 className="h-5 w-5 animate-spin text-zinc-600" />}
+        {!loading && !hasMore && results.length > 0 && (
+          <p className="text-xs text-zinc-700">End of results</p>
+        )}
+      </div>
     </div>
   );
 }

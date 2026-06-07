@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Collections Modal — Diseño Final</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #09090b; color: #e4e4e7; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; gap: 16px; }
+  h1 { font-size: 13px; color: #71717a; text-align: center; font-weight: 500; letter-spacing: .03em; }
+  /* ── Modal shell ─────────────────────────────────────────── */
+  .modal-shell {
+    width: min(1100px, 92vw);
+    height: min(680px, 88vh);
+    background: #09090b;
+    border: 1px solid #27272a;
+    border-radius: 14px;
+    box-shadow: 0 32px 80px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.04);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* ── Top bar ─────────────────────────────────────────────── */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #1f1f23;
+    background: #0d0d10;
+    flex-shrink: 0;
+  }
+  .top-bar .title { font-size: 13px; font-weight: 700; color: #f4f4f5; }
+  .top-bar .subtitle { font-size: 11px; color: #52525b; }
+  .top-bar .spacer { flex: 1; }
+  .btn-close {
+    width: 26px; height: 26px; border-radius: 7px; border: none;
+    background: #27272a; color: #71717a; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 14px; flex-shrink: 0;
+  }
+  .btn-primary {
+    padding: 5px 12px; border-radius: 7px; border: none;
+    background: #dc2626; color: #fff; font-size: 11px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+  }
+  /* ── Body ────────────────────────────────────────────────── */
+  .body { display: flex; flex: 1; overflow: hidden; }
+  /* ── Left panel ──────────────────────────────────────────── */
+  .left {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid #1f1f23;
+    display: flex;
+    flex-direction: column;
+    background: #0d0d10;
+  }
+  .panel-header {
+    padding: 10px 12px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: #52525b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel-header .add-btn {
+    width: 20px; height: 20px; border-radius: 5px;
+    background: #1c1c1e; border: 1px solid #27272a;
+    color: #71717a; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 13px; flex-shrink: 0;
+  }
+  .tree { flex: 1; overflow-y: auto; padding: 4px 6px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .tree-row {
+    display: flex; align-items: center; gap: 4px;
+    padding: 5px 6px; border-radius: 7px; cursor: pointer;
+    transition: background .12s;
+    user-select: none;
+  }
+  .tree-row:hover { background: #1c1c1e; }
+  .tree-row.active { background: #1f1f23; border: 1px solid #27272a; }
+  .tree-row .indent { width: 12px; flex-shrink: 0; }
+  .tree-row .arrow { width: 10px; font-size: 9px; color: #52525b; flex-shrink: 0; }
+  .tree-row .cover {
+    width: 22px; height: 22px; border-radius: 5px;
+    background: #27272a; flex-shrink: 0;
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+  }
+  .tree-row .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .tree-row .name { font-size: 11px; color: #a1a1aa; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tree-row.active .name { color: #e4e4e7; font-weight: 600; }
+  .tree-row .count { font-size: 9px; color: #52525b; flex-shrink: 0; }
+  /* drop target highlight */
+  .tree-row.drop-target { background: rgba(220,38,38,.12); border: 1px solid rgba(220,38,38,.35); }
+  /* new collection input */
+  .new-col { padding: 8px 10px; border-top: 1px solid #1f1f23; }
+  .new-col input {
+    width: 100%; padding: 6px 10px; border-radius: 7px;
+    background: #1c1c1e; border: 1px solid #27272a;
+    color: #e4e4e7; font-size: 11px; outline: none;
+  }
+  .new-col input::placeholder { color: #3f3f46; }
+  /* ── Right panel ─────────────────────────────────────────── */
+  .right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .right-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid #1f1f23;
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .right-header .col-name { font-size: 14px; font-weight: 800; color: #f4f4f5; letter-spacing: -.02em; }
+  .right-header .col-count { font-size: 11px; color: #52525b; }
+  .right-header .breadcrumb { font-size: 10px; color: #52525b; display: flex; align-items: center; gap: 4px; }
+  .right-header .spacer { flex: 1; }
+  .right-header .sort-btn { font-size: 10px; color: #52525b; background: #1c1c1e; border: 1px solid #27272a; border-radius: 5px; padding: 3px 8px; cursor: pointer; }
+  .items-grid {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+    align-content: start;
+  }
+  .item-card {
+    background: #141414;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: grab;
+    transition: border-color .15s, transform .1s;
+    position: relative;
+  }
+  .item-card:hover { border-color: #3f3f46; transform: translateY(-1px); }
+  .item-card:hover .item-actions { opacity: 1; }
+  .item-card .thumb {
+    width: 100%; aspect-ratio: 1;
+    background: #1c1c1e;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #3f3f46; overflow: hidden;
+  }
+  .item-card .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .item-card .info { padding: 6px 7px; }
+  .item-card .info .item-name { font-size: 10px; font-weight: 600; color: #d4d4d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-card .info .item-price { font-size: 9px; color: #dc2626; font-weight: 700; margin-top: 1px; }
+  .item-card .info .item-author { font-size: 8px; color: #52525b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-actions {
+    position: absolute; top: 4px; right: 4px;
+    display: flex; gap: 2px; opacity: 0; transition: opacity .15s;
+  }
+  .item-actions .act {
+    width: 22px; height: 22px; border-radius: 5px;
+    background: rgba(9,9,11,.85); border: 1px solid #3f3f46;
+    color: #a1a1aa; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; cursor: pointer;
+    backdrop-filter: blur(4px);
+  }
+  .item-card.dragging { opacity: .4; border: 1.5px dashed #52525b; }
+  /* drag ghost */
+  .drag-ghost {
+    background: #141414; border: 1px solid #3f3f46; border-radius: 10px;
+    overflow: hidden; transform: rotate(2deg) scale(1.05);
+    box-shadow: 0 16px 36px rgba(0,0,0,.7);
+    pointer-events: none; opacity: .93; width: 130px;
+  }
+  /* empty state */
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 10px; color: #52525b; }
+  .empty .icon { font-size: 36px; opacity: .4; }
+  .empty p { font-size: 12px; }
+  /* legend */
+  .legend { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #71717a; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<h1>Diseño final del modal de Colecciones — revisa la estructura general</h1>
+
+<!-- ── MODAL ────────────────────────────────────────────────── -->
+<div class="modal-shell">
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div>
+      <div class="title">Colecciones</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn-primary">+ Nueva colección</button>
+    <button class="btn-close">✕</button>
+  </div>
+
+  <!-- Body: left tree + right grid -->
+  <div class="body">
+
+    <!-- ── LEFT: collection tree ────────────────────────────── -->
+    <div class="left">
+      <div class="panel-header">
+        Mis colecciones
+        <div class="add-btn">+</div>
+      </div>
+
+      <div class="tree">
+        <!-- Root collection — selected -->
+        <div class="tree-row active">
+          <div class="arrow">▾</div>
+          <div class="cover" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);">⭐</div>
+          <span class="name">Favoritos</span>
+          <span class="count">12</span>
+        </div>
+        <!-- Subcarpeta de Favoritos -->
+        <div class="tree-row" style="padding-left:18px;">
+          <div class="arrow">▸</div>
+          <div class="cover">📁</div>
+          <span class="name">Accesorios</span>
+          <span class="count">5</span>
+        </div>
+        <!-- Otra subcarpeta -->
+        <div class="tree-row" style="padding-left:18px;">
+          <div class="arrow" style="opacity:0;">▸</div>
+          <div class="cover">📁</div>
+          <span class="name">Shaders</span>
+          <span class="count">3</span>
+        </div>
+
+        <!-- Root collection 2 -->
+        <div class="tree-row" style="margin-top:4px;">
+          <div class="arrow">▸</div>
+          <div class="cover" style="background:linear-gradient(135deg,#0c4a6e,#0369a1);">🎮</div>
+          <span class="name">Avatares</span>
+          <span class="count">8</span>
+        </div>
+
+        <!-- Root collection 3 -->
+        <div class="tree-row">
+          <div class="arrow" style="opacity:0;">▸</div>
+          <div class="cover" style="background:linear-gradient(135deg,#14532d,#15803d);">🌿</div>
+          <span class="name">Props naturales</span>
+          <span class="count">2</span>
+        </div>
+
+        <!-- Drop target visual -->
+        <div class="tree-row drop-target" style="margin-top:4px;">
+          <div class="arrow" style="opacity:0;">▸</div>
+          <div class="cover" style="background:#1c1c1e;">📁</div>
+          <span class="name" style="color:#ef4444;">Wishlist 2025</span>
+          <span class="count">0</span>
+        </div>
+        <div style="font-size:8px;color:#52525b;text-align:center;padding:2px 0 4px;">← suelta aquí para mover</div>
+
+      </div>
+
+      <!-- New collection input -->
+      <div class="new-col">
+        <input placeholder="Nueva colección…" />
+      </div>
+    </div>
+
+    <!-- ── RIGHT: items grid ─────────────────────────────────── -->
+    <div class="right">
+      <div class="right-header">
+        <div>
+          <div class="col-name">Favoritos</div>
+          <div class="col-count">12 items · arrástralos para reordenar</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="sort-btn">⇅ Ordenar</div>
+      </div>
+
+      <div class="items-grid">
+
+        <!-- Dragging ghost example -->
+        <div class="drag-ghost">
+          <div class="thumb" style="background:linear-gradient(135deg,#7c2d12,#b45309);"></div>
+          <div class="info"><div class="item-name">Cool Avatar v2</div><div class="item-price">¥2,500</div></div>
+        </div>
+
+        <!-- Item 1 — being dragged (source) -->
+        <div class="item-card dragging">
+          <div class="thumb" style="background:linear-gradient(135deg,#3f3f46,#27272a);"></div>
+          <div class="info"><div class="item-name">Cool Avatar v2</div><div class="item-price">¥2,500</div><div class="item-author">ArtistName</div></div>
+        </div>
+
+        <!-- Item 2 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act" title="Abrir en Booth">↗</div>
+            <div class="act" title="Quitar">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#1e3a5f,#1e40af);"></div>
+          <div class="info"><div class="item-name">Shader Pack Pro</div><div class="item-price">¥1,800</div><div class="item-author">ShaderDev</div></div>
+        </div>
+
+        <!-- Item 3 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act">↗</div>
+            <div class="act">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#3d1f1f,#7c2d12);"></div>
+          <div class="info"><div class="item-name">Wings DLC</div><div class="item-price">¥800</div><div class="item-author">WingsAuthor</div></div>
+        </div>
+
+        <!-- Item 4 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act">↗</div>
+            <div class="act">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#14532d,#15803d);"></div>
+          <div class="info"><div class="item-name">Tail Prop</div><div class="item-price">¥600</div><div class="item-author">PropMaker</div></div>
+        </div>
+
+        <!-- Item 5 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act">↗</div>
+            <div class="act">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#581c87,#7c3aed);"></div>
+          <div class="info"><div class="item-name">Magic FX Pack</div><div class="item-price">¥3,200</div><div class="item-author">FXCreator</div></div>
+        </div>
+
+        <!-- Item 6 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act">↗</div>
+            <div class="act">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#0c4a6e,#0891b2);"></div>
+          <div class="info"><div class="item-name">Ocean Skybox</div><div class="item-price">¥1,200</div><div class="item-author">SkyArtist</div></div>
+        </div>
+
+        <!-- Item 7 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act">↗</div>
+            <div class="act">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#831843,#be185d);"></div>
+          <div class="info"><div class="item-name">Hair Bundle</div><div class="item-price">¥2,000</div><div class="item-author">HairDev</div></div>
+        </div>
+
+        <!-- Item 8 -->
+        <div class="item-card">
+          <div class="item-actions">
+            <div class="act">↗</div>
+            <div class="act">✕</div>
+          </div>
+          <div class="thumb" style="background:linear-gradient(135deg,#78350f,#d97706);"></div>
+          <div class="info"><div class="item-name">Gold Necklace</div><div class="item-price">¥450</div><div class="item-author">JewelArt</div></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#dc2626;"></div>Drag item → colección izquierda = mover</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed;"></div>Drag colección → otra = subcarpeta</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#27272a;border:1px solid #3f3f46;"></div>Drag dentro del grid = reordenar</div>
+</div>
+
+<script>
+// Inject selection helper for compatibility
+window.toggleSelect = function(el) {};
+</script>
+</body>
+</html>

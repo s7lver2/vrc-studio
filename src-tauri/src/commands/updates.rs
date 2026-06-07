@@ -133,67 +133,83 @@ pub struct UpdateCheckResult {
     pub whats_new_changelog: Option<String>,
 }
 
+fn no_update(current: &str) -> UpdateCheckResult {
+    UpdateCheckResult {
+        has_update:                  false,
+        current_version:             current.to_string(),
+        remote_version:              current.to_string(),
+        notes:                       String::new(),
+        download_url:                String::new(),
+        signature:                   String::new(),
+        download_size:               0,
+        forced_onboarding_version:   None,
+        whats_new_version:           None,
+        whats_new_changelog:         None,
+    }
+}
+
+/// Checks GitHub Releases API for a newer version on the given channel.
+/// Falls back gracefully on network errors or when no releases exist.
 #[tauri::command]
 pub async fn check_for_update(channel: Option<String>) -> Result<UpdateCheckResult, String> {
-    let channel = channel.as_deref().unwrap_or("stable");
-    let current = env!("CARGO_PKG_VERSION");
-    let url = update_manifest_url(channel);
+    let channel  = channel.as_deref().unwrap_or("stable");
+    let current  = env!("CARGO_PKG_VERSION");
+    let platform = host_platform_key();
+    let url      = github_api_releases_url();
 
     let client = reqwest::Client::builder()
         .user_agent(format!("vrc-studio/{}", current))
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
 
-    let response = client
-        .get(&url)
-        .send().await
+    let response = client.get(url).send().await
         .map_err(|e| format!("network: {e}"))?;
 
-    // 404 = el manifiesto no existe todavía → no hay update
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        let current = env!("CARGO_PKG_VERSION");
-        return Ok(UpdateCheckResult {
-            has_update:                  false,
-            current_version:             current.to_string(),
-            remote_version:              current.to_string(),
-            notes:                       String::new(),
-            download_url:                String::new(),
-            signature:                   String::new(),
-            download_size:               0,
-            forced_onboarding_version:   None,
-            whats_new_version:           None,
-            whats_new_changelog:         None,
-        });
+        return Ok(no_update(current));
     }
-
     if !response.status().is_success() {
         return Err(format!("server error: HTTP {}", response.status()));
     }
 
     let body = response.text().await.map_err(|e| format!("read: {e}"))?;
-    let manifest: UpdateManifest = serde_json::from_str(&body)
+    let releases: Vec<GhRelease> = serde_json::from_str(&body)
         .map_err(|e| format!("parse: {e} — body was: {}", &body[..body.len().min(200)]))?;
 
-    let has_update = compare_versions(&manifest.version, current);
-    let pk = host_platform_key();
-    let asset = manifest.platforms.get(pk).cloned().unwrap_or(PlatformAsset {
-        url:       String::new(),
-        signature: String::new(),
-        size:      0,
-    });
+    // Find the newest release for this channel that has a platform-specific installer asset
+    let latest = releases.into_iter()
+        .filter(|r| channel_from_tag(&r.tag_name, r.prerelease) == channel)
+        .filter_map(|r| {
+            let asset = r.assets.iter()
+                .find(|a| asset_matches_platform(&a.name, platform))?;
+            let version = r.tag_name
+                .trim_start_matches('v')
+                .trim_end_matches("-testing")
+                .trim_end_matches("-beta")
+                .trim_end_matches("-alpha")
+                .to_string();
+            Some((version, r.body.unwrap_or_default(), asset.browser_download_url.clone(), asset.size))
+        })
+        .next(); // GitHub returns releases newest-first
+
+    let Some((remote_version, notes, download_url, size)) = latest else {
+        return Ok(no_update(current));
+    };
+
+    let has_update = compare_versions(&remote_version, current);
 
     Ok(UpdateCheckResult {
         has_update,
-        current_version: current.to_string(),
-        remote_version:  manifest.version.clone(),
-        notes:           manifest.notes.clone(),
-        download_url:    asset.url,
-        signature:       asset.signature,
-        download_size:   asset.size,
-        forced_onboarding_version: manifest.forced_onboarding_version,
-        whats_new_version:   manifest.whats_new_version,
-        whats_new_changelog: manifest.whats_new_changelog,
+        current_version:             current.to_string(),
+        remote_version,
+        notes,
+        download_url,
+        signature:                   String::new(), // GitHub releases don't need Ed25519
+        download_size:               size,
+        forced_onboarding_version:   None,
+        whats_new_version:           None,
+        whats_new_changelog:         None,
     })
 }
 

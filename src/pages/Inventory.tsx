@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   LayoutGrid, List, Upload, HardDrive, Search, X,
   Tag, User, FileText, ChevronLeft,
-  SortAsc, Archive, Globe, Shapes, FolderOpen
+  SortAsc, Archive, Globe, Shapes, FolderOpen, AlertCircle, Folder,
 } from "lucide-react";
 import { InventoryGrid } from "../components/inventory/InventoryGrid";
 import { InventoryItemDetail } from "../components/inventory/InventoryItemDetail";
@@ -16,7 +16,6 @@ import { MultiSelectToolbar } from "@/components/inventory/MultiSelectToolbar";
 import { ImportSourcePicker, ImportSource } from "../components/inventory/ImportSourcePicker";
 import { ImportFromUrlDialog } from "../components/inventory/ImportFromUrlDialog";
 import { useTagStore } from "../store/tagStore";
-import { listen } from '@tauri-apps/api/event';
 import { useT } from "../i18n";
 
 // ── Search suggestions ────────────────────────────────────────────────────────
@@ -285,16 +284,23 @@ export default function Inventory() {
   const [showSort, setShowSort] = useState(false);
   const { sortField, sortDir } = useInventoryStore();
   const sortButtonRef = useRef<HTMLButtonElement>(null);
-  const [dragOver, setDragOver] = useState(false);
+  const [dragOver, setDragOver] = useState<"archive" | "folder" | null>(null);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
-  const [importMode, setImportMode] = useState<ImportSource | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const [showUrlImport, setShowUrlImport] = useState(false);
-  const dragCounter = useRef(0);
+  const [dropToast, setDropToast] = useState<string | null>(null);
+  const dropToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentFolder = folders.find((f) => f.id === selectedFolderId);
   const [preselectedImportFile, setPreselectedImportFile] = useState<string | null>(null);
+  const [preselectedScanDir, setPreselectedScanDir] = useState<string | null>(null);
+
+  const showDropError = useCallback((msg: string) => {
+    if (dropToastTimer.current) clearTimeout(dropToastTimer.current);
+    setDropToast(msg);
+    dropToastTimer.current = setTimeout(() => setDropToast(null), 4000);
+  }, []);
 
   const handleSourceSelect = (source: ImportSource) => {
     setShowSourcePicker(false);
@@ -303,76 +309,103 @@ export default function Inventory() {
     else if (source === "url") setShowUrlImport(true);
   };
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current++;
-    // Verificar si al menos un archivo tiene extensión válida
-    if (e.dataTransfer.items) {
-      const hasValidFile = Array.from(e.dataTransfer.items).some(
-        item => item.kind === 'file' && /\.(zip|unitypackage)$/i.test(item.type)
-      );
-      if (hasValidFile) setDragOver(true);
-    }
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current--;
-    if (dragCounter.current === 0) {
-      setDragOver(false);
-    }
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    dragCounter.current = 0;
-    // El path se obtiene del evento tauri://file-drop
-  }, []);
-
+  // Tauri 2 drag-drop events — use onDragDropEvent (unified API, replaces legacy listen calls)
   useEffect(() => {
-    const unlisten = listen<string[]>('tauri://file-drop', (event) => {
-      const files = event.payload;
-      if (files && files.length > 0) {
-        // Tomamos el primer archivo que coincida
-        const match = files.find((f) => /\.(zip|unitypackage)$/i.test(f));
-        if (match) {
-          setPreselectedImportFile(match);
-          setShowImport(true);
+    let unlisten: (() => void) | null = null;
+
+    import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) => {
+      getCurrentWebviewWindow().onDragDropEvent((event) => {
+        const payload = event.payload;
+
+        if (payload.type === 'enter') {
+          const paths = (payload as { type: 'enter'; paths: string[] }).paths ?? [];
+          const hasArchive = paths.some((p) => /\.(zip|rar|unitypackage)$/i.test(p));
+          const hasFolder = paths.some((p) => !/\.[a-zA-Z0-9]{1,6}$/.test(p));
+          setDragOver(hasArchive ? "archive" : hasFolder ? "folder" : "archive");
+
+        } else if (payload.type === 'leave') {
+          setDragOver(null);
+
+        } else if (payload.type === 'drop') {
+          setDragOver(null);
+          const paths = (payload as { type: 'drop'; paths: string[] }).paths ?? [];
+          if (paths.length === 0) return;
+
+          const archiveMatch = paths.find((p) => /\.(zip|rar|unitypackage)$/i.test(p));
+          const first = paths[0];
+
+          if (archiveMatch) {
+            setPreselectedImportFile(archiveMatch);
+            setShowImport(true);
+          } else {
+            const hasNoExtension = !/\.[a-zA-Z0-9]{1,6}$/.test(first);
+            if (hasNoExtension) {
+              setPreselectedScanDir(first);
+              setShowScan(true);
+            } else {
+              const ext = first.split('.').pop()?.toUpperCase() ?? 'unknown';
+              showDropError(`Unsupported file type .${ext} — drop a .zip, .rar, .unitypackage or a folder`);
+            }
+          }
         }
-      }
+      }).then((fn) => { unlisten = fn; });
     });
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
+
+    return () => {
+      if (dropToastTimer.current) clearTimeout(dropToastTimer.current);
+      unlisten?.();
+    };
+  }, [showDropError]);
 
   return (
-    <div
-      className="flex h-full overflow-hidden relative"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {/* Overlay de drop */}
+    <div className="flex h-full overflow-hidden relative">
+      {/* Drag-over overlay */}
       {dragOver && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
-          <div className="flex flex-col items-center gap-3 p-8 rounded-2xl border-2 border-dashed border-red-500/60 bg-zinc-900/80">
-            <Upload className="h-10 w-10 text-red-400 animate-bounce" />
-            <p className="text-sm font-semibold text-zinc-200">
-              Drop your .zip / .unitypackage here
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"
+          style={{ animation: "fadeIn 0.15s ease-out" }}>
+          <style>{`@keyframes fadeIn { from { opacity:0 } to { opacity:1 } }`}</style>
+          {/* Blurred border ring */}
+          <div className="absolute inset-2 rounded-2xl border-2 border-dashed transition-colors duration-150"
+            style={{ borderColor: dragOver === "archive" ? "#ef4444aa" : "#3b82f6aa",
+                     background: dragOver === "archive" ? "rgba(239,68,68,0.06)" : "rgba(59,130,246,0.06)" }} />
+          {/* Card */}
+          <div className="relative flex flex-col items-center gap-3 px-10 py-7 rounded-2xl border border-zinc-700/60 bg-zinc-900/90 backdrop-blur-md shadow-2xl">
+            {dragOver === "archive"
+              ? <Archive className="h-10 w-10 text-red-400" style={{ animation: "bounce 1s infinite" }} />
+              : <Folder className="h-10 w-10 text-blue-400" style={{ animation: "bounce 1s infinite" }} />
+            }
+            <p className="text-sm font-semibold text-zinc-100">
+              {dragOver === "archive" ? "Drop to import archive" : "Drop to scan folder"}
             </p>
             <p className="text-xs text-zinc-500">
-              The file will be imported into your inventory
+              {dragOver === "archive"
+                ? ".zip · .rar · .unitypackage"
+                : "Scan for assets in this folder"}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Incompatible file toast */}
+      {dropToast && (
+        <div
+          className="fixed bottom-5 right-5 z-[9999] flex items-start gap-3 w-80 rounded-2xl border border-zinc-700/60 bg-zinc-900/95 backdrop-blur-sm shadow-2xl p-4 overflow-hidden"
+          style={{ animation: "slideUp 0.25s ease-out" }}
+        >
+          <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }`}</style>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-amber-900/40 border border-amber-700/40">
+            <AlertCircle className="h-4 w-4 text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-zinc-100">Unsupported file</p>
+            <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{dropToast}</p>
+          </div>
+          <button
+            onClick={() => { setDropToast(null); if (dropToastTimer.current) clearTimeout(dropToastTimer.current); }}
+            className="shrink-0 p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -487,8 +520,9 @@ export default function Inventory() {
 
       {showScan && (
         <ScanDriveWizard
-          onClose={() => setShowScan(false)}
-          onComplete={() => setShowScan(false)}
+          onClose={() => { setShowScan(false); setPreselectedScanDir(null); }}
+          onComplete={() => { setShowScan(false); setPreselectedScanDir(null); }}
+          initialDir={preselectedScanDir}
         />
       )}
 

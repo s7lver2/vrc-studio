@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import {
   X, Plus, Trash2, Edit2, Check, Image, Folder,
-  ArrowLeft, Download, FileText, BookmarkX, Package2,
+  ArrowLeft, ShoppingCart, FileText, BookmarkX, Package2,
 } from "lucide-react";
 import { useCollectionsStore } from "../../store/collectionsStore";
 import { CollectionItem } from "../../lib/tauri";
-import { tauriStartDownload } from "../../lib/tauri";
+import { useCartStore } from "../../store/cartStore";
+import { useShopStore } from "../../store/shopStore";
 
 interface CollectionsViewProps {
   onClose: () => void;
@@ -33,6 +34,9 @@ export function CollectionsView({ onClose }: CollectionsViewProps) {
   const [coverInputValue, setCoverInputValue] = useState("");
   const [descEditingId, setDescEditingId] = useState<string | null>(null);
   const [descEditingValue, setDescEditingValue] = useState("");
+
+  const { addItem, removeItem, isInCart } = useCartStore();
+  const { boothOwnedIds } = useShopStore();
 
   const selectedCollection = collections.find((c) => c.id === selectedId);
 
@@ -79,17 +83,19 @@ export function CollectionsView({ onClose }: CollectionsViewProps) {
     setItems((s) => s.filter((i) => i.id !== item.id));
   };
 
-  const handleDownloadItem = async (item: CollectionItem) => {
-    try {
-      await tauriStartDownload({
-        source: item.source,
+  const handleToggleCart = async (item: CollectionItem) => {
+    if (isInCart(item.source, item.source_id)) {
+      await removeItem(item.source, item.source_id);
+    } else {
+      await addItem({
+        source: item.source as "booth",
         source_id: item.source_id,
         name: item.name,
         author: item.author,
         thumbnail_url: item.thumbnail_url,
+        price_display: item.price_display,
+        url: item.url,
       });
-    } catch (e) {
-      console.error("Download error:", e);
     }
   };
 
@@ -380,13 +386,24 @@ export function CollectionsView({ onClose }: CollectionsViewProps) {
                         >
                           <Image className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          onClick={() => handleDownloadItem(item)}
-                          className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-600 hover:text-blue-300 transition-colors"
-                          title="Download"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                        </button>
+                        {(() => {
+                          const isPurchased = item.source === "booth" && boothOwnedIds.has(item.source_id);
+                          const inCart = isInCart(item.source, item.source_id);
+                          if (isPurchased) return null;
+                          return (
+                            <button
+                              onClick={() => handleToggleCart(item)}
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                inCart
+                                  ? "text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                                  : "text-zinc-600 hover:bg-zinc-700 hover:text-emerald-300"
+                              }`}
+                              title={inCart ? "Remove from cart" : "Add to cart"}
+                            >
+                              <ShoppingCart className="h-3.5 w-3.5" />
+                            </button>
+                          );
+                        })()}
                         <button
                           onClick={() => handleRemoveItem(item)}
                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"

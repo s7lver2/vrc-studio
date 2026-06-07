@@ -9,12 +9,25 @@ pub struct ProjectStructureOptions {
 }
 
 /// Returns the default Packages/manifest.json content for new Unity 2022 projects.
-/// Includes built-in modules required by VRChat SDK 4.x and Oculus XR package.
+/// Includes all built-in modules and packages required by VRChat SDK 4.x.
 pub fn default_manifest_json() -> String {
     serde_json::json!({
         "dependencies": {
-            "com.unity.modules.androidjni": "1.0.0",
-            "com.unity.modules.video": "1.0.0"
+            // Built-in Unity modules — always present in the installation, no download needed
+            "com.unity.modules.androidjni":       "1.0.0",
+            "com.unity.modules.animation":        "1.0.0",
+            "com.unity.modules.audio":            "1.0.0",
+            "com.unity.modules.imgui":            "1.0.0",
+            "com.unity.modules.jsonserialize":    "1.0.0",
+            "com.unity.modules.physics":          "1.0.0",
+            "com.unity.modules.physics2d":        "1.0.0",
+            "com.unity.modules.ui":               "1.0.0",
+            "com.unity.modules.uielements":       "1.0.0",
+            "com.unity.modules.unitywebrequest":  "1.0.0",
+            "com.unity.modules.video":            "1.0.0",
+            "com.unity.modules.xr":               "1.0.0",
+            // Test framework — required by VRChat SDK test files (NUnit)
+            "com.unity.test-framework":           "1.1.33"
         }
     })
     .to_string()

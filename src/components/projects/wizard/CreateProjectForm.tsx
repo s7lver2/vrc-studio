@@ -12,6 +12,7 @@ import {
   tauriFetchVpmIndex,
   tauriListInventory,
   tauriGetItemVariants,
+  tauriSetProjectCoverImage,
   UnityInstallation,
   Project,
   VpmPackage,
@@ -25,7 +26,7 @@ import { useProjectEvents } from "@/hooks/useProjectEvents";
 import {
   ChevronRight, ChevronLeft, Loader2, Search,
   Package, CheckCircle2, ChevronDown, Sparkles,
-  AlertTriangle, RefreshCw, X,
+  AlertTriangle, RefreshCw, X, Image,
 } from "lucide-react";
 import { useT } from "@/i18n";
 import { categorizePackage, CATEGORIES } from "@/lib/packageCategories";
@@ -239,6 +240,13 @@ interface Rec {
   priority: number;
 }
 
+// Official VRChat packages that are world-only — excluded from avatar project picker
+const WORLD_ONLY_IDS = new Set([
+  "com.vrchat.worlds",
+  "com.vrchat.udonsharp",
+  "com.vrchat.clientsim",
+]);
+
 function getRecommendations(vcsEnabled: boolean, index: VpmPackage[]): Rec[] {
   const available = new Set(index.map((p) => p.id));
   const recs: Rec[] = [];
@@ -246,24 +254,28 @@ function getRecommendations(vcsEnabled: boolean, index: VpmPackage[]): Rec[] {
     if (available.has(id)) recs.push({ packageId: id, label, reason, priority });
   };
 
-  // Core VRChat SDK — always recommended
+  // Core VRChat SDK — avatar-only
   add("com.vrchat.avatars", "VRChat SDK – Avatars", "Required for avatar uploads", 100);
   add("com.vrchat.base",    "VRChat SDK – Base",    "Core VRChat runtime",          90);
-  add("com.vrchat.worlds",  "VRChat SDK – Worlds",  "Required for world uploads",   80);
-
-  // Build tooling
-  add("com.vrchat.udonsharp",  "UdonSharp",  "Write Udon scripts in C#",            70);
-  add("com.vrchat.clientsim",  "ClientSim",  "Simulate VRChat in the editor",       60);
 
   // VCS projects benefit from non-destructive workflow
   if (vcsEnabled) {
     add("com.vrchat.vrcfury", "VRCFury", "Non-destructive avatar tools, great with Git", 55);
   }
 
-  // Nice to have
-  add("com.vrchat.gesture-manager", "GestureManager", "Preview animations in editor",   45);
+  // Nice to have for avatars
+  add("com.vrchat.gesture-manager", "GestureManager", "Preview animations in editor", 45);
 
   return recs.sort((a, b) => b.priority - a.priority);
+}
+
+// ── Source badge colors (matching PackagesPage) ───────────────────────────────
+function pkgSourceColor(id: string): { dot: string; badge: string } {
+  if (id.startsWith("com.vrchat"))  return { dot: "bg-red-400",    badge: "text-red-400"    };
+  if (id.startsWith("com.poiyomi")) return { dot: "bg-pink-400",   badge: "text-pink-400"   };
+  if (id.startsWith("jp.lilxyzw")) return  { dot: "bg-violet-400", badge: "text-violet-400" };
+  if (id.startsWith("nadena.dev")) return  { dot: "bg-blue-400",   badge: "text-blue-400"   };
+  return                                   { dot: "bg-zinc-500",   badge: "text-zinc-500"   };
 }
 
 // ── Step 2: Package picker ────────────────────────────────────────────────────
@@ -279,6 +291,7 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [search, setSearch]     = useState("");
+  const [activeCategory, setActiveCategory] = useState<string>("all");
   const [pickerVersions, setPickerVersions] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
@@ -298,17 +311,24 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
   );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return index;
-    const q = search.toLowerCase();
-    return index.filter((p) => {
-      const latest = p.versions[sortedVersions(p)[0]];
-      return (
-        p.id.toLowerCase().includes(q) ||
-        latest?.display_name?.toLowerCase().includes(q) ||
-        latest?.description?.toLowerCase().includes(q)
-      );
-    });
-  }, [index, search]);
+    const q = search.toLowerCase().trim();
+    // Exclude world-only official packages from the avatar project wizard
+    let base = index.filter((p) => !WORLD_ONLY_IDS.has(p.id));
+    if (q) {
+      base = base.filter((p) => {
+        const latest = p.versions[sortedVersions(p)[0]];
+        return (
+          p.id.toLowerCase().includes(q) ||
+          latest?.display_name?.toLowerCase().includes(q) ||
+          latest?.description?.toLowerCase().includes(q)
+        );
+      });
+    }
+    if (!q && activeCategory !== "all") {
+      base = base.filter((p) => categorizePackage(p.id) === activeCategory);
+    }
+    return base;
+  }, [index, search, activeCategory]);
 
   const getPickerVersion = (pkg: VpmPackage) =>
     pickerVersions[pkg.id] ?? sortedVersions(pkg)[0];
@@ -317,11 +337,8 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
 
   const togglePackage = (pkg: VpmPackage) => {
     const ver = getPickerVersion(pkg);
-    if (isSelected(pkg.id)) {
-      onChange(pkg.id, null);
-    } else {
-      onChange(pkg.id, ver);
-    }
+    if (isSelected(pkg.id)) onChange(pkg.id, null);
+    else onChange(pkg.id, ver);
   };
 
   if (loading) {
@@ -339,10 +356,7 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
         <AlertTriangle className="h-5 w-5 text-amber-500" />
         <p className="text-xs text-zinc-400 font-medium">Could not load VPM registry</p>
         <pre className="text-[10px] text-zinc-600 bg-zinc-900 rounded p-2 max-w-full overflow-auto max-h-16 text-left">{error}</pre>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded px-3 py-1.5 transition-colors"
-        >
+        <button onClick={load} className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded px-3 py-1.5 transition-colors">
           <RefreshCw className="h-3 w-3" /> Retry
         </button>
         <p className="text-[10px] text-zinc-600">You can skip this step and install packages later.</p>
@@ -351,43 +365,49 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
   }
 
   const recIds = new Set(recommendations.map((r) => r.packageId));
-  const nonRecFiltered = filtered.filter((p) => !recIds.has(p.id) || search.trim());
+  const showRecs = !search.trim() && activeCategory === "all" && recommendations.length > 0;
+  const listPkgs = filtered.filter((p) => !recIds.has(p.id) || search.trim() || activeCategory !== "all");
 
   const PkgRow = ({ pkg, recLabel }: { pkg: VpmPackage; recLabel?: string }) => {
     const versions = sortedVersions(pkg);
     const ver = getPickerVersion(pkg);
-    const pkgMeta = pkg.versions[ver];
-    if (!pkgMeta) return null;
+    const meta = pkg.versions[ver];
+    if (!meta) return null;
     const sel = isSelected(pkg.id);
+    const { dot, badge } = pkgSourceColor(pkg.id);
 
     return (
-      <div className={cn(
-        "flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors cursor-pointer",
-        sel
-          ? "border-red-600/60 bg-red-950/20"
-          : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
-      )} onClick={() => togglePackage(pkg)}>
+      <div
+        className={cn(
+          "group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all cursor-pointer",
+          sel ? "border-red-600/50 bg-red-950/20" : "border-zinc-800/80 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-800/40"
+        )}
+        onClick={() => togglePackage(pkg)}
+      >
         {/* Checkbox */}
         <div className={cn(
-          "mt-0.5 h-4 w-4 rounded border shrink-0 flex items-center justify-center transition-colors",
+          "h-4 w-4 rounded border shrink-0 flex items-center justify-center transition-colors",
           sel ? "bg-red-600 border-red-600" : "border-zinc-700 bg-zinc-900"
         )}>
           {sel && <CheckCircle2 className="h-3 w-3 text-white" />}
         </div>
 
+        {/* Source dot */}
+        <div className={cn("h-1.5 w-1.5 rounded-full shrink-0 mt-0.5", dot)} />
+
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-xs font-semibold text-zinc-200">{pkgMeta.display_name}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-zinc-100 truncate">{meta.display_name}</span>
             {recLabel && (
-              <span className="flex items-center gap-0.5 text-[9px] font-medium text-amber-400 bg-amber-950/50 border border-amber-900/40 rounded px-1.5 py-0.5">
+              <span className="flex items-center gap-0.5 text-[9px] font-medium text-amber-400 bg-amber-950/40 border border-amber-900/30 rounded-full px-1.5 py-0.5 shrink-0">
                 <Sparkles className="h-2 w-2" /> {recLabel}
               </span>
             )}
           </div>
-          <p className="text-[10px] text-zinc-600 font-mono mt-0.5">{pkg.id}</p>
-          {pkgMeta.description && (
-            <p className="text-[10px] text-zinc-500 mt-1 line-clamp-1 leading-relaxed">{pkgMeta.description}</p>
+          <p className={cn("text-[10px] font-mono mt-0.5 truncate", badge)}>{pkg.id}</p>
+          {meta.description && (
+            <p className="text-[10px] text-zinc-500 mt-0.5 line-clamp-1 leading-relaxed">{meta.description}</p>
           )}
         </div>
 
@@ -399,86 +419,113 @@ function PackagePicker({ vcsEnabled, selected, onChange }: PkgPickerProps) {
               setPickerVersions((prev) => ({ ...prev, [pkg.id]: e.target.value }));
               if (sel) onChange(pkg.id, e.target.value);
             }}
-            className="appearance-none bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400 pl-2 pr-5 py-1 focus:outline-none cursor-pointer"
+            className="appearance-none bg-zinc-800 border border-zinc-700 rounded-lg text-[10px] text-zinc-400 pl-2 pr-5 py-1.5 focus:outline-none cursor-pointer"
           >
             {versions.map((v, i) => (
               <option key={v} value={v}>{v}{i === 0 ? " ★" : ""}</option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-zinc-600" />
+          <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-zinc-600" />
         </div>
       </div>
     );
   };
 
+  const selectedCount = Object.keys(selected).length;
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 gap-3">
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
-        <input
-          type="text"
-          placeholder="Search packages…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-zinc-800/60 border border-zinc-700/60 rounded-lg text-xs text-zinc-300 pl-8 pr-3 py-2 focus:outline-none focus:border-zinc-500 placeholder-zinc-600"
-        />
+    <div className="flex-1 flex min-h-0 gap-3">
+      {/* ── Left sidebar: categories ── */}
+      <div className="w-36 shrink-0 flex flex-col gap-0.5 overflow-y-auto pr-1">
+        <button
+          onClick={() => setActiveCategory("all")}
+          className={cn(
+            "flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+            activeCategory === "all"
+              ? "bg-zinc-700 text-zinc-100"
+              : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+          )}
+        >
+          <Package className="h-3.5 w-3.5 shrink-0" />
+          <span>All</span>
+          <span className="ml-auto text-[10px] text-zinc-600">{index.filter((p) => !WORLD_ONLY_IDS.has(p.id)).length}</span>
+        </button>
+
+        <div className="my-1 border-t border-zinc-800/60" />
+
+        {CATEGORIES.map((cat) => {
+          const count = index.filter((p) => !WORLD_ONLY_IDS.has(p.id) && categorizePackage(p.id) === cat.id).length;
+          if (count === 0) return null;
+          return (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={cn(
+                "flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                activeCategory === cat.id
+                  ? "bg-zinc-700 text-zinc-100"
+                  : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              )}
+            >
+              <span className="shrink-0 text-sm leading-none">{cat.icon}</span>
+              <span className="truncate">{cat.label}</span>
+              <span className="ml-auto text-[10px] text-zinc-600 shrink-0">{count}</span>
+            </button>
+          );
+        })}
+
+        {selectedCount > 0 && (
+          <>
+            <div className="my-1 border-t border-zinc-800/60 mt-auto" />
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/30 border border-red-900/30">
+              <CheckCircle2 className="h-3 w-3 text-red-400 shrink-0" />
+              <span className="text-[10px] font-semibold text-red-300">{selectedCount} selected</span>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Selected count */}
-      {Object.keys(selected).length > 0 && (
-        <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
-          <Package className="h-3 w-3" />
-          <span>{Object.keys(selected).length} package{Object.keys(selected).length !== 1 ? "s" : ""} selected</span>
+      {/* ── Right panel: package list ── */}
+      <div className="flex-1 flex flex-col min-h-0 gap-2 min-w-0">
+        {/* Search */}
+        <div className="relative shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
+          <input
+            type="text"
+            placeholder="Search packages…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-zinc-800/60 border border-zinc-700/60 rounded-xl text-xs text-zinc-300 pl-8 pr-3 py-2 focus:outline-none focus:border-zinc-500 placeholder-zinc-600"
+          />
         </div>
-      )}
 
-      {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
-        {/* Recommendations */}
-        {!search.trim() && recommendations.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="h-3 w-3 text-amber-400" />
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                Recommended
-              </p>
-            </div>
-            {recommendations.map((rec) => {
-              const pkg = index.find((p) => p.id === rec.packageId);
-              if (!pkg) return null;
-              return (
-                <div key={rec.packageId} className="relative">
-                  <div className="absolute -top-px -left-px -right-px h-0.5 bg-gradient-to-r from-amber-500/40 to-transparent rounded-t-lg" />
-                  <PkgRow pkg={pkg} recLabel={rec.reason} />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Categorized packages (when no search) */}
-        {!search.trim() ? (
-          CATEGORIES.map((cat) => {
-            const pkgs = nonRecFiltered.filter((p) => categorizePackage(p.id) === cat.id);
-            if (pkgs.length === 0) return null;
-            return (
-              <div key={cat.id} className="flex flex-col gap-1.5 mt-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 flex items-center gap-1">
-                  {cat.icon} {cat.label} <span className="text-zinc-700">({pkgs.length})</span>
-                </p>
-                {pkgs.map((pkg) => <PkgRow key={pkg.id} pkg={pkg} />)}
+        {/* Package list */}
+        <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-0.5">
+          {/* Recommendations */}
+          {showRecs && (
+            <>
+              <div className="flex items-center gap-1.5 px-1 mb-0.5">
+                <Sparkles className="h-3 w-3 text-amber-400" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Recommended</p>
               </div>
-            );
-          })
-        ) : (
-          // Flat list when searching
-          nonRecFiltered.map((pkg) => <PkgRow key={pkg.id} pkg={pkg} />)
-        )}
+              {recommendations.map((rec) => {
+                const pkg = index.find((p) => p.id === rec.packageId);
+                if (!pkg) return null;
+                return <PkgRow key={rec.packageId} pkg={pkg} recLabel={rec.reason} />;
+              })}
+              {listPkgs.length > 0 && (
+                <div className="my-1 border-t border-zinc-800/60" />
+              )}
+            </>
+          )}
 
-        {filtered.length === 0 && search.trim() && (
-          <p className="text-center text-xs text-zinc-600 py-6">No packages found for "{search}"</p>
-        )}
+          {/* Package list (by category or search) */}
+          {listPkgs.map((pkg) => <PkgRow key={pkg.id} pkg={pkg} />)}
+
+          {filtered.length === 0 && search.trim() && (
+            <p className="text-center text-xs text-zinc-600 py-8">No packages found for "{search}"</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -517,6 +564,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
   const [destinationDir, setDestinationDir] = useState("");
   const [unity, setUnity] = useState<UnityInstallation | null>(null);
   const [vcsEnabled, setVcsEnabled] = useState(false);
+  const [coverImagePath, setCoverImagePath] = useState<string | null>(null);
 
   // ── Step 2 state — selectedPkgs: packageId → version
   const [selectedPkgs, setSelectedPkgs] = useState<Record<string, string>>({});
@@ -542,6 +590,15 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
     if (result && typeof result === "string") setDestinationDir(result);
   };
 
+  const pickCoverImage = async () => {
+    const result = await openDialog({
+      title: "Select cover image (optional)",
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+      multiple: false,
+    }).catch(() => null);
+    if (result && typeof result === "string") setCoverImagePath(result);
+  };
+
   const step1Valid =
     projectName.trim().length > 0 &&
     destinationDir.trim().length > 0 &&
@@ -565,7 +622,7 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
     events.reset();
     setSubmitted(true);
     try {
-      const project = await tauriCreateProject({
+      let project = await tauriCreateProject({
         name: projectName.trim(),
         destination_dir: destinationDir,
         unity_version: unity.version,
@@ -578,6 +635,14 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
         custom_package_ids: [],
         early_import_items: itemRefs,
       });
+      // Apply cover image if the user picked one
+      if (coverImagePath) {
+        try {
+          project = await tauriSetProjectCoverImage(project.id, coverImagePath);
+        } catch (e) {
+          console.warn("[create-project] could not set cover image:", e);
+        }
+      }
       onCreated(project);
     } catch (err) {
       setSubmitError(String(err));
@@ -605,7 +670,10 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
   // ── Wizard ──
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-xl rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl flex flex-col max-h-[90vh]">
+      <div className={cn(
+        "w-full rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl flex flex-col max-h-[90vh] transition-all duration-200",
+        step === 2 ? "max-w-2xl" : "max-w-xl"
+      )}>
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4 shrink-0">
           <div className="flex flex-col gap-2">
             <h2 className="text-base font-semibold text-zinc-100">{t("create_project_title")}</h2>
@@ -715,6 +783,46 @@ export function CreateProjectForm({ onCreated, onClose }: Props) {
                   }`}
                 />
               </button>
+            </div>
+
+            {/* Cover image */}
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                Cover Image <span className="text-zinc-600">(optional)</span>
+              </label>
+              <div className="flex items-center gap-3">
+                {coverImagePath ? (
+                  <div className="w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 shrink-0">
+                    <img src={`https://asset.localhost/${encodeURIComponent(coverImagePath)}`} alt="Cover" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  </div>
+                ) : (
+                  <div className="w-14 h-14 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+                    <Image className="h-5 w-5 text-zinc-600" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[10px] text-zinc-500 leading-relaxed">
+                    Shown in the icon grid and in Discord when you're working on this project.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={pickCoverImage}
+                      className="flex items-center gap-1.5 rounded-md border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
+                    >
+                      <Image className="h-3 w-3" />
+                      {coverImagePath ? "Change image" : "Select image"}
+                    </button>
+                    {coverImagePath && (
+                      <button
+                        onClick={() => setCoverImagePath(null)}
+                        className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

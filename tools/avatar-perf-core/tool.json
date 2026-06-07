@@ -1,0 +1,20 @@
+{
+  "id": "avatar-performance-analyzer",
+  "name": "Avatar Performance Analyzer",
+  "version": "1.0.0",
+  "description": "Analiza proyectos Unity de VRChat y calcula el rank de rendimiento PC y Quest de tus avatares. Cuenta triángulos, PhysBones, materiales, VRAM y genera recomendaciones de optimización accionables.",
+  "author": "s7lver",
+  "icon_url": "https://raw.githubusercontent.com/s7lver2/vrc-studio/main/tools-registry/assets/avatar-performance-analyzer/icon.png",
+  "banner_url": "https://raw.githubusercontent.com/s7lver2/vrc-studio/main/tools-registry/assets/avatar-performance-analyzer/banner.png",
+  "screenshots": [],
+  "category": "performance",
+  "requires_unity": true,
+  "min_unity_version": "2022.3",
+  "featured": true,
+  "downloads": {
+    "ui_bundle": "",
+    "sidecar_windows": "",
+    "sidecar_macos": "",
+    "sidecar_linux": ""
+  }
+}
