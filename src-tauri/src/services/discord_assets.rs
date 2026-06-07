@@ -24,12 +24,22 @@ const ASSETS_URL: &str = concat!(
 );
 
 // Bot token for application asset management (not user auth).
-// This is the bot token for the VRC Studio Discord application.
 // It is used ONLY to upload cover images to the app's own asset store.
-// ⚠️  IMPORTANT: Replace BOT_TOKEN_HERE with the actual Discord Bot token
-//     (from Discord Developer Portal → Bot → Token).
-//     The client_credentials flow does NOT grant asset management permissions.
-const BOT_TOKEN: &str = "DISCORD_BOT_TOKEN_REDACTED";
+//
+// ⚠️  NEVER hardcode the token here.
+// Set the VRCSTUDIO_DISCORD_BOT_TOKEN environment variable at build time,
+// or store it in a secrets manager / CI environment.
+//
+// In development: create a .env file (gitignored) and set:
+//   VRCSTUDIO_DISCORD_BOT_TOKEN=your_token_here
+// Then run:  cargo build  (the option_env! macro reads it at compile time)
+//
+// In GitHub Actions:
+//   Set VRCSTUDIO_DISCORD_BOT_TOKEN in Settings → Secrets → Actions.
+const BOT_TOKEN: &str = match option_env!("VRCSTUDIO_DISCORD_BOT_TOKEN") {
+    Some(t) => t,
+    None    => "",
+};
 
 /// In-memory cache: image sha256 hex → Discord asset name (== the hash).
 pub struct DiscordAssetCache {
