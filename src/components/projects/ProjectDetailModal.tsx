@@ -94,7 +94,7 @@ function ScreenshotHero({
 function Badge({ label, value, icon: Icon, accent = false }: {
   label: string;
   value: string;
-  icon?: React.ElementType;
+  icon?: React.ComponentType<any>;
   accent?: boolean;
 }) {
   return (
@@ -121,7 +121,7 @@ function TabBar({ active, onSelect, vcsEnabled }: {
   vcsEnabled: boolean;
 }) {
   const t = useT();
-  const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<any> }[] = [
     { id: "overview",  label: t("project_detail_tab_overview"),  icon: Info },
     { id: "files",     label: t("project_detail_tab_files"),     icon: FileSearch },
     { id: "packages",  label: t("project_detail_tab_packages"),  icon: Package },

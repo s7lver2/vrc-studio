@@ -580,7 +580,7 @@ function ProjectCompactRow({ project, onOpen, onDelete, onDetail, isSelected }: 
 
 function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
   const t = useT();
-  const opts: { id: ViewMode; icon: React.ElementType; label: string }[] = [
+  const opts: { id: ViewMode; icon: React.ComponentType<any>; label: string }[] = [
     { id: "icons",   icon: LayoutDashboard, label: "Icons" },
     { id: "grid",    icon: LayoutGrid,      label: t("project_list_view_grid") },
     { id: "list",    icon: List,            label: t("project_list_view_list") },

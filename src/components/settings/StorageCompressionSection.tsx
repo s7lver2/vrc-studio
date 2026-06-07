@@ -12,7 +12,7 @@ function cn(...c: (string | boolean | undefined)[]) {
 export function StorageCompressionSection() {
   const [activeTab, setActiveTab] = useState<SubTab>("storage");
 
-  const tabs: { id: SubTab; label: string; icon: React.ElementType }[] = [
+  const tabs: { id: SubTab; label: string; icon: React.ComponentType<any> }[] = [
     { id: "storage",     label: "Storage",     icon: HardDrive },
     { id: "compression", label: "Compression", icon: Archive   },
   ];

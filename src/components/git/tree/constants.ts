@@ -26,7 +26,7 @@ export const BRANCH_PALETTE = [
   "#fb7185",
 ] as const;
 
-export const TOOL_ICONS: Partial<Record<Tool, React.ElementType>> = {
+export const TOOL_ICONS: Partial<Record<Tool, React.ComponentType<any>>> = {
   merge:        GitMerge,
   "cherry-pick": Star,
   rebase:       CornerUpRight,
